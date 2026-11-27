@@ -533,6 +533,7 @@ class ResearchWorkflow:
                 "heading": section.outline[section.current].title,
                 "topic": section.topic,
                 "author_guidance": brief_section_research_focus(section),
+                "writing_guidance": self.writer,
                 "voice": section.voice_instructions,
                 "introduces": brief_child_headings(section),
             },

@@ -29,9 +29,11 @@ just because the supplied quote exists in the passage.
   An uncited factual assertion is "unsupported", including an assertion mixed with an evidence gap.
 - "unsupported" if any assertion lacks a citation or goes beyond it. Name the specific problem in "issue".
 
-An explicit limit of this review does not need a source confirming the absence of evidence. For example,
+{% if brief_section %}For a Brief, a statement about the limits of the evidence is a factual claim. Accept it only if the assignment explicitly requests discussion of evidence gaps and the cited passage supports that limitation. Mark unsolicited commentary about the review as unsupported.
+{% else %}An explicit limit of this review does not need a source confirming the absence of evidence. For example,
 "The sources reviewed here do not establish how widely this approach was used." is "evidence_gap".
 Keep that distinction from an unrestricted statement about all reports or a sentence that mixes a factual claim with a gap.
+{% endif %}
 
 {% if brief_section -%}
 This is a single section of a Brief. Check against the assigned heading and its instructions. Use the other headings

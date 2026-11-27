@@ -37,9 +37,9 @@ async def cite_missing_excerpts(
     missing: dict[int, tuple[int, int, str]] = {}
     paragraphs: list[list[str]] = []
     for block in blocks:
-        sentences = [block] if block.startswith("Limit: ") else split_sentences(block)
+        sentences = split_sentences(block)
         for index, sentence in enumerate(sentences):
-            if not block.startswith("Limit: ") and not cited_numbers_in_order(sentence):
+            if not cited_numbers_in_order(sentence):
                 missing[len(missing) + 1] = (len(paragraphs), index, sentence)
         paragraphs.append(sentences)
     if not missing:

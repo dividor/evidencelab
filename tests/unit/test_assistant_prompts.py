@@ -47,10 +47,19 @@ def test_grounding_uses_report_title_to_verify_location_and_passage_to_verify_cl
     assert "Use the passage itself to verify the finding" in reviewer
 
 
-def test_brief_prose_review_accepts_evidence_gap_after_cited_opening(prompts):
-    reviewer = prompts.get_template("brief_prose_check.j2").render(system=True)
-    assert "Do not request the missing data again" in reviewer
-    assert "or require that sentence in the opening" in reviewer
+def test_brief_defaults_and_reviewer_only_discuss_evidence_gaps_when_assigned(prompts):
+    from ui.backend.services.brief_section_prompt import brief_section_prompt_default
+
+    default = brief_section_prompt_default()
+    assert (
+        "only when the heading or the author's instructions explicitly ask" in default
+    )
+    assert "cite the source describing what was measured" in default
+    for final in (False, True):
+        review = prompts.get_template("brief_prose_check.j2").render(
+            system=True, final=final
+        )
+        assert "Flag unsolicited commentary" in review
 
 
 @pytest.mark.parametrize("stage", [{}, {"organize": True}, {"contextualize": True}])

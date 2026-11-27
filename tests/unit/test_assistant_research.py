@@ -857,7 +857,7 @@ async def test_disabling_citation_check_only_skips_the_semantic_review():
 
 
 @pytest.mark.asyncio
-async def test_brief_keeps_its_verified_findings_and_qualified_evidence_gap():
+async def test_brief_keeps_verified_findings_and_omits_unsourced_evidence_gap():
     finding = (
         "The evaluation documented social and behavioural change in school meals [1]."
     )
@@ -890,7 +890,7 @@ async def test_brief_keeps_its_verified_findings_and_qualified_evidence_gap():
     )
 
     def judge(prompt):
-        assert len(_review_rows(prompt)) == 3
+        assert len(_review_rows(prompt)) == 2
         assert (
             "documented social and behavioural change in school meals"
             in _review_rows(prompt)[0]["prepared_quotes"][0]["quote"]
@@ -909,7 +909,6 @@ async def test_brief_keeps_its_verified_findings_and_qualified_evidence_gap():
                     "quotes": [],
                     "issue": "This belongs in the education section.",
                 },
-                {"id": 3, "status": "evidence_gap", "quotes": []},
             ],
         }
 
@@ -939,10 +938,12 @@ async def test_brief_keeps_its_verified_findings_and_qualified_evidence_gap():
         ),
         check=judge,
     )
-    assert [event["token"] for event in events if event["type"] == "token"] == [
-        finding + "\n\n" + gap
-    ]
-    assert llm.ainvoke.await_count == 7
+    assert [event["token"] for event in events if event["type"] == "token"] == [finding]
+    assert any(
+        "Sentences missing citations" in call.args[0][-1].content
+        and gap in call.args[0][-1].content
+        for call in llm.ainvoke.await_args_list
+    )
     assert finding in llm.ainvoke.await_args.args[0][-1].content
     comparison = llm.ainvoke.await_args_list[-2].args[0][-1].content
     assert "The other section covers attendance" in comparison
@@ -1626,10 +1627,7 @@ async def test_brief_with_unverified_prose_completes_without_a_draft_or_sources(
 async def test_brief_update_final_repair_keeps_supported_finding_and_restores_review_limit():
     finding = "The evaluation documented nutrition education in school meals [1]."
     mixed = "Programme use was widespread, but the reviewed evaluations did not give a share."
-    gap = (
-        "The evaluations reviewed here do not establish the share of programmes "
-        "with this component."
-    )
+    gap = "The evaluation measured participation at two sites [1]."
 
     def judge(prompt):
         checks = []
@@ -1637,7 +1635,14 @@ async def test_brief_update_final_repair_keeps_supported_finding_and_restores_re
             if row["citations"]:
                 status = "supported"
                 quotes = [
-                    {"citation": 1, "quote": "nutrition education in school meals"}
+                    {
+                        "citation": 1,
+                        "quote": (
+                            "measured participation at two sites"
+                            if row["text"] == gap
+                            else "nutrition education in school meals"
+                        ),
+                    }
                 ]
             else:
                 status = "evidence_gap" if row["text"] == gap else "unsupported"
@@ -1647,9 +1652,17 @@ async def test_brief_update_final_repair_keeps_supported_finding_and_restores_re
 
     events, _, llm = await run_research(
         ['{"queries":[]}', finding, mixed + "\n\n" + finding, finding + "\n\n" + gap],
-        [[point(1, "The evaluation documented nutrition education in school meals.")]],
+        [
+            [
+                point(
+                    1,
+                    "The evaluation documented nutrition education in school meals "
+                    "and measured participation at two sites.",
+                )
+            ]
+        ],
         initial_query="Nutrition education in school meals",
-        brief_section_prompt="Report evaluation findings and the programme share.",
+        brief_section_prompt="Report findings and limitations of the evaluation.",
         brief_section=BriefSectionPrompt(
             outline=[{"title": "Programme coverage"}], current=0, mode="update"
         ),
@@ -2052,7 +2065,7 @@ async def test_brief_retries_the_supported_part_of_a_finding_reserved_for_two_he
     assert f"Finding removed during evidence check: {unrelated}" in drafts[-1]
     assert all(f'Voice and audience: "{voice}"' in draft for draft in drafts)
     answer = next(event["token"] for event in events if event["type"] == "token")
-    assert answer == f"{finding} [1]. {case} [2].\n\n{limit}"
+    assert answer == f"{finding} [1]. {case} [2]."
 
 
 @pytest.mark.asyncio

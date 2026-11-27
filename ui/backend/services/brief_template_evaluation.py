@@ -50,10 +50,8 @@ def brief_expectation_matrix(matrix):
 
 async def grade_template_checks(output, assertions, judge_factory):
     """Keep independent grades when one check cannot return a valid judgement."""
-    from ui.backend.services.test_evaluators import (
-        UnverifiedOverlapQuote,
-        evaluate_assertion,
-    )
+    from ui.backend.services.brief_grading_errors import grading_error_reason
+    from ui.backend.services.test_evaluators import evaluate_assertion
 
     results = []
     for assertion in assertions:
@@ -68,11 +66,7 @@ async def grade_template_checks(output, assertions, judge_factory):
                 {
                     **assertion,
                     "error": True,
-                    "message": (
-                        str(exc)
-                        if isinstance(exc, UnverifiedOverlapQuote)
-                        else "The evaluator could not grade this expectation."
-                    ),
+                    "message": grading_error_reason(exc),
                 }
             )
     return results

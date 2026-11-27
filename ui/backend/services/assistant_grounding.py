@@ -317,7 +317,7 @@ async def check_answer_citations(
                 for index, passage in cited.items()
             },
             verdict,
-            keep_evidence_notes=brief_section,
+            brief_section=brief_section,
         )
 
     results = await asyncio.gather(
@@ -375,7 +375,7 @@ def citation_issues(
     evidence: dict[int, str],
     verdict: CitationCheck,
     *,
-    keep_evidence_notes: bool = False,
+    brief_section: bool = False,
 ) -> tuple[list[str], set[int]]:
     checks = {row.id: row for row in verdict.sentences}
     expected = {row["id"] for row in sentences}
@@ -391,10 +391,10 @@ def citation_issues(
     for row in sentences:
         check = checks[row["id"]]
         cited = set(row["citations"])
-        if check.status == "evidence_gap" and not cited:
+        if check.status == "evidence_gap" and not cited and not brief_section:
             notes.add(check.id)
             continue
-        if check.status == "non_factual" and not cited and not keep_evidence_notes:
+        if check.status == "non_factual" and not cited and not brief_section:
             if HEADING.match(row["text"]):
                 notes.add(check.id)
             continue

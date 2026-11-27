@@ -216,6 +216,8 @@ What a template keeps:
 - **A voice & tone profile and a length for each heading**, when a section should differ from the rest of the brief.
 - **Settings for the whole brief** — a brief prompt applied to every section, a default voice & tone profile and a default section length.
 
+By default, generated sections describe the findings directly. To include a discussion of evidence gaps, ask for it in the heading or writing instructions. The writer must cite the source that documents the limitation. Administrators can edit the default writing instructions for their group under **Group Settings → Brief**.
+
 Working with templates:
 
 - **Save a brief as a template** — open a brief and click **Save as Template**. Each section's prompt, voice and length, and the brief's own prompt, voice and length, are carried into the template. Two switches decide what is kept: **Include section text** (off by default) and **Include prompts and settings** (on by default). You can edit everything before saving.

@@ -240,6 +240,8 @@ Expand a case, then open **Generated section** below the query to read its parag
 
 Click a citation in a sentence to read all the passages that sentence cites. Click it again to close them. **References** at the end lists each cited passage once. Expand an entry to read the full excerpt saved with that run. You can review earlier runs this way, even if the library has since changed.
 
+If a check returns an error, the section row names the check and gives its reason. A check that returned a failing grade is listed separately, with claim numbers for factual support.
+
 Open **Factual support from citations** to read the claims in order. Each claim shows its own assessment, score and pass or fail. Expand a reference below the claim to read the excerpt. The section receives the lowest claim score. The configured threshold applies to each claim and to the section. The grading criterion and full prompt are at the bottom. Earlier runs retain their original section-level assessment.
 
 Open **Cross-section repetition** to compare each match. **Source** shows the passage from the other section. **Target** shows the passage from the draft being graded. Expand either side to see the matching words highlighted in the full section saved with the run. The judge explains what finding the passages share. Older runs keep the original section-level assessment.

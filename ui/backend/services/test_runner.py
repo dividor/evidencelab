@@ -40,6 +40,7 @@ from ui.backend.auth.testing_models import (
     TestResult,
     TestRun,
 )
+from ui.backend.services.brief_grading_errors import brief_grading_error
 from ui.backend.services.brief_template_evaluation import (
     TemplateSection,
     TemplateSelectionError,
@@ -862,7 +863,7 @@ async def evaluate_case(
             ),
             **_case_usage_totals(output),
         }
-    grading_error = any(r.get("error") for r in assertion_results)
+    grading_error = brief_grading_error(assertion_results)
     return {
         "status": (
             RESULT_ERROR if grading_error else (RESULT_PASS if passed else RESULT_FAIL)
@@ -871,9 +872,7 @@ async def evaluate_case(
         "actual_output": output,
         "assertion_results": assertion_results,
         "latency_ms": latency_ms,
-        "error_message": (
-            "An expectation could not be graded." if grading_error else None
-        ),
+        "error_message": grading_error,
         # Judge usage is stashed on the output by the judge factory, so the
         # totals must be computed after the judge has run.
         **_case_usage_totals(output),

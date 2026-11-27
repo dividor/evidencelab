@@ -19,7 +19,7 @@
   },
   {
     "type": "llm_judge",
-    "rubric": "Read the brief topic together with its section heading. Name the subject and its defining conditions. Quote words in the cited evidence establishing those conditions for the findings presented. An unspecified or different population, setting, version or period fails even if the issue discussed is similar. Then quote how the draft answers the heading for that subject. Apply any editorial scope notes for this case. A finding on a different question earns no credit. Accept a clearly stated limit where evidence is unavailable.",
+    "rubric": "Read the brief topic together with its section heading. Name the subject and its defining conditions. Quote words in the cited evidence establishing those conditions for the findings presented. An unspecified or different population, setting, version or period fails even if the issue discussed is similar. Then quote how the draft answers the heading for that subject. Apply any editorial scope notes for this case. A finding on a different question earns no credit. Assess the answer within the scope of its evidence. Discussion of gaps in the review belongs only when explicitly assigned and supported by a cited source.",
     "threshold": 1,
     "label": "Relevance to the template and section"
   },

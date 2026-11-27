@@ -112,13 +112,7 @@ def _prepare_finding(
 def _read_draft_lines(raw: str, quotes: dict[int, tuple[int, str]]):
     paragraphs = []
     issues = []
-    limit = ""
     for block in re.split(r"\n\s*\n", raw.strip()):
-        if block.startswith("Limit: "):
-            limit = block.splitlines()[0].removeprefix("Limit: ").strip()
-            if len(block.splitlines()) > 1:
-                issues.append(_DRAFT_FORMAT_ISSUE)
-            continue
         findings = []
         for sentence in split_sentences(block):
             labels = cited_numbers_in_order(sentence)
@@ -142,7 +136,7 @@ def _read_draft_lines(raw: str, quotes: dict[int, tuple[int, str]]):
                     )
                 )
         paragraphs.append(findings)
-    return paragraphs, limit, issues
+    return paragraphs, issues
 
 
 def _brief_draft_text(
@@ -151,7 +145,7 @@ def _brief_draft_text(
     other_claims: set[str],
     quotes: dict[int, tuple[int, str]],
 ) -> tuple[str, list[str], dict[str, list[EvidenceQuote]]]:
-    candidates, limit, issues = _read_draft_lines(draft, quotes)
+    candidates, issues = _read_draft_lines(draft, quotes)
     paragraphs = []
     seen: set[str] = set()
     prepared_quotes = {}
@@ -182,8 +176,6 @@ def _brief_draft_text(
             seen.add(key)
         if sentences:
             paragraphs.append(" ".join(sentences))
-    if paragraphs and limit and len(split_sentences(limit)) == 1 and "[" not in limit:
-        paragraphs.append(limit.rstrip(".") + ".")
     return "\n\n".join(paragraphs), list(dict.fromkeys(issues)), prepared_quotes
 
 
@@ -194,23 +186,17 @@ def _distinct_draft_sentences(draft: str):
         for sentence in split_sentences(paragraph):
             plain = strip_citation_markers(sentence)
             key = match_key(plain)
-            cited = bool(cited_numbers_in_order(sentence))
-            if cited:
-                if key in seen:
-                    continue
-                seen.add(key)
-            yield index, sentence, len(plain.split()), cited
+            if not cited_numbers_in_order(sentence) or key in seen:
+                continue
+            seen.add(key)
+            yield index, sentence, len(plain.split())
 
 
 def _fit_section_to_target(draft: str, target: int | None) -> tuple[str, int]:
     """Stop at the nearest sentence boundary without skipping ahead in the argument."""
     paragraphs: dict[int, list[str]] = {}
-    limit = ""
     remaining = target or float("inf")
-    for index, sentence, words, cited in _distinct_draft_sentences(draft):
-        if not cited:
-            limit = limit or sentence
-            continue
+    for index, sentence, words in _distinct_draft_sentences(draft):
         # Finish this sentence if it brings the section closer to its target
         # and the result is still within the writing tolerance.
         if target and paragraphs and words > remaining + min(remaining, target * 0.15):
@@ -218,8 +204,6 @@ def _fit_section_to_target(draft: str, target: int | None) -> tuple[str, int]:
         paragraphs.setdefault(index, []).append(sentence)
         remaining -= words
     blocks = [" ".join(sentences) for sentences in paragraphs.values()]
-    if blocks and limit and len(limit.split()) <= remaining:
-        blocks.append(limit)
     text = "\n\n".join(blocks)
     return text, len(strip_citation_markers(text).split())
 

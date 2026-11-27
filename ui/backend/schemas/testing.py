@@ -26,6 +26,7 @@ from ui.backend.services.brief_experiment_claims import (
     link_assessment_claims,
 )
 from ui.backend.services.brief_experiment_overlap import link_saved_repetitions
+from ui.backend.services.brief_grading_errors import brief_grading_error
 
 # ---------------------------------------------------------------------------
 # Datasets
@@ -183,6 +184,13 @@ class TestResultRead(BaseModel):
             and self.actual_output.get("capability") == "brief"
             and self.assertion_results
         ):
+            if (
+                self.status == "error"
+                and self.error_message == "An expectation could not be graded."
+            ):
+                self.error_message = (
+                    brief_grading_error(self.assertion_results) or self.error_message
+                )
             self.assertion_results = link_saved_repetitions(
                 self.assertion_results, self.actual_output
             )

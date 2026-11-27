@@ -23,6 +23,7 @@ async def test_missing_references_keep_the_supported_opening_in_its_own_paragrap
                     "matches": [
                         {"sentence": 1, "excerpts": [1]},
                         {"sentence": 2, "excerpts": []},
+                        {"sentence": 3, "excerpts": []},
                     ]
                 }
             )
@@ -34,7 +35,7 @@ async def test_missing_references_keep_the_supported_opening_in_its_own_paragrap
     async def unexpected(*args):
         pytest.fail("A fully referenced draft needs no further request")
 
-    complete = "The probes lost power [1].\n\nLimit: The duration is unclear."
+    complete = "The probes lost power [1].\n\nThe log covers one shift [2]."
     assert await cite_missing_excerpts(complete, "", {1}, {}, unexpected) == complete
 
 

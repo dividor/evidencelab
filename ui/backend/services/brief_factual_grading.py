@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.brief_experiment_claims import brief_claim_evidence
+from ui.backend.services.brief_grading_errors import IncompleteClaimGrades
 
 
 class ClaimGrade(BaseModel):
@@ -84,7 +85,7 @@ async def _grade_batch(claims, sources, prompt, system, output, model):
                 "brief_factual_grading.j2"
             )
             prompt += "\n" + template.render(repair=expected, uncited=sorted(uncited))
-    raise ValueError(
+    raise IncompleteClaimGrades(
         "The factual support judge did not return one valid grade per claim."
     )
 
