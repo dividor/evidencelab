@@ -440,7 +440,10 @@ async def write_grounded_brief(
     if not evidence:
         return earlier_text
     template = assistant_prompt_templates.get_template("brief_evidence_draft.j2")
-    system = template.render(system=True)
+    introduces = brief_child_headings(section)
+    system = template.render(
+        system=True, target_words=target_words, introduces=introduces
+    )
     stream = get_stream_writer()
     existing = _written_sibling_findings(section)
     sibling_matches = (
@@ -455,6 +458,7 @@ async def write_grounded_brief(
     written_words = len(strip_citation_markers(accepted).split())
     minimum_words = target_words * 0.85 if target_words else 1
     repair_draft = ""
+    draft_words = 0
     for attempt in range(2):
         messages = [
             SystemMessage(content=system),
@@ -464,10 +468,11 @@ async def write_grounded_brief(
                     subject=subject,
                     writing_guide=writing_guide,
                     voice=section.voice_instructions,
-                    introduces=brief_child_headings(section),
+                    introduces=introduces,
                     evidence=passages,
                     issues=issues,
                     repair_draft=repair_draft,
+                    draft_words=draft_words,
                     accepted=_revision_notes(accepted, selected_sources),
                     target_words=target_words,
                     written_words=written_words,
@@ -477,6 +482,7 @@ async def write_grounded_brief(
         ]
         reply = await writer.ainvoke(messages, config=config)
         raw = message_text(reply)
+        draft_words = len(strip_citation_markers(raw).split())
         text, issues, prepared_quotes = _brief_draft_text(
             raw,
             evidence,
@@ -503,14 +509,15 @@ async def write_grounded_brief(
             )
             issues.extend(verification_issues)
         candidate, words = _fit_section_to_target(text, target_words)
-        if words >= written_words:
+        if words >= written_words or (
+            repair_draft and words >= minimum_words and not issues
+        ):
             accepted, written_words = candidate, words
+        if attempt == 0 and target_words and draft_words > target_words * 1.15:
+            repair_draft = raw
+            continue
         if written_words >= minimum_words:
             break
-        if not issues:
-            issues.append(
-                "Use relevant documented implementation or measurement and report the limits."
-            )
     return await remove_repeated_brief_findings(
         accepted, config, review_scope, existing
     )

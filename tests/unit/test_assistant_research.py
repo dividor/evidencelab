@@ -853,6 +853,10 @@ async def test_brief_revises_a_short_draft_as_one_paragraph_and_rechecks_each_se
         if call.args[0][0].content.startswith("Write the prose of one section")
     ]
     assert len(drafts) == 2 and "complete revised section" in drafts[-1]
+    assert (
+        'Writing guidance: "Report independent findings without extra headings."'
+        in drafts[0]
+    )
     assert lead in drafts[-1]
     verdict_requests = [
         call.args[0][-1].content
@@ -1108,6 +1112,33 @@ async def test_brief_describes_the_format_error_and_retries(invalid_draft, issue
     assert issue in retry_request
     assert events[-1]["section_written"] is True
     assert next(e["token"] for e in events if e["type"] == "token") == finding + " [1]."
+
+
+@pytest.mark.asyncio
+async def test_brief_edits_an_overlong_draft_before_losing_its_last_finding():
+    start = "The team inspected the motor after the pressure dropped"
+    detail = "The maintenance log lists the serial number for each inspected component"
+    end = "A cracked seal caused the loss of pressure"
+    raw = _brief_draft(*((s, 1, s) for s in [start, detail, end]))
+    edited = _brief_draft((start, 1, start), (end, 1, end))
+    events, _, model = await run_research(
+        ['{"queries":[]}', raw, edited],
+        [[point(1, f"{start}. {detail}. {end}.")]],
+        brief_section=BriefSectionPrompt(outline=[{"title": "Root cause"}], current=0),
+        target_words=19,
+    )
+    prompts = [
+        call.args[0][-1].content
+        for call in model.ainvoke.await_args_list
+        if call.args[0][0].content.startswith("Write the prose of one section")
+    ]
+    words = sum(len(f.split()) for f in (start, detail, end))
+    assert len(prompts) == 2 and f"draft has {words} words" in prompts[1]
+    assert "target is 19 words" in prompts[1]
+    assert "16 to 22 words" in prompts[0].split("Source 1:")[-1]
+    assert next(e["token"] for e in events if e["type"] == "token") == (
+        f"{start} [1]. {end} [1]."
+    )
 
 
 @pytest.mark.asyncio

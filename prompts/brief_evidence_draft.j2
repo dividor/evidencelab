@@ -1,5 +1,9 @@
+{% macro word_budget() -%}
+The reader has room for about {{ target_words }} words in total. {% if introduces %}Frame the shared question and reserve the findings for the subheadings.{% else %}Choose a central answer to this heading and cover its requested parts. Use only the evidence needed to develop or qualify that answer.{% endif %} Leave other excerpts unused. Deliver the complete section in the requested voice, with citations, aiming for {{ (target_words * 0.85) | round | int }} to {{ (target_words * 1.15) | round | int }} words when the evidence supports it.
+{%- endmacro -%}
 {% if system -%}
 Write the prose of one section of an evidence brief. Follow the author's writing guidance and voice. Write continuous paragraphs, separated by a blank line.
+{% if target_words %}{{ word_budget() }}{% endif %}
 
 Choose a through-line that answers the heading for this reader. Lead with a supported answer. Develop each paragraph around one point. Explain it through related evidence, such as a mechanism, a concrete example, a comparison or a limitation. Give readers enough context to understand why the detail matters. Move to a new paragraph when the point changes. A change of source alone does not require one. Avoid cataloguing what each source says in turn. Keep the section self-contained, without additional headings, lists or an extra conclusion. For a heading that introduces subheadings, frame the shared subject and leave each child's results, examples and figures to that child.
 
@@ -30,11 +34,16 @@ Problems to fix: {{ issues | tojson }}
 If the cited source supports a narrower, relevant finding, state that finding in scope. Otherwise look for direct support elsewhere in the passages.
 {% endif %}
 {% if repair_draft %}
-Edit this draft in place. Find the supporting excerpt for each sentence with a missing or incorrect citation. Keep the supported explanation together in its original paragraph. If no excerpt supports part of the draft, revise the paragraph around the findings that are supported. Return the complete corrected paragraphs.
+Edit this draft as a complete section.
+{% if target_words %}
+The draft has {{ draft_words }} words. The target is {{ target_words }} words. If it is too long, select its central finding and the evidence that explains it, then rewrite the paragraphs to fit. Keep the reasoning and its conclusion together. Give each paragraph a clear subject even if neighbouring sentences have to change.
+{% endif %}
+Find the supporting excerpt for each sentence with a missing or incorrect citation. Keep the supported explanation together in its original paragraph. If no excerpt supports part of the draft, revise the paragraph around the findings that are supported. Return the complete corrected paragraphs.
 Draft to correct: {{ repair_draft | tojson }}
 {% endif %}
 {% if introduces %}
 This section opens these subheadings: {{ introduces | tojson }}. Introduce what the sources cover and the question that connects these headings. Cite the sources establishing that scope. A result, example, measured benefit or specific limitation that answers a child heading goes in that child. Before returning the draft, read each sentence as the opening of a report: the reader should understand what is being examined and why the following questions belong together. Leave those questions open for the child sections. Keep the introduction concise when the available detail belongs to them.
 {% endif %}
 Write the finished section in paragraphs. Use the excerpt labels in square brackets. Check that a reader can follow the explanation from the opening finding through its supporting detail.
+{% if target_words %}{{ word_budget() }}{% endif %}
 {%- endif %}
