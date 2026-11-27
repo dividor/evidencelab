@@ -7,6 +7,7 @@ The HTTP server (http_server.py) handles transport and authentication.
 import json
 import logging
 import time
+from inspect import getdoc
 from typing import Annotated, Any, List, Optional
 
 from mcp.server.fastmcp import FastMCP
@@ -39,12 +40,12 @@ def _data_source_description() -> str:
     sources = _load_config().get("datasources", {})
     entries = []
     for name, conf in sources.items():
-        subdir = conf.get("data_subdir", "")
+        subdir = conf.get("data_subdir") or name
         entries.append(f'"{subdir}" ({name})')
     return (
         "Data collection to search. Options: "
         + ", ".join(entries)
-        + ". Required when there is more than one."
+        + ". Required when there is more than one and the deployment has no default."
     )
 
 
@@ -125,6 +126,7 @@ mcp = FastMCP(
 
 
 mcp.tool(
+    description=f"{getdoc(heatmap)}\n\n{_data_source_description()}",
     annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False),
     meta=heatmap_tool_metadata(),
 )(heatmap)

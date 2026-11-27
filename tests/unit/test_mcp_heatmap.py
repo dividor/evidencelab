@@ -26,7 +26,7 @@ from mcp_server.resources.heatmap import (
 )
 from mcp_server.tools import heatmap as adapter
 from ui.backend.schemas import Facets, FacetValue
-from ui.backend.schemas.heatmap import HeatmapRequest
+from ui.backend.schemas.heatmap import HeatmapCellRequest, HeatmapRequest
 from ui.backend.services import heatmap, heatmap_axes
 from ui.backend.services.heatmap_search import CellHits, HeatmapHit
 
@@ -176,6 +176,39 @@ async def test_stateless_wire_grid_and_app_only_drill_down(
     assert all(
         call.kwargs["auth_info"]["type"] == "api_key" for call in audit.call_args_list
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("name", "request_model", "fields"),
+    [
+        ("heatmap", HeatmapRequest, {"row_dimension", "column_dimension"}),
+        (
+            "heatmap_cell",
+            HeatmapCellRequest,
+            {"grid", "row", "column", "fingerprint"},
+        ),
+    ],
+)
+async def test_tool_list_exposes_descriptions_and_required_fields(
+    name, request_model, fields
+):
+    tool = next(tool for tool in await mcp.list_tools() if tool.name == name)
+    schema = tool.inputSchema
+    assert schema["properties"]["request"]["description"]
+    definition = schema["$defs"][request_model.__name__]
+    assert set(definition["required"]) == fields
+    properties = definition["properties"]
+    assert set(properties) == set(request_model.model_fields)
+    assert all(prop["description"] for prop in properties.values())
+    if name == "heatmap":
+        assert "Data collection to search." in tool.description
+        assert "include_facets" in tool.description
+        assert properties["metric"]["enum"] == ["documents", "chunks"]
+        assert properties["column_values"]["examples"] == [["2023", "2024"]]
+    else:
+        assert "fingerprints[row][column]" in properties["fingerprint"]["description"]
+        assert properties["offset"]["default"] == 0
 
 
 def test_resource_domain_hashes_the_exact_public_connector_url():

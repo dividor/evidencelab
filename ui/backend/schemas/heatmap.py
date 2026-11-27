@@ -32,23 +32,77 @@ class HeatmapRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    data_source: AxisId | None = None
-    row_dimension: AxisId
-    column_dimension: AxisId
+    data_source: AxisId | None = Field(
+        default=None,
+        description=(
+            "Configured document collection key. Omit only when the deployment "
+            "has one collection or specifies a default."
+        ),
+    )
+    row_dimension: AxisId = Field(
+        description=(
+            "Configured facet key, such as organization, or 'queries' for one search "
+            "query per row. Choose a different field from column_dimension. "
+            "Report titles are unavailable."
+        ),
+    )
+    column_dimension: AxisId = Field(
+        description=(
+            "Configured facet key with at most 20 available categories, or "
+            "published_year. Choose a different field from row_dimension."
+        ),
+    )
     row_values: (
         Annotated[list[AxisValue], Field(min_length=1, max_length=MAX_ROWS)] | None
-    ) = None
+    ) = Field(
+        default=None,
+        description=(
+            "Exact facet values to display as rows, such as UNDP and UNICEF. "
+            "Omit to use the most frequent values. Use row_queries for query rows."
+        ),
+        examples=[["UNDP", "UNICEF"]],
+    )
     column_values: (
         Annotated[list[AxisValue], Field(min_length=1, max_length=MAX_COLUMNS)] | None
-    ) = None
-    query: QueryText | None = None
+    ) = Field(
+        default=None,
+        description=(
+            "Exact facet values to display as columns, such as the strings "
+            "'2023' and '2024'. Omit to use the most frequent values."
+        ),
+        examples=[["2023", "2024"]],
+    )
+    query: QueryText | None = Field(
+        default=None,
+        description=(
+            "One search query applied to every cell when the rows and columns "
+            "are facets. Leave unset for indexed document counts or query rows."
+        ),
+    )
     row_queries: (
         Annotated[list[QueryText], Field(min_length=1, max_length=MAX_ROWS)] | None
-    ) = None
-    filters: Annotated[dict[AxisId, FilterValues], Field(max_length=12)] = Field(
-        default_factory=dict
+    ) = Field(
+        default=None,
+        description=(
+            "One distinct search query per row, in display order. Required when "
+            "row_dimension is 'queries'. Leave query and row_values unset."
+        ),
     )
-    metric: Metric = "documents"
+    filters: Annotated[dict[AxisId, FilterValues], Field(max_length=12)] = Field(
+        default_factory=dict,
+        description=(
+            "Facet restrictions for the whole grid. Each key takes one exact value "
+            "or a list of values. Commas inside a string are part of the facet value."
+        ),
+        examples=[{"organization": ["UNDP", "UNICEF"], "published_year": "2024"}],
+    )
+    metric: Metric = Field(
+        default="documents",
+        description=(
+            "Use 'documents' to count documents or 'chunks' to count matching "
+            "paragraphs. Paragraph counts require query or row_queries."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_modes(self) -> Self:
@@ -79,12 +133,23 @@ class HeatmapCellRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    grid: HeatmapRequest
-    row: Annotated[int, Field(ge=0, lt=MAX_ROWS)]
-    column: Annotated[int, Field(ge=0, lt=MAX_COLUMNS)]
-    cutoff: Annotated[float, Field(allow_inf_nan=False, ge=0)] | None = None
-    fingerprint: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{32}$")]
-    offset: Annotated[int, Field(ge=0, lt=50000)] = 0
+    grid: HeatmapRequest = Field(description="Copy request from the heatmap result.")
+    row: int = Field(ge=0, lt=MAX_ROWS, description="Zero-based displayed row index.")
+    column: int = Field(
+        ge=0, lt=MAX_COLUMNS, description="Zero-based displayed column index."
+    )
+    cutoff: Annotated[float, Field(allow_inf_nan=False, ge=0)] | None = Field(
+        default=None, description="Copy cutoff from the heatmap result, including null."
+    )
+    fingerprint: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{32}$")] = Field(
+        description="Copy fingerprints[row][column] from the heatmap result."
+    )
+    offset: int = Field(
+        default=0,
+        ge=0,
+        lt=50000,
+        description="Use zero for the first page or copy next_offset from the prior page.",
+    )
 
 
 class HeatmapAxisValue(BaseModel):

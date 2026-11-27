@@ -3,10 +3,12 @@
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from typing import Annotated
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 import anyio
 from mcp.types import CallToolResult, TextContent
+from pydantic import Field
 from starlette.concurrency import run_in_threadpool
 
 from mcp_server import oauth
@@ -161,15 +163,22 @@ async def read_source(data_source: str | None) -> str:
         raise HeatmapInputError("Choose a configured data source.") from None
 
 
-async def heatmap(request: HeatmapRequest) -> CallToolResult:
-    """Show a heatmap with at most 4 rows, 6 columns and 24 cells.
+async def heatmap(
+    request: Annotated[
+        HeatmapRequest, Field(description="Define the heatmap to build.")
+    ],
+) -> CallToolResult:
+    """Compare counts across two dimensions in a heatmap with up to 24 cells.
 
-    Use facet fields such as organization and published_year. Set the row
-    dimension to queries and supply row_queries for individual topics.
-    With no query, count indexed documents. With a query, count Documents
-    or Paragraphs among the top matches after applying a shared score cutoff.
-    A deployment can have a smaller grid limit. Start a smaller grid by
-    specifying row_values and column_values. Results include a text table.
+    For document counts by organization and year, set row_dimension to
+    organization and column_dimension to published_year. To compare topics,
+    set row_dimension to queries and supply row_queries.
+    Use search with include_facets enabled to discover facet keys and values.
+    Without a query, count indexed documents. With a query, count documents
+    or paragraphs among the top matches that pass a shared score cutoff.
+    Use at most 4 rows and 6 columns. If the deployment allows fewer cells,
+    narrow the grid using row_values and column_values.
+    Returns display axes and counts in structuredContent and a text table in content.
     """
 
     async def run() -> CallToolResult:
@@ -211,8 +220,17 @@ async def heatmap(request: HeatmapRequest) -> CallToolResult:
     )
 
 
-async def heatmap_cell(request: HeatmapCellRequest) -> CallToolResult:
-    """List and page through the documents counted by a selected heatmap cell."""
+async def heatmap_cell(
+    request: Annotated[
+        HeatmapCellRequest, Field(description="Select a cell and page.")
+    ],
+) -> CallToolResult:
+    """Page through documents from one cell of an existing heatmap.
+
+    The app calls this tool with the displayed row and column indexes and the
+    original heatmap result's request, cutoff, and cell fingerprint. Each page
+    returns up to 20 documents. Use next_offset to fetch the next page.
+    """
 
     async def run() -> CallToolResult:
         from ui.backend.services.heatmap import heatmap_cell as build_cell

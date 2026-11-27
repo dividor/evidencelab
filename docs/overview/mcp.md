@@ -76,13 +76,22 @@ Try asking Claude:
 > Use the Evidence Lab Heatmapper on UNEG. Show UNDP and UNICEF as rows
 > and publication years 2022, 2023, and 2024 as columns. Count documents.
 
-Pass the options in the tool's `request` object. Supply `data_source`,
-`row_dimension`, and `column_dimension`. Use facet names such as
-`organization` and `published_year`. Add `row_values`, `column_values`, or
-`filters` to narrow the grid. Use `row_dimension: "queries"` with
-`row_queries` for separate topics, or `query` for a single topic across
-attribute rows. Set `metric` to `documents` or `chunks`. A grid has at
-most four rows, six columns, and 24 cells.
+Pass the options in the tool's `request` object. A grid has at most four
+rows, six columns, and 24 cells. A deployment can set a smaller limit.
+
+| Field | What to pass |
+|-------|--------------|
+| `data_source` | The collection key, such as `uneg`. Required if the deployment has several collections and no default. |
+| `row_dimension` | A configured facet key such as `organization`, or `queries` to show one topic per row. |
+| `column_dimension` | A different facet key with up to 20 available categories, or `published_year`. |
+| `row_values`, `column_values` | Exact values for the axes, such as `["UNDP", "UNICEF"]` or `["2023", "2024"]`. Omit these fields to use the most frequent values. |
+| `query` | One search query to use in every cell when both axes are facets. |
+| `row_queries` | One distinct query per row when `row_dimension` is `queries`. Leave `query` and `row_values` unset. |
+| `filters` | Facet restrictions for the entire grid. Use an exact value or a list of values for each key. |
+| `metric` | Use `documents` (the default) or `chunks` (matching paragraphs). Paragraph counts require a query. |
+
+Call `search` with `include_facets: true` to discover facet keys and
+values for a collection. Use the values as returned, including years as strings.
 
 See [Heatmapper](../using-evidence-lab/heatmapper.md#heatmapper-in-claude)
 for what counts describe and which controls are available.

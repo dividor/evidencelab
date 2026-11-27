@@ -142,6 +142,19 @@ Server and managed API keys retain access to the configured data sources.
 Each heatmap and each selected-cell call adds an entry to the MCP audit log.
 Hosts that support app-only tool visibility show `heatmap_cell` to the app.
 
+Both tools describe their input fields in `tools/list`. The `heatmap` result
+includes a text table in `content` and a grid in `structuredContent`.
+Read `counts[row][column]` using the order of `rows.values` and
+`columns.values`. A true value at the same position in `capped_cells`
+means that search reached `candidate_limit`. A row or column's `omitted`
+count records how many values are outside the displayed grid.
+
+To read a cell, send the result's `request` as `grid`, the zero-based
+`row` and `column`, the result's `cutoff` (including null), and
+`fingerprints[row][column]` as `fingerprint`. The tool returns up to 20
+matching documents. Use `next_offset` as `offset` to fetch another page.
+If the evidence has changed, rerun the grid to get a new fingerprint.
+
 The Heatmapper uses Evidence Lab’s logo, colors, and typefaces. Docker Compose reads
 the same [branding folder](customization.md) as the web build when
 `CUSTOMIZE_ASSETS` is set. For a separate MCP service, mount that folder
