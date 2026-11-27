@@ -35,6 +35,7 @@ Related to #(issue number)
 - [ ] New tests added for new functionality
 - [ ] Test coverage maintained/improved
 - [ ] Manual testing completed
+- [ ] UI changes checked on a phone (390×844) and a desktop (1440×900), following `.github/review/ux-review.md`
 
 ### Manual Testing Steps
 1. Step 1
@@ -51,7 +52,7 @@ Related to #(issue number)
 
 ## Documentation
 
-- [ ] Documentation updated (if needed)
+- [ ] Online docs in `docs/` cover anything users or administrators see, following `.github/review/docs-check.md`
 - [ ] README updated (if needed)
 - [ ] CONTRIBUTING.md updated (if needed)
 - [ ] Code comments added/updated

@@ -17,33 +17,28 @@ from pydantic import ValidationError
 
 from ui.backend.auth.schemas import AssistantChatRequest
 from ui.backend.schemas import BriefReviseRequest
-from ui.backend.services.assistant_graph import (
-    _load_deep_research_prompt,
-    build_deep_research_agent,
-)
+from ui.backend.services.assistant_graph import build_research_agent
 from ui.backend.services.llm_service import _brief_revise_user_template
 
 pytestmark = pytest.mark.unit
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 SUBS = ["Enrolment and attendance", "Learning and nutrition outcomes"]
-INTRO_MARKER = "INTRODUCTION ONLY"
-HEADING_RULE = "Use markdown: headings (##)"
-DEFAULT_STRUCTURE_RULE = (
-    "Structure your answer as several paragraphs with clear headings"
-)
-DEFAULT_LENGTH_RULE = "AT LEAST 3-4 paragraphs"
+INTRO_MARKER = "Write an introduction"
+HEADING_RULE = "Use Markdown headings for a longer answer"
+DEFAULT_STRUCTURE_RULE = "organize a broader answer"
+DEFAULT_LENGTH_RULE = "Develop at least three paragraphs"
 
 
 @pytest.fixture
 def coordinator():
     env = Environment(loader=FileSystemLoader(str(PROMPTS_DIR)), autoescape=True)
-    return env.get_template("assistant_deep_research_coordinator.j2")
+    return env.get_template("assistant_system.j2")
 
 
 class TestCoordinatorIntroductionRules:
     def test_without_sub_sections_the_prompt_is_unchanged(self, coordinator):
-        result = coordinator.render()
+        result = coordinator.render(deep_research=True)
         assert INTRO_MARKER not in result
         assert HEADING_RULE in result
         assert DEFAULT_STRUCTURE_RULE in result
@@ -56,7 +51,7 @@ class TestCoordinatorIntroductionRules:
         assert INTRO_MARKER in result
         for sub in SUBS:
             assert f"- {sub}" in result
-        assert "NO headings of any level" in result
+        assert "Use paragraphs and no headings" in result
 
     def test_an_introduction_drops_every_rule_that_asks_for_headings(self, coordinator):
         result = coordinator.render(intro_sub_sections=SUBS)
@@ -73,29 +68,28 @@ class TestCoordinatorIntroductionRules:
         assert "at most about 700 words" in result
         assert "FIRM TARGET" not in result
         assert "only as many headings as the length can carry" not in result
-        assert "NO headings of any level" in result
-
-    def test_the_loader_passes_the_sub_sections_through(self):
-        assert INTRO_MARKER in _load_deep_research_prompt(introduces_sub_sections=SUBS)
-        assert INTRO_MARKER not in _load_deep_research_prompt()
+        assert "Use paragraphs and no headings" in result
 
 
 class TestBuildDeepResearchAgentIntroduction:
-    @patch("ui.backend.services.assistant_graph.create_deep_agent")
+    @patch("ui.backend.services.assistant_graph.build_research_workflow")
     def test_sub_sections_reach_the_coordinator_system_prompt(self, mock_create):
         mock_create.return_value = MagicMock()
-        build_deep_research_agent(
-            MagicMock(), data_source="wfp", introduces_sub_sections=SUBS
+        build_research_agent(
+            MagicMock(),
+            data_source="wfp",
+            deep_research=True,
+            introduces_sub_sections=SUBS,
         )
-        system_prompt = mock_create.call_args.kwargs["system_prompt"]
+        system_prompt = mock_create.call_args.args[3]
         assert INTRO_MARKER in system_prompt
         assert HEADING_RULE not in system_prompt
 
-    @patch("ui.backend.services.assistant_graph.create_deep_agent")
+    @patch("ui.backend.services.assistant_graph.build_research_workflow")
     def test_research_assistant_requests_are_unaffected(self, mock_create):
         mock_create.return_value = MagicMock()
-        build_deep_research_agent(MagicMock(), data_source="wfp")
-        system_prompt = mock_create.call_args.kwargs["system_prompt"]
+        build_research_agent(MagicMock(), data_source="wfp", deep_research=True)
+        system_prompt = mock_create.call_args.args[3]
         assert INTRO_MARKER not in system_prompt
         assert HEADING_RULE in system_prompt
 
@@ -139,6 +133,7 @@ class TestRequestSchemas:
             content="c",
             instruction="i",
             data_source="wfp",
+            deep_research=True,
             introduces_sub_sections=SUBS,
         )
         assert req.introduces_sub_sections == SUBS

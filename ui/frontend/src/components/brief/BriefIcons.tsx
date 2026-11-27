@@ -86,6 +86,12 @@ export const IconSparkle: React.FC<IconProps> = ({ size = 14 }) => (
   </svg>
 );
 
+export const IconChevronDown: React.FC<IconProps> = ({ size = 12 }) => (
+  <svg {...svgProps(size)}>
+    <polyline points="6 9 12 15 18 9" />
+  </svg>
+);
+
 export const IconCopy: React.FC<IconProps> = ({ size = 14 }) => (
   <svg {...svgProps(size)}>
     <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />

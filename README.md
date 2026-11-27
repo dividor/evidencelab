@@ -98,6 +98,10 @@ Turns a topic into a structured research brief backed by evidence. See [Brief](d
   - Edit a summary, regenerate it with AI (choosing the mode, sections and prompt), or regenerate many in a queue
   - Each summary records how, when and by whom it was made
   - Groups can set defaults
+- LLM usage in Admin → LLM Usage, by user, group and document pipeline, per day, week or month. See [System Monitoring](docs/admin/system-monitoring.md#llm-usage-admin).
+  - Tokens and cost for every AI call
+  - Estimated energy, greenhouse gas emissions and water for each call, worked out with [EcoLogits](https://ecologits.ai) and shown as ranges
+  - Each estimate shows what it rests on. Click a model to see its sources, any assumption made, and the calculation
 - Evaluation harness, for superusers in Admin → Testing. See [Evaluation Harness](docs/admin/evaluation.md).
   - Reusable datasets and experiments with assertions, run against the live Search and AI summary pipelines, with pass/fail review for each case
   - One-step CSV upload that creates a dataset and a paired LLM-judge experiment (one expected answer per row)

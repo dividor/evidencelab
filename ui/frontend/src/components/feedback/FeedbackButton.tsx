@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import html2canvas from 'html2canvas';
 import FeedbackModal from './FeedbackModal';
 
@@ -25,29 +25,13 @@ const shouldIgnoreForCapture = (el: Element): boolean => {
   );
 };
 
-// Speech-bubble icon — communicates "leave a comment" without needing a label.
-const FeedbackIcon: React.FC<{ size?: number }> = ({ size = 22 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-  </svg>
-);
-
 const FeedbackButton: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [screenshot, setScreenshot] = useState<string | null>(null);
   const [screenshotError, setScreenshotError] = useState<string | null>(null);
   const [url, setUrl] = useState('');
+  const tabRef = useRef<HTMLButtonElement>(null);
 
   const handleOpen = async () => {
     setCapturing(true);
@@ -119,37 +103,22 @@ const FeedbackButton: React.FC = () => {
     setOpen(false);
     setScreenshot(null);
     setScreenshotError(null);
+    tabRef.current?.focus();
   };
 
   return (
     <>
       <button
+        ref={tabRef}
         type="button"
+        className="feedback-side-tab"
         onClick={handleOpen}
         disabled={capturing}
-        aria-label={TOOLTIP}
         title={TOOLTIP}
-        style={{
-          position: 'fixed',
-          bottom: 24,
-          right: 24,
-          zIndex: 9000,
-          width: 48,
-          height: 48,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          // Match the Search button (--brand-accent) so both share the brand color.
-          background: 'var(--brand-accent, #475569)',
-          color: '#fff',
-          border: 'none',
-          borderRadius: '50%',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-          cursor: capturing ? 'wait' : 'pointer',
-          opacity: capturing ? 0.7 : 1,
-        }}
+        aria-haspopup="dialog"
+        data-html2canvas-ignore="true"
       >
-        <FeedbackIcon />
+        Feedback
       </button>
       <FeedbackModal
         isOpen={open}

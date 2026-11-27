@@ -31,7 +31,7 @@ const LLMS = [
   { name: 'nova-pro', model: 'eu.amazon.nova-pro-v1:0', provider: 'aws_bedrock', supports_temperature: true },
   { name: SONNET, model: 'eu.example.sonnet', provider: 'aws_bedrock', supports_temperature: false },
 ];
-const DEFAULTS = { summary: NOVA_LITE, brief: NOVA_LITE, judge: 'nova-pro' };
+const DEFAULTS = { summary: NOVA_LITE, brief: NOVA_LITE, judge: 'nova-pro', citation_check: NOVA_LITE };
 
 const serve = (settings: Record<string, unknown> | null) => {
   mockedAxios.get.mockImplementation((url: string) => {
@@ -48,6 +48,7 @@ const openLlmsTab = async () => {
 
 describe('Group Settings > LLMs', () => {
   beforeEach(() => {
+    window.history.replaceState(null, '', '/admin');
     jest.clearAllMocks();
   });
 
@@ -65,6 +66,7 @@ describe('Group Settings > LLMs', () => {
       'sonnet-5.5 (ignores Response variability)',
     ]);
     expect(screen.getByText('Default from config (nova-pro)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Automatic citation check')).toHaveValue('');
   });
 
   test('saves the chosen models with the group settings', async () => {
@@ -75,11 +77,12 @@ describe('Group Settings > LLMs', () => {
 
     fireEvent.change(screen.getByLabelText('Search AI summary'), { target: { value: 'nova-pro' } });
     fireEvent.change(screen.getByLabelText('Evaluation judge'), { target: { value: SONNET } });
+    fireEvent.change(screen.getByLabelText('Automatic citation check'), { target: { value: 'nova-pro' } });
     fireEvent.click(screen.getByText('Save Settings'));
 
     await waitFor(() =>
       expect(mockedAxios.patch).toHaveBeenCalledWith('/api/groups/g1', {
-        search_settings: { rerank: false, summaryModel: 'nova-pro', judgeModel: SONNET },
+        search_settings: { rerank: false, summaryModel: 'nova-pro', judgeModel: SONNET, citationCheckModel: 'nova-pro' },
         summary_prompt: '',
       }),
     );
@@ -99,6 +102,7 @@ describe('Group Settings > LLMs', () => {
       summaryModel: 'nova-pro',
       briefModel: undefined,
       judgeModel: undefined,
+      citationCheckModel: undefined,
     });
     expect(llmChoicePayload({ summaryModel: 'nova-pro', judgeModel: undefined })).toEqual({
       summaryModel: 'nova-pro',

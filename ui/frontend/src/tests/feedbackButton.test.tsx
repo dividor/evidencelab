@@ -29,16 +29,17 @@ describe('FeedbackButton', () => {
     mockAxiosPost.mockClear();
   });
 
-  test('renders an icon button with a tooltip', () => {
+  test('renders a labelled Feedback tab that opens a dialog', () => {
     render(<FeedbackButton />);
-    const trigger = screen.getByRole('button', { name: /send feedback/i });
+    const trigger = screen.getByRole('button', { name: 'Feedback' });
     expect(trigger).toBeInTheDocument();
     expect(trigger).toHaveAttribute('title', 'Send feedback about this page');
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
   });
 
   test('opening the modal does not show URL or screenshot', async () => {
     render(<FeedbackButton />);
-    fireEvent.click(screen.getByRole('button', { name: /send feedback/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Feedback' }));
     await screen.findByRole('heading', { name: /send feedback/i });
     expect(screen.queryByText(/Page:/)).not.toBeInTheDocument();
     expect(screen.queryByAltText(/screenshot/i)).not.toBeInTheDocument();
@@ -46,7 +47,7 @@ describe('FeedbackButton', () => {
 
   test('submit is disabled until both a star rating and a comment are provided', async () => {
     render(<FeedbackButton />);
-    fireEvent.click(screen.getByRole('button', { name: /send feedback/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Feedback' }));
     await screen.findByRole('heading', { name: /send feedback/i });
     const submit = screen.getByRole('button', { name: /^submit$/i });
     expect(submit).toBeDisabled();
@@ -65,7 +66,7 @@ describe('FeedbackButton', () => {
 
   test('submit posts rating_type, score, comment, and url', async () => {
     render(<FeedbackButton />);
-    fireEvent.click(screen.getByRole('button', { name: /send feedback/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Feedback' }));
     await screen.findByRole('heading', { name: /send feedback/i });
 
     fireEvent.change(screen.getByPlaceholderText(/Tell us what went well/i), {
@@ -83,5 +84,46 @@ describe('FeedbackButton', () => {
     expect(body.score).toBe(5);
     expect(body.comment).toBe('Worked well');
     expect(typeof body.url).toBe('string');
+  });
+
+  test('Escape closes the dialog and returns focus to the Feedback tab', async () => {
+    render(<FeedbackButton />);
+    const trigger = screen.getByRole('button', { name: 'Feedback' });
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole('dialog', { name: /send feedback/i });
+    expect(dialog).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(document.querySelector('.rating-modal-overlay')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  test('Tab keeps focus inside the open dialog', async () => {
+    render(<FeedbackButton />);
+    const trigger = screen.getByRole('button', { name: 'Feedback' });
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole('dialog', { name: /send feedback/i });
+
+    const close = screen.getByRole('button', { name: 'Close' });
+    const cancel = screen.getByRole('button', { name: /^cancel$/i });
+
+    expect(dialog).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(cancel).toHaveFocus();
+
+    // From the last enabled control (Submit is disabled), Tab wraps to the first.
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(close).toHaveFocus();
+
+    // Shift+Tab from the first control wraps to the last.
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(cancel).toHaveFocus();
+
+    // Focus that has escaped to the page is pulled back into the dialog.
+    trigger.focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
   });
 });

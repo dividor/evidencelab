@@ -486,11 +486,7 @@ def _build_search_results(
                     else None
                 ),
                 language=normalized_doc.get("language"),
-                metadata={
-                    k: v
-                    for k, v in normalized_doc.items()
-                    if k not in ("abstractive_summary",)
-                },
+                metadata=_search_result_metadata(normalized_doc),
             )
         )
 
@@ -498,6 +494,19 @@ def _build_search_results(
             break
 
     return filtered_results
+
+
+def _search_result_metadata(document: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep document metadata useful to readers without nested storage copies."""
+    metadata = {
+        key: value for key, value in document.items() if key != "abstractive_summary"
+    }
+    system_data = metadata.get("sys_data")
+    if isinstance(system_data, dict) and "sys_data" in system_data:
+        metadata["sys_data"] = {
+            key: value for key, value in system_data.items() if key != "sys_data"
+        }
+    return metadata
 
 
 def _filter_match(value: Any) -> Union[qmodels.MatchAny, qmodels.MatchValue]:

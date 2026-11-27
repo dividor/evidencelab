@@ -277,9 +277,10 @@ const modalTitle = (d: TemplateDraft): string => {
 export const BriefTemplateModal: React.FC<{
   draft: TemplateDraft;
   voices: VoiceProfile[];
+  backLabel?: string;
   onSave: (draft: TemplateDraft) => Promise<void>;
   onClose: () => void;
-}> = ({ draft: initial, voices, onSave, onClose }) => {
+}> = ({ draft: initial, voices, onSave, onClose, backLabel }) => {
   const [draft, setDraft] = useState<TemplateDraft>(initial);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -325,6 +326,7 @@ export const BriefTemplateModal: React.FC<{
       <div className="brief-modal bc-modal" onClick={(e) => e.stopPropagation()}>
         <div className="brief-modal-head">
           <div>
+            {backLabel && <button type="button" className="btn-sm" onClick={onClose}>← {backLabel}</button>}
             <div className="brief-modal-title">{modalTitle(draft)}</div>
             <div className="brief-modal-sub">
               Templates save the headings, with a prompt and settings for each, so the next brief starts

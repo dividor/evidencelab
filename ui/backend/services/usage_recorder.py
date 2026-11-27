@@ -42,6 +42,7 @@ from ui.backend.auth.db import async_session_factory
 from ui.backend.auth.models import UserActivity
 from ui.backend.services.ai_daily_limit import add_to_daily_spend, report_unpriced_call
 from ui.backend.utils.llm_costs import compute_cost
+from ui.backend.utils.llm_footprint import add_footprint
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +57,19 @@ _MAX_TOKENS = 10_000_000
 
 
 def usage_cost(usage: Dict[str, Any]) -> Optional[Decimal]:
-    """Cost in USD for one usage payload, or None when the model has no rate."""
-    return compute_cost(
-        usage.get("llm_model"),
-        usage.get("prompt_tokens"),
-        usage.get("completion_tokens"),
-    )
+    """Price each model's own tokens when a turn used more than one model."""
+    priced = []
+    for part in usage.get("model_usage") or [usage]:
+        cost = compute_cost(
+            part.get("llm_model"),
+            part.get("prompt_tokens"),
+            part.get("completion_tokens"),
+        )
+        if cost is not None:
+            priced.append(cost)
+        elif has_usage(part) and usage.get("model_usage"):
+            report_unpriced_call(part.get("llm_model"))
+    return sum(priced, Decimal(0)) if priced else None
 
 
 def _clean_tokens(value: Any) -> Optional[int]:
@@ -91,7 +99,7 @@ def _accumulate_usage(
     cost: Optional[Decimal],
     trace_url: Optional[str] = None,
 ) -> None:
-    """Add a usage delta (tokens + its own cost + trace link) onto an existing row."""
+    """Add a usage delta (tokens, its own cost and footprint, trace link) onto a row."""
     prompt = _clean_tokens(usage.get("prompt_tokens"))
     completion = _clean_tokens(usage.get("completion_tokens"))
     if prompt:
@@ -102,6 +110,12 @@ def _accumulate_usage(
         row.llm_model = str(usage["llm_model"])[:128]
     if cost is not None:
         row.cost_usd = (row.cost_usd or Decimal(0)) + cost
+    # Estimated from this call's own model, like its cost, since one row can
+    # add up calls to several models.
+    for part in usage.get("model_usage") or [usage]:
+        add_footprint(
+            row, part.get("llm_model"), _clean_tokens(part.get("completion_tokens"))
+        )
     if trace_url:
         row.trace_url = trace_url
 

@@ -63,6 +63,8 @@ export const DocumentsSummaryCell: React.FC<DocumentsSummaryCellProps> = ({
           h4: ({ node, ...props }) => <strong style={{ display: 'block', margin: '0.4em 0 0.2em' }} {...props} />,
           h5: ({ node, ...props }) => <strong {...props} />,
           h6: ({ node, ...props }) => <strong {...props} />,
+          // The cell is one button that opens the summary, so links in it are text.
+          a: ({ node, href, ...props }) => <span {...props} />,
         }}
       >
         {displayText}
@@ -70,18 +72,7 @@ export const DocumentsSummaryCell: React.FC<DocumentsSummaryCellProps> = ({
       {shouldTruncate && (
         <>
           <br />
-          <a
-            className="see-more-link"
-            href="#"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              open();
-            }}
-            aria-label="See more"
-          >
-            See more
-          </a>
+          <span className="see-more-link">See more</span>
         </>
       )}
       {provenance && <div className="doc-summary-provenance">{formatProvenance(provenance)}</div>}

@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../config';
+import { FOOTPRINT_COLUMNS, FootprintRanges, formatFootprintRange } from '../../utils/footprintDisplay';
+import EcoLogitsLink from '../EcoLogitsLink';
 import { SortableHeader } from '../documents/SortableHeader';
+import FootprintBasisModal, { BasisEntry, FootprintMethod, FootprintSource } from './FootprintBasisModal';
 
 // ---------------------------------------------------------------------------
 // Types — match the /llm-usage/summary response shape from the backend.
@@ -10,7 +13,17 @@ import { SortableHeader } from '../documents/SortableHeader';
 type Bucket = 'day' | 'week' | 'month';
 type GroupBy = 'user' | 'user_group';
 
-interface UsageRow {
+// Estimated footprint from EcoLogits (null where nothing was estimated), in
+// kWh, kg CO2eq and litres, each as a min and a max.
+interface FootprintFields extends FootprintRanges {
+  // Output tokens with no estimate (uncovered models, or rows from before estimates began).
+  footprint_unestimated_tokens: number;
+  // What the figures rest on: each estimated model, the EcoLogits model(s)
+  // used for it, and the assumption made when those aren't the model itself.
+  footprint_basis: BasisEntry[];
+}
+
+interface UsageRow extends FootprintFields {
   bucket_start: string;
   group_key: string;
   group_label: string;
@@ -24,13 +37,16 @@ interface UsageRow {
 
 interface UsageResponse {
   rows: UsageRow[];
-  totals: {
+  totals: FootprintFields & {
     request_count: number;
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
     cost_usd: string;
   };
+  // What each model in the table rests on, for the Basis pop-up.
+  footprint_sources: FootprintSource[];
+  footprint_method: FootprintMethod;
   bucket: Bucket;
   group_by: GroupBy;
   from_date: string;
@@ -69,6 +85,101 @@ const formatCost = (cost: string | null): string => {
   if (!Number.isFinite(n)) return NULL_CELL;
   return `$${n.toFixed(6)}`;
 };
+
+const NUMBER_CELL: React.CSSProperties = {
+  textAlign: 'right',
+  fontFamily: 'monospace',
+  fontSize: '0.82rem',
+  whiteSpace: 'nowrap',
+};
+
+// Opens the Basis pop-up for one model.
+type ShowBasis = (model: string) => void;
+
+const FootprintCells: React.FC<{ fields: FootprintFields; onShowBasis: ShowBasis }> = ({ fields, onShowBasis }) => (
+  <>
+    {FOOTPRINT_COLUMNS.map(({ measure }) => (
+      <td key={measure} style={NUMBER_CELL}>
+        {formatFootprintRange(fields, measure) ?? NULL_CELL}
+      </td>
+    ))}
+    <td style={{ fontSize: '0.78rem' }}>
+      <BasisBadges basis={fields.footprint_basis} onShowBasis={onShowBasis} />
+    </td>
+  </>
+);
+
+const BADGE: React.CSSProperties = {
+  display: 'inline-block',
+  padding: '0 6px',
+  margin: '1px 4px 1px 0',
+  borderRadius: '10px',
+  fontSize: '0.72rem',
+  lineHeight: '1.5',
+  whiteSpace: 'nowrap',
+  background: '#eef2f7',
+  color: '#2c3e50',
+  border: '1px solid #d5dde8',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+};
+const ASSUMED_BADGE: React.CSSProperties = {
+  ...BADGE,
+  background: '#fff4e5',
+  color: '#8a5300',
+  border: '1px solid #f0c27b',
+};
+
+// One badge per estimated model; amber with "Assumed" where the estimate rests
+// on other models' figures. Click for the pop-up with its sources and method.
+const BasisBadges: React.FC<{ basis: BasisEntry[]; onShowBasis: ShowBasis }> = ({ basis, onShowBasis }) => {
+  if (basis.length === 0) return <>{NULL_CELL}</>;
+  return (
+    <>
+      {basis.map((b) => (
+        <button
+          type="button"
+          key={b.model}
+          className={b.assumed ? 'footprint-badge footprint-badge-assumed' : 'footprint-badge'}
+          style={b.assumed ? ASSUMED_BADGE : BADGE}
+          title={`How ${b.model}'s figures are estimated`}
+          onClick={() => onShowBasis(b.model)}
+        >
+          {b.model}
+          {b.assumed && <strong> · Assumed</strong>}
+        </button>
+      ))}
+    </>
+  );
+};
+
+const FootprintNote: React.FC<{ totals: UsageResponse['totals'] }> = ({ totals }) => (
+  <div className="text-muted llm-usage-footprint-note" style={{ fontSize: '0.78rem', marginTop: '0.5rem' }}>
+    Energy, emissions and water are estimates from <EcoLogitsLink /> for the models it covers,
+    shown as a range from low to high.
+    {totals.footprint_unestimated_tokens > 0 && (
+      <>
+        {' '}
+        {formatTokens(totals.footprint_unestimated_tokens)} of {formatTokens(totals.completion_tokens)}{' '}
+        output tokens have no estimate and are left out: they came from models with no
+        estimate, or from before estimates began.
+      </>
+    )}{' '}
+    Click a model in the Basis column for its sources and method, or see System Monitoring in
+    the docs.
+    {totals.footprint_basis.some((b) => b.assumed) && (
+      <ul style={{ margin: '0.35rem 0 0', paddingLeft: '1.1rem' }}>
+        {totals.footprint_basis
+          .filter((b) => b.assumed)
+          .map((b) => (
+            <li key={b.model}>
+              <strong>{b.model}</strong> (Assumed): {b.assumption}
+            </li>
+          ))}
+      </ul>
+    )}
+  </div>
+);
 
 const isoToday = (): string => new Date().toISOString().slice(0, 10);
 const isoNDaysAgo = (n: number): string => {
@@ -206,6 +317,9 @@ const LlmUsageManager: React.FC = () => {
   const [sortBy, setSortBy] = useState<string>('bucket_start');
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
   const [exporting, setExporting] = useState(false);
+  const [shownModel, setShownModel] = useState<string | null>(null);
+  const showBasis = useCallback<ShowBasis>((model) => setShownModel(model), []);
+  const hideBasis = useCallback(() => setShownModel(null), []);
 
   const queryParams = useMemo(() => {
     const params: Record<string, string> = {
@@ -267,6 +381,7 @@ const LlmUsageManager: React.FC = () => {
   };
 
   const rows = data?.rows ?? [];
+  const shownSource = shownModel ? data?.footprint_sources.find((src) => src.model === shownModel) : undefined;
   const totals = data?.totals;
   const groupColLabel = groupBy === 'user' ? 'User' : 'Group';
 
@@ -335,12 +450,18 @@ const LlmUsageManager: React.FC = () => {
                 <SortableHeader columnKey="cost_usd" label="Cost (USD)"
                   sortField={sortBy} sortDirection={order} onSort={handleSort}
                   onFilterClick={noFilterClick} hasActiveFilter={noActiveFilter} />
+                {FOOTPRINT_COLUMNS.map(({ measure, label }) => (
+                  <SortableHeader key={measure} columnKey={`${measure}_max`} label={label}
+                    sortField={sortBy} sortDirection={order} onSort={handleSort}
+                    onFilterClick={noFilterClick} hasActiveFilter={noActiveFilter} />
+                ))}
+                <th>Basis</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '1.5rem', color: '#888' }}>
+                  <td colSpan={8 + FOOTPRINT_COLUMNS.length} style={{ textAlign: 'center', padding: '1.5rem', color: '#888' }}>
                     No usage in the selected range
                   </td>
                 </tr>
@@ -364,6 +485,7 @@ const LlmUsageManager: React.FC = () => {
                     <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: '0.82rem' }}>
                       {formatCost(r.cost_usd)}
                     </td>
+                    <FootprintCells fields={r} onShowBasis={showBasis} />
                   </tr>
                 ))
               )}
@@ -388,11 +510,16 @@ const LlmUsageManager: React.FC = () => {
                   <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: '0.82rem' }}>
                     {formatCost(totals.cost_usd)}
                   </td>
+                  <FootprintCells fields={totals} onShowBasis={showBasis} />
                 </tr>
               </tfoot>
             )}
           </table>
+          {totals && rows.length > 0 && <FootprintNote totals={totals} />}
         </div>
+      )}
+      {shownSource && data && (
+        <FootprintBasisModal source={shownSource} method={data.footprint_method} onClose={hideBasis} />
       )}
     </div>
   );

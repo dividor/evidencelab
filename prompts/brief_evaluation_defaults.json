@@ -1,0 +1,39 @@
+[
+  {
+    "type": "brief_structure"
+  },
+  {
+    "type": "brief_length"
+  },
+  {
+    "type": "brief_overlap"
+  },
+  {
+    "type": "brief_intro_scope"
+  },
+  {
+    "type": "brief_factual",
+    "rubric": "Check factual grounding against the cited excerpts. Fail any uncited factual claim or altered population, degree of certainty, cause, figure or denominator. Quote the weakest claim verbatim, including its qualifiers. If it describes frequency, quote the source words establishing that frequency for the same group and event. Evidence that a problem occurred is insufficient. If frequency is unmeasured, name the unsupported modifier and score below full credit.",
+    "threshold": 1,
+    "label": "Factual support from citations"
+  },
+  {
+    "type": "llm_judge",
+    "rubric": "Read the brief topic together with its section heading. Name the subject and its defining conditions. Quote words in the cited evidence establishing those conditions for the findings presented. An unspecified or different population, setting, version or period fails even if the issue discussed is similar. Then quote how the draft answers the heading for that subject. Apply any editorial scope notes for this case. A finding on a different question earns no credit. Assess the answer within the scope of its evidence. Discussion of gaps in the review belongs only when explicitly assigned and supported by a cited source.",
+    "threshold": 1,
+    "label": "Relevance to the template and section"
+  },
+  {
+    "type": "brief_voice"
+  },
+  {
+    "type": "brief_writing",
+    "rubric": "Does the section read as developed, connected prose? Look for an opening answer followed by evidence, explanation or qualification of the same point. Fail a succession of isolated fact summaries, even when each is cited. Accept a concise introduction or a short paragraph with a clear purpose. Judge the writing against the requested voice and length.",
+    "threshold": 1,
+    "label": "Paragraph development and flow"
+  },
+  {
+    "type": "brief_paragraphs",
+    "max_percent": 50
+  }
+]

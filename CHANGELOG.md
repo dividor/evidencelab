@@ -2,6 +2,44 @@
 
 All notable changes to Evidence Lab will be documented in this file.
 
+## [1.6.11] - 2026-11-26
+
+Evidence Lab v1.6.11 gives Assistant and Deep Research a shared workflow for finding and citing evidence. It also improves Brief generation, separates the Docs and Admin guides, and makes several controls easier to use on smaller screens.
+
+### Assistant and Brief
+
+- **Assistant and Deep Research use the same search workflow.** Focused questions start with the original question. Broad questions split into related lines of research that can follow up on their own results. The Assistant combines the findings, numbers citations in reading order, and uses the conversation to interpret follow-up questions. Administrators can configure Assistant and Brief prompts and citation checks in Group Settings (#706, #712).
+- **Brief sections start from findings backed by source passages.** An optional check verifies that the passages support the findings and looks for claims already made in earlier sections. Regenerate All reports which sections need another attempt, and citation previews highlight matching source text when available (#706).
+- **Ask AI groups the research actions in a Brief.** The Brief header and completed sections each have a menu for their available actions. Unmatched citation badges align with the text, and screen readers announce which citations have no source. The Brief History rail shows the full selected title on hover (#702, #704, #705, #708, #714).
+- **Heatmap results use smaller responses.** Search leaves out repeated copies of document data when returning matches (#706).
+
+### Guides and interface
+
+- **Docs and Admin have separate entries under Info.** Each entry searches its own guides. Long articles have an On this page list, and existing article bookmarks and heading links still work (#718).
+- **Feedback stays clear of Search.** The Feedback tab sits lower on wide screens and moves below the content on narrow screens. Escape closes the feedback dialog, and keyboard focus stays inside while it is open (#715, #706, #716).
+- **Administration is easier to navigate on a phone.** The tabs show when more items can be reached by scrolling, and the TOC Validator has larger checkbox targets (#703, #707, #710).
+- **Personal impact explains how much usage the estimates cover.** The dialog shows how much recorded AI-written text has an estimate and puts exact token counts under How we count coverage. The LLM Usage guide and Basis pop-up explain which kinds of AI calls are counted (#695, #711, #713, #717).
+
+### Development
+
+- **Pull requests have automated documentation and interface review workflows.** The reviews that call the external API are paused while credits are unavailable. The regular tests and security checks continue to run (#693, #703, #715, #718).
+
+## [1.6.10] - 2026-11-25
+
+Evidence Lab v1.6.10 estimates the **environmental footprint of the site's AI use**. The admin LLM Usage tab now shows the energy, greenhouse gas emissions and water behind each user's, group's and the document pipeline's AI calls. Each call is estimated with EcoLogits when it is recorded, and the figures are shown as ranges. Every figure shows what it rests on: a badge for each model, marked "Assumed" where the estimate uses other models' figures, opens a pop-up with the sources, the calculation and how EcoLogits works.
+
+### Admin
+- **Estimated energy, emissions and water on the LLM Usage tab.** Each AI call is estimated as it is recorded, with EcoLogits 0.11.3, from its model and the number of output tokens it wrote, and added up for each line like its cost. The tab shows Energy (Wh), Emissions (g CO₂e) and Water (mL) as low–high ranges that can be sorted, and the XLSX export has the same figures. Embedding and rerank calls, models EcoLogits doesn't list (such as Qwen3-Next 80B) and usage recorded before this release have no estimate, and a note under the table says how many output tokens that leaves out (#691)
+- **Every figure shows its source.** A Basis column has a badge for each model a line's figures rest on. Clicking it opens a pop-up with any assumption and its citations, and the models the estimate uses: each one's size (and whether its maker published it), and the data centre and electricity EcoLogits uses for it. It also works through the calculation for an example call of 1,000 output tokens, and explains how EcoLogits works, with links to its site, method and paper (#691)
+- **Amazon Nova is estimated from similar models.** Amazon doesn't publish how big Nova is. SAEF (Llopis-Garcia, 2026) puts Nova Lite in its small-model class and Nova Pro in its mid-size class. So each Nova call is run through EcoLogits as each of a few models from that class (four for Nova 2 Lite, two for Nova Pro), and recorded as the range from the lowest result to the highest, marked "Assumed". Llama 3.3 70B is estimated as Llama 3.1 70B, which has the same design and number of parameters (#691)
+- **Document processing has its own line.** Pipeline calls have no user or group, so they show as "(pipeline)" when grouping by user and when grouping by group (#691)
+- **The docs call the tab LLM Usage**, as the screen does, and the README lists it (#691)
+
+### Upgrade Notes
+- **Migration `0042_add_activity_footprint`** adds the footprint columns to `user_activity`. It applies automatically on deploy. Existing rows get no estimate.
+- **New dependency:** `ecologits==0.11.3` (MPL-2.0), in both requirements files and the published image.
+- **Two new optional `config.json` keys** on each `supported_llms` entry. `electricity_mix_zone` says where the model runs, as an EcoLogits zone code such as `"IRL"`; without it, EcoLogits assumes the USA for Anthropic, OpenAI and Google models. `ecologits` (`{"provider", "model", "assumption"}`) names an EcoLogits model to estimate it as. The api and MCP server check both at start-up and won't start with a zone or model EcoLogits doesn't know. A deployment whose models run outside the USA, such as on Bedrock's EU inference profiles, should set `electricity_mix_zone`.
+
 ## [1.6.9] - 2026-11-24
 
 Evidence Lab v1.6.9 adds **limits on AI spending** and a per-group choice of models. `AI_DAILY_COST_LIMIT_USD` caps what the site's AI features may cost in one UTC day, and with it set the api and MCP server refuse to start with a model they cannot price. Admins can choose each AI job's model per group in Group Settings > LLMs. On AWS, the containers may call only the Bedrock models `config.json` offers, and CloudWatch alarms can email when a model's use passes set levels. The AI summary numbers its citations 1, 2, 3… in reading order whatever order the model cites its sources in, Brief Central loads without fetching every brief's content, and a brief's citations with no source show as red badges its warning can jump to. Hugging Face models work again, through Hugging Face's router.

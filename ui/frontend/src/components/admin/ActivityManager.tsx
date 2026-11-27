@@ -857,10 +857,10 @@ const ActivityManager: React.FC = () => {
       )}
 
       <div className="admin-controls" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
-        <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '0.5rem' }}>
+        <form onSubmit={handleSearchSubmit} className="admin-search-form">
           <input type="text" placeholder="Search by email or query..." value={searchInput}
             onChange={handleSearchInputChange} className="admin-search-input"
-            style={{ minWidth: '250px', padding: '0.4rem 0.6rem', borderRadius: '4px', border: '1px solid #ccc', fontSize: '0.85rem' }} />
+            style={{ padding: '0.4rem 0.6rem', borderRadius: '4px', border: '1px solid #ccc', fontSize: '0.85rem' }} />
           <button type="submit" className="btn-sm" style={{ padding: '0.4rem 0.8rem' }}>Search</button>
         </form>
         <button className="admin-download-button" onClick={handleExport} disabled={exporting} style={{ marginLeft: 'auto' }}>

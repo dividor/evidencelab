@@ -36,7 +36,8 @@ from ui.backend.auth.models import Base
 # Capability identifiers (kept in sync with the evaluator/runner dispatch).
 CAPABILITY_SEARCH = "search"
 CAPABILITY_AI_SUMMARY = "ai_summary"
-VALID_CAPABILITIES = {CAPABILITY_SEARCH, CAPABILITY_AI_SUMMARY}
+CAPABILITY_BRIEF = "brief"
+VALID_CAPABILITIES = {CAPABILITY_SEARCH, CAPABILITY_AI_SUMMARY, CAPABILITY_BRIEF}
 
 # Experiment lifecycle states. An experiment is created as a ``draft`` (the
 # user defines per-row assertions + config), then ``run`` transitions it
@@ -234,10 +235,10 @@ class TestResult(Base):
         nullable=True,
         index=True,
     )
-    test_case_id: Mapped[uuid.UUID] = mapped_column(
+    test_case_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("test_cases.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     )
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -363,7 +364,7 @@ class BriefCitationCheckPassage(Base):
     prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # A person's acceptance of the citation (migration 0042), recorded beside
+    # A person's acceptance of the citation (migration 0047), recorded beside
     # the judge's verdict, never over it: all null until someone accepts the
     # passage in the Fact Checker, and null again when that is withdrawn. The
     # name is a snapshot, so the row still names the person if the account goes.

@@ -1,5 +1,5 @@
 import { SourceReference } from '../../types/api';
-import { BriefActivityEvent } from '../../utils/briefStream';
+import { BriefActivityEvent, SectionResearchMode } from '../../utils/briefStream';
 
 export type BriefStage = 'seed' | 'outline' | 'research' | 'done';
 
@@ -141,6 +141,7 @@ export interface BriefSection {
   level: number; // 1 = section, 2 = sub-section
   status: SectionStatus;
   progress: number; // 0-100
+  researchFailure?: { mode: SectionResearchMode; message: string; instruction?: string | null };
   // The section's display text: while it streams, the agent's text with its
   // own numbers; once the API has recorded the run, the renumbered text it
   // returned (markers numbered across the brief, `[?n]` where unresolved).

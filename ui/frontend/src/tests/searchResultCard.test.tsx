@@ -106,4 +106,23 @@ describe('SearchResultCard', () => {
     fireEvent.click(metadataButton);
     expect(onOpenMetadata).toHaveBeenCalledWith(result);
   });
+
+  test('the language picker has a name screen readers announce', () => {
+    const onLanguageChange = jest.fn();
+    const result = buildResult();
+
+    render(
+      <SearchResultCard
+        result={result}
+        query=""
+        isSelected={false}
+        onClick={jest.fn()}
+        onOpenMetadata={jest.fn()}
+        onLanguageChange={onLanguageChange}
+      />
+    );
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Language' }), { target: { value: 'fr' } });
+    expect(onLanguageChange).toHaveBeenCalledWith(result, 'fr');
+  });
 });

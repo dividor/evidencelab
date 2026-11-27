@@ -7,8 +7,8 @@ document can show it as human approved and the Testing (Brief) table can
 list it. The name is kept beside the user id so the table still names the
 person after the account is deleted.
 
-Revision ID: 0042_add_passage_acceptance
-Revises: 0041_add_ai_daily_spend
+Revision ID: 0047_add_passage_acceptance
+Revises: 0046_unwritten_brief_errors
 Create Date: 2026-11-25
 """
 
@@ -17,8 +17,8 @@ from sqlalchemy.dialects.postgresql import UUID
 
 from alembic import op
 
-revision = "0042_add_passage_acceptance"
-down_revision = "0041_add_ai_daily_spend"
+revision = "0047_add_passage_acceptance"
+down_revision = "0046_unwritten_brief_errors"
 branch_labels = None
 depends_on = None
 

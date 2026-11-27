@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 // USER_MODULE on + an authenticated user => Brief Central, server briefs.
 jest.mock('../config', () => ({
@@ -187,6 +187,34 @@ describe('Fact Checker on an open brief', () => {
     jest.clearAllMocks();
     localStorage.clear();
     window.history.replaceState(null, '', '/brief');
+  });
+
+  test('opening a saved brief shows the loading animation until its sections arrive', async () => {
+    let finish!: (value: { data: typeof remoteBrief }) => void;
+    const pending = new Promise((resolve) => { finish = resolve; });
+    mockGet.mockImplementation((url) => url === BRIEF_URL ? pending : answer(noCheck)(url));
+    render(<BriefTab dataSource="wfp" />);
+    fireEvent.click(await screen.findByTitle('Open this brief'));
+    expect(screen.getByRole('status', { name: 'Loading' })).toHaveClass('search-loading-wandering');
+    expect(screen.queryByTitle('Open this brief')).toBeNull();
+    await act(async () => finish({ data: remoteBrief }));
+    expect(await screen.findByText('Export to Word')).toBeVisible();
+    expect(screen.queryByRole('status', { name: 'Loading' })).toBeNull();
+  });
+
+  test('an open Brief preserves the Admin URL and restores its link when the user returns', async () => {
+    mockGet.mockImplementation(answer(noCheck));
+    const { rerender } = render(<BriefTab dataSource="wfp" />);
+    fireEvent.click(await screen.findByTitle('Open this brief'));
+    await screen.findByText('Export to Word');
+    const admin = '/admin?admin_page=testing&admin_testing=experiments';
+    window.history.pushState(null, '', admin);
+    rerender(<BriefTab dataSource="wfp" isActive={false} />);
+    expect(window.location.pathname + window.location.search).toBe(admin);
+
+    window.history.pushState(null, '', '/brief?tab=brief');
+    rerender(<BriefTab dataSource="wfp" isActive />);
+    expect(window.location.pathname + window.location.search).toBe('/brief/b1?tab=brief');
   });
 
   test('a completed check for the current brief shows the button; pressing it highlights every judged passage in its verdict\'s colour, with the verdict, reason and evidence on hover', async () => {

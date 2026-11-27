@@ -1,8 +1,10 @@
+import { openAdminLocation, useAdminLocation } from '../../utils/adminLocation';
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../config';
 import { GROUP_SETTINGS_UPDATED_EVENT } from '../../hooks/useGroupDefaults';
-import type { GroupLlmChoices, SearchSettings, UserGroup } from '../../types/auth';
+import type { SummaryModelConfig } from '../../types/api';
+import type { AssistantGroupSettings, GroupLlmChoices, SearchSettings, UserGroup } from '../../types/auth';
 import {
   DEFAULT_FIELD_BOOST_FIELDS,
   DEFAULT_SECTION_TYPES,
@@ -10,7 +12,8 @@ import {
 } from '../../utils/searchUrl';
 import { DEFAULT_TAB_LABELS, TAB_KEYS, TabKey } from '../layout/tabConfig';
 import { AiSummaryControls, GroupByDocumentControl, WideSearchControls } from '../filters/SearchSettingsPanel';
-import { BriefLengthControl } from '../brief/BriefLengthControl';
+import { AssistantGroupSection } from './AssistantGroupSection';
+import { BriefGroupSection } from './BriefGroupSection';
 import {
   DocSummaryGroupValue,
   DocumentSummaryGroupSection,
@@ -153,9 +156,26 @@ const FeaturesSection: React.FC<{
   tabValues: TabValues;
   setTabsOverride: React.Dispatch<React.SetStateAction<boolean>>;
   setTabValues: React.Dispatch<React.SetStateAction<TabValues>>;
-}> = ({ tabsOverride, tabValues, setTabsOverride, setTabValues }) => (
+  personalImpact: boolean | undefined;
+  onPersonalImpactChange: (value: boolean | undefined) => void;
+}> = ({ tabsOverride, tabValues, setTabsOverride, setTabValues, personalImpact, onPersonalImpactChange }) => (
   <div className="filter-section">
       <div className="filter-section-content">
+        <div className="form-group personal-impact-group-setting">
+          <label htmlFor="personal-environmental-impact">Personal environmental impact</label>
+          <select
+            id="personal-environmental-impact"
+            value={personalImpact === undefined ? '' : String(personalImpact)}
+            onChange={({ target }) => onPersonalImpactChange(target.value === '' ? undefined : target.value === 'true')}
+          >
+            <option value="">Use system default (On)</option>
+            <option value="true">On</option>
+            <option value="false">Off</option>
+          </select>
+          <p className="text-muted">
+            Lets members see their own estimates from the user icon menu.
+          </p>
+        </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
           <input
             type="checkbox"
@@ -209,6 +229,7 @@ type SettingsTab =
   | 'search'
   | 'content'
   | 'ai_summary'
+  | 'assistant'
   | 'brief'
   | 'doc_summary'
   | 'llms'
@@ -220,6 +241,7 @@ const SETTINGS_TABS: { key: SettingsTab; label: string }[] = [
   { key: 'search', label: 'Search Settings' },
   { key: 'content', label: 'Content Settings' },
   { key: 'ai_summary', label: 'Search AI Summary' },
+  { key: 'assistant', label: 'Assistant' },
   { key: 'brief', label: 'Brief' },
   { key: 'doc_summary', label: 'Document Summaries' },
   { key: 'llms', label: 'LLMs' },
@@ -249,15 +271,29 @@ const SettingsTabs: React.FC<{ active: SettingsTab; onSelect: (tab: SettingsTab)
 );
 
 /** The settings of one tab. */
-const SettingsPanel: React.FC<{ tab: SettingsTab; children: React.ReactNode }> = ({ tab, children }) => (
+const SettingsPanel: React.FC<{
+  tab: SettingsTab;
+  children: React.ReactNode;
+  active?: boolean;
+}> = ({ tab, children, active = true }) => active ? (
   <div className="filter-section group-settings-panel" role="tabpanel" aria-labelledby={`group-settings-tab-${tab}`}>
     <div className="filter-section-content">{children}</div>
   </div>
-);
+) : null;
 
-const GroupSettingsManager: React.FC = () => {
+function useGroupLocation(groups: UserGroup[]) {
+  const { group, settings } = useAdminLocation();
+  const selectedGroupId = group ?? groups.find(item => item.is_default)?.id ?? '';
+  const activeTab = SETTINGS_TABS.find(tab => tab.key === settings)?.key ?? 'search';
+  const groupUnavailable = Boolean(group && !groups.some(item => item.id === group));
+  const selectGroupTab = (id: string, tab: SettingsTab) =>
+    openAdminLocation({ page: 'group-settings', group: id, settings: tab });
+  return { selectedGroupId, activeTab, selectGroupTab, groupUnavailable };
+}
+
+const GroupSettingsManager: React.FC<{ assistantModelConfig?: SummaryModelConfig | null }> = ({ assistantModelConfig }) => {
   const [groups, setGroups] = useState<UserGroup[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const { selectedGroupId, activeTab, selectGroupTab, groupUnavailable } = useGroupLocation(groups);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -268,13 +304,12 @@ const GroupSettingsManager: React.FC = () => {
   // Current values for all settings (overridden or system default)
   const [values, setValues] = useState<Required<SearchSettings>>({ ...SYSTEM_DEFAULTS });
 
-  const [activeTab, setActiveTab] = useState<SettingsTab>('search');
-
   // Per-group feature-tab visibility/labels (stored under search_settings.tabs).
   // `tabsOverride` off => this group doesn't constrain tabs (contributes nothing
   // to the cross-group union).
   const [tabsOverride, setTabsOverride] = useState(false);
   const [tabValues, setTabValues] = useState<TabValues>(defaultTabValues);
+  const [personalImpact, setPersonalImpact] = useState<boolean>();
 
   // Defaults for document summaries regenerated on the Documents screen.
   const [docSummary, setDocSummary] = useState<DocSummaryGroupValue>({});
@@ -283,6 +318,9 @@ const GroupSettingsManager: React.FC = () => {
   // Summary prompt override (top-level group field, not part of search_settings)
   const [summaryPromptValue, setSummaryPromptValue] = useState('');
   const [showPromptModal, setShowPromptModal] = useState(false);
+  const [assistant, setAssistant] = useState<AssistantGroupSettings>({});
+  const [briefSectionPrompt, setBriefSectionPrompt] = useState<string>();
+  const [briefCitationCheck, setBriefCitationCheck] = useState<boolean>();
 
   const fetchGroups = useCallback(async () => {
     try {
@@ -299,24 +337,17 @@ const GroupSettingsManager: React.FC = () => {
     fetchGroups();
   }, [fetchGroups]);
 
-  // Auto-select the default group on initial load
-  useEffect(() => {
-    if (groups.length > 0 && !selectedGroupId) {
-      const defaultGroup = groups.find((g) => g.is_default);
-      if (defaultGroup) {
-        setSelectedGroupId(defaultGroup.id);
-      }
-    }
-  }, [groups, selectedGroupId]);
-
   // When a group is selected, load its search_settings
   useEffect(() => {
     if (!selectedGroupId) {
       setOverrides(new Set());
       setValues({ ...SYSTEM_DEFAULTS });
       setSummaryPromptValue('');
+      setAssistant({});
+      setBriefSectionPrompt(undefined);
       setTabsOverride(false);
       setTabValues(defaultTabValues());
+      setPersonalImpact(undefined);
       setDocSummary({});
       setLlmChoices({});
       return;
@@ -339,6 +370,7 @@ const GroupSettingsManager: React.FC = () => {
     setValues(newValues);
     setDocSummary(readDocSummaryDefaults(settings));
     setLlmChoices(readLlmChoices(settings));
+    setPersonalImpact(settings.personalEnvironmentalImpact);
 
     // Load feature-tab override (search_settings.tabs)
     const tabsCfg = (settings as any).tabs;
@@ -362,6 +394,9 @@ const GroupSettingsManager: React.FC = () => {
 
     // Load summary prompt override
     setSummaryPromptValue(group.summary_prompt || '');
+    setAssistant(settings.assistant || {});
+    setBriefSectionPrompt(settings.briefSectionPrompt);
+    setBriefCitationCheck(settings.briefCitationCheck);
   }, [selectedGroupId, groups]);
 
   /** Update a value and mark it as overridden. */
@@ -384,6 +419,12 @@ const GroupSettingsManager: React.FC = () => {
       }
       Object.assign(payload, docSummaryPayload(docSummary));
       Object.assign(payload, llmChoicePayload(llmChoices));
+      if (Object.values(assistant).some((value) => value !== undefined)) payload.assistant = assistant;
+      if (briefSectionPrompt?.trim()) payload.briefSectionPrompt = briefSectionPrompt;
+      if (briefCitationCheck !== undefined) payload.briefCitationCheck = briefCitationCheck;
+      if (personalImpact !== undefined) {
+        payload.personalEnvironmentalImpact = personalImpact;
+      }
       // Feature-tab overrides: only written when this group opts in.
       if (tabsOverride) {
         payload.tabs = Object.fromEntries(
@@ -394,7 +435,7 @@ const GroupSettingsManager: React.FC = () => {
         );
       }
       const patchBody: Record<string, unknown> = {
-        search_settings: Object.keys(payload).length > 0 ? payload : {},
+        search_settings: payload,
       };
       // Include summary prompt: empty string clears the override on the server.
       // If the prompt matches the built-in default, treat it as "no override".
@@ -425,9 +466,13 @@ const GroupSettingsManager: React.FC = () => {
       setOverrides(new Set());
       setValues({ ...SYSTEM_DEFAULTS });
       setSummaryPromptValue('');
+      setAssistant({});
       setDocSummary({});
+      setBriefSectionPrompt(undefined);
       setLlmChoices({});
+      setPersonalImpact(undefined);
       setSuccess('Settings reset to system defaults.');
+      window.dispatchEvent(new Event(GROUP_SETTINGS_UPDATED_EVENT));
       await fetchGroups();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to reset settings');
@@ -468,7 +513,7 @@ const GroupSettingsManager: React.FC = () => {
                 name="group-select"
                 value={g.id}
                 checked={selectedGroupId === g.id}
-                onChange={() => { setSelectedGroupId(g.id); setSuccess(''); }}
+                onChange={() => { selectGroupTab(g.id, activeTab); setSuccess(''); }}
                 style={{ display: 'none' }}
               />
               {g.name}{g.is_default ? ' (Default)' : ''}
@@ -476,14 +521,16 @@ const GroupSettingsManager: React.FC = () => {
           ))}
         </div>
 
+        {groupUnavailable && <p role="alert">This group is unavailable. Select another group.</p>}
+
         {selectedGroup && (
           <>
             <p className="admin-group-settings-description">
               Configure defaults for <strong>{selectedGroup.name}</strong> members, one area per tab. Changed
-              settings are saved per group, and Save Settings saves every tab; users can still override.
+              settings are saved per group. Save Settings saves every tab.
             </p>
 
-            <SettingsTabs active={activeTab} onSelect={setActiveTab} />
+            <SettingsTabs active={activeTab} onSelect={tab => selectGroupTab(selectedGroupId, tab)} />
 
             <div className="group-settings-panels">
               {/* Search Settings */}
@@ -855,6 +902,8 @@ const GroupSettingsManager: React.FC = () => {
                     tabValues={tabValues}
                     setTabsOverride={setTabsOverride}
                     setTabValues={setTabValues}
+                    personalImpact={personalImpact}
+                    onPersonalImpactChange={setPersonalImpact}
                   />
                 </SettingsPanel>
               )}
@@ -911,25 +960,17 @@ const GroupSettingsManager: React.FC = () => {
               </div>
             </div>
 
-            {/* Brief Settings */}
-            {activeTab === 'brief' && (
-            <SettingsPanel tab="brief">
-              <label className="rerank-checkbox-label" htmlFor="group-brief-target-words">
-                <span>Default section length</span>
-                <span
-                  className="rerank-tooltip"
-                  title="The section length target new briefs start with, in words per section. Authors can change it per brief and per section. Sections that overshoot the target by more than the configured tolerance are condensed automatically."
-                >
-                  ⓘ
-                </span>
-              </label>
-              <BriefLengthControl
-                id="group-brief-target-words"
-                value={values.briefTargetWords}
-                onChange={(v) => update('briefTargetWords', v)}
-              />
+            <SettingsPanel tab="assistant" active={activeTab === 'assistant'}>
+              <AssistantGroupSection value={assistant} onChange={setAssistant}
+                assistantModelConfig={assistantModelConfig} summaryPrompt={summaryPromptValue} />
             </SettingsPanel>
-            )}
+
+            <SettingsPanel tab="brief" active={activeTab === 'brief'}>
+              <BriefGroupSection targetWords={values.briefTargetWords}
+                onTargetWordsChange={value => update('briefTargetWords', value)}
+                sectionPrompt={briefSectionPrompt} onSectionPromptChange={setBriefSectionPrompt}
+                citationCheck={briefCitationCheck} onCitationCheckChange={setBriefCitationCheck} />
+            </SettingsPanel>
 
             {/* Document summaries (Documents screen) */}
             {activeTab === 'doc_summary' && (

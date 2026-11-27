@@ -1,4 +1,4 @@
-"""LLM usage rollup routes for the admin "Token Usage" tab.
+"""LLM usage rollup routes for admins and the signed-in user's footprint.
 
 Aggregates ``user_activity`` rows by user or by user-group, bucketed by
 day / week / month, with an optional activity-type filter and a date
@@ -15,27 +15,52 @@ Per the agreed design:
   row when grouping by group.
 """
 
-from __future__ import annotations
-
 import io
 import logging
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ui.backend.auth.db import get_async_session
 from ui.backend.auth.models import User
-from ui.backend.auth.users import current_superuser
+from ui.backend.auth.users import current_active_user, current_superuser
+from ui.backend.services.group_settings import (
+    personal_impact_enabled,
+    user_effective_settings,
+)
+from ui.backend.utils.app_limits import get_rate_limits, limiter
 from ui.backend.utils.excel_text import append_text_row
+from ui.backend.utils.llm_footprint import (
+    describe_basis,
+    describe_sources,
+    footprint_method,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+_, _RATE_LIMIT_DEFAULT, _ = get_rate_limits()
+
+
+class PersonalImpactSummary(BaseModel):
+    from_date: date
+    to_date: date
+    energy_kwh_min: float | None
+    energy_kwh_max: float | None
+    gwp_kgco2eq_min: float | None
+    gwp_kgco2eq_max: float | None
+    water_l_min: float | None
+    water_l_max: float | None
+    completion_tokens: int
+    footprint_unestimated_tokens: int
+    estimated_output_tokens: int
+    coverage_label: str | None
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +77,9 @@ _SORT_KEYS = {
     "completion_tokens",
     "total_tokens",
     "cost_usd",
+    "energy_kwh_max",
+    "gwp_kgco2eq_max",
+    "water_l_max",
 }
 _VALID_ACTIVITY_TYPES = {
     "search",
@@ -72,6 +100,9 @@ _VALID_ACTIVITY_TYPES = {
 _DEFAULT_RANGE_DAYS = 30
 _ANONYMOUS_LABEL = "(anonymous)"
 _NO_GROUP_LABEL = "(no group)"
+# Document ingestion has no user or group: its rows get their own line.
+_PIPELINE_LABEL = "(pipeline)"
+_IS_PIPELINE = "COALESCE(ua.filters->>'type', '') = 'pipeline'"
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +187,48 @@ def _activity_type_clause(activity_type: Optional[str]) -> str:
     )
 
 
+# Estimated footprint columns (migration 0042). SUM leaves them NULL when no
+# row in the group has an estimate, so the UI shows "—" rather than 0.
+_FOOTPRINT_COLUMNS = (
+    "energy_kwh_min",
+    "energy_kwh_max",
+    "gwp_kgco2eq_min",
+    "gwp_kgco2eq_max",
+    "water_l_min",
+    "water_l_max",
+)
+
+
+def _footprint_sums(alias: str, *, include_basis: bool = True) -> str:
+    """SUMs of the footprint columns, plus the output tokens with no estimate.
+
+    A row with no estimate at all (from before 0042, or whose calls were all to
+    models EcoLogits doesn't cover) counts all its output tokens as
+    unestimated; a row with an estimate counts only its uncovered calls'.
+    """
+    prefix = f"{alias}." if alias else ""
+    sums = [f"SUM({prefix}{c}) AS {c}" for c in _FOOTPRINT_COLUMNS]
+    sums.append(
+        "COALESCE(SUM(CASE WHEN "
+        f"{prefix}energy_kwh_min IS NULL THEN COALESCE({prefix}completion_tokens, 0) "
+        f"ELSE COALESCE({prefix}footprint_unestimated_tokens, 0) END), 0)"
+        " AS footprint_unestimated_tokens"
+    )
+    # Each row's {model: output tokens}, merged per model in Python.
+    if include_basis:
+        sums.append(
+            f"jsonb_agg({prefix}footprint_basis) "
+            f"FILTER (WHERE {prefix}footprint_basis IS NOT NULL) AS footprint_bases"
+        )
+    return ",\n            ".join(sums)
+
+
+_FOOTPRINT_SELECT = ", ".join(
+    f"ua.{c}"
+    for c in (*_FOOTPRINT_COLUMNS, "footprint_unestimated_tokens", "footprint_basis")
+)
+
+
 def _build_user_grouped_sql(bucket: str, activity_type: Optional[str]) -> str:
     """Aggregation SQL for ``group_by=user``.
 
@@ -166,14 +239,20 @@ def _build_user_grouped_sql(bucket: str, activity_type: Optional[str]) -> str:
     return f"""
         SELECT
             date_trunc(:bucket, ua.created_at) AS bucket_start,
-            COALESCE(u.email, '{_ANONYMOUS_LABEL}') AS group_key,
-            COALESCE(
-                NULLIF(TRIM(
-                    COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')
-                ), ''),
-                u.email,
-                '{_ANONYMOUS_LABEL}'
-            ) AS group_label,
+            CASE WHEN ua.user_id IS NULL AND {_IS_PIPELINE}
+                 THEN '{_PIPELINE_LABEL}'
+                 ELSE COALESCE(u.email, '{_ANONYMOUS_LABEL}')
+            END AS group_key,
+            CASE WHEN ua.user_id IS NULL AND {_IS_PIPELINE}
+                 THEN '{_PIPELINE_LABEL}'
+                 ELSE COALESCE(
+                    NULLIF(TRIM(
+                        COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')
+                    ), ''),
+                    u.email,
+                    '{_ANONYMOUS_LABEL}'
+                 )
+            END AS group_label,
             COUNT(*) AS request_count,
             COALESCE(SUM(ua.prompt_tokens), 0) AS prompt_tokens,
             COALESCE(SUM(ua.completion_tokens), 0) AS completion_tokens,
@@ -182,7 +261,8 @@ def _build_user_grouped_sql(bucket: str, activity_type: Optional[str]) -> str:
                     + COALESCE(ua.completion_tokens, 0)),
                 0
             ) AS total_tokens,
-            COALESCE(SUM(ua.cost_usd), 0) AS cost_usd
+            COALESCE(SUM(ua.cost_usd), 0) AS cost_usd,
+            {_footprint_sums("ua")}
         FROM user_activity ua
         LEFT JOIN users u ON u.id = ua.user_id
         WHERE ua.created_at >= :from_dt AND ua.created_at < :to_dt
@@ -202,7 +282,8 @@ def _build_group_grouped_sql(bucket: str, activity_type: Optional[str]) -> str:
         WITH expanded AS (
             -- Rows for each (activity, group) pair the user belongs to
             SELECT ua.created_at, ua.prompt_tokens, ua.completion_tokens,
-                   ua.cost_usd, ug.id::text AS group_key, ug.name AS group_label
+                   ua.cost_usd, {_FOOTPRINT_SELECT},
+                   ug.id::text AS group_key, ug.name AS group_label
             FROM user_activity ua
             JOIN user_group_members ugm ON ugm.user_id = ua.user_id
             JOIN user_groups ug ON ug.id = ugm.group_id
@@ -210,10 +291,13 @@ def _build_group_grouped_sql(bucket: str, activity_type: Optional[str]) -> str:
               AND ua.created_at >= :from_dt AND ua.created_at < :to_dt
                   {extra_filter}
             UNION ALL
-            -- Anonymous bucket
+            -- Anonymous bucket; document ingestion gets its own line
             SELECT ua.created_at, ua.prompt_tokens, ua.completion_tokens,
-                   ua.cost_usd, '{_ANONYMOUS_LABEL}' AS group_key,
-                   '{_ANONYMOUS_LABEL}' AS group_label
+                   ua.cost_usd, {_FOOTPRINT_SELECT},
+                   CASE WHEN {_IS_PIPELINE} THEN '{_PIPELINE_LABEL}'
+                        ELSE '{_ANONYMOUS_LABEL}' END AS group_key,
+                   CASE WHEN {_IS_PIPELINE} THEN '{_PIPELINE_LABEL}'
+                        ELSE '{_ANONYMOUS_LABEL}' END AS group_label
             FROM user_activity ua
             WHERE ua.user_id IS NULL
               AND ua.created_at >= :from_dt AND ua.created_at < :to_dt
@@ -221,7 +305,8 @@ def _build_group_grouped_sql(bucket: str, activity_type: Optional[str]) -> str:
             UNION ALL
             -- Users with no group memberships
             SELECT ua.created_at, ua.prompt_tokens, ua.completion_tokens,
-                   ua.cost_usd, '{_NO_GROUP_LABEL}' AS group_key,
+                   ua.cost_usd, {_FOOTPRINT_SELECT},
+                   '{_NO_GROUP_LABEL}' AS group_key,
                    '{_NO_GROUP_LABEL}' AS group_label
             FROM user_activity ua
             WHERE ua.user_id IS NOT NULL
@@ -243,7 +328,8 @@ def _build_group_grouped_sql(bucket: str, activity_type: Optional[str]) -> str:
                 SUM(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)),
                 0
             ) AS total_tokens,
-            COALESCE(SUM(cost_usd), 0) AS cost_usd
+            COALESCE(SUM(cost_usd), 0) AS cost_usd,
+            {_footprint_sums("")}
         FROM expanded
         GROUP BY 1, 2, 3
     """
@@ -275,7 +361,31 @@ def _row_to_dict(row: Any) -> Dict[str, Any]:
         "completion_tokens": int(row.completion_tokens),
         "total_tokens": int(row.total_tokens),
         "cost_usd": cost_value,
+        **{c: _float_or_none(getattr(row, c)) for c in _FOOTPRINT_COLUMNS},
+        "footprint_unestimated_tokens": int(row.footprint_unestimated_tokens),
+        "footprint_basis": _describe_bases(_basis_tokens(row.footprint_bases or [])),
     }
+
+
+def _basis_tokens(bases: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Sum ``{model: output tokens}`` dicts per model."""
+    tokens: Dict[str, int] = {}
+    for basis in bases:
+        for model, count in (basis or {}).items():
+            tokens[model] = tokens.get(model, 0) + int(count)
+    return tokens
+
+
+def _describe_bases(tokens: Dict[str, int]) -> List[Dict[str, Any]]:
+    """Each estimated model's source and assumption, most tokens first."""
+    return [
+        {**describe_basis(model), "output_tokens": count}
+        for model, count in sorted(tokens.items(), key=lambda item: -item[1])
+    ]
+
+
+def _float_or_none(value: Any) -> Optional[float]:
+    return None if value is None else float(value)
 
 
 def compute_totals(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -285,6 +395,7 @@ def compute_totals(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_tokens": 0,
+        "footprint_unestimated_tokens": 0,
     }
     cost_total = Decimal(0)
     for r in rows:
@@ -295,7 +406,23 @@ def compute_totals(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {
         **totals_int,
         "cost_usd": format(cost_total.quantize(Decimal("0.000001")), "f"),
+        **{c: _sum_or_none(r[c] for r in rows) for c in _FOOTPRINT_COLUMNS},
+        "footprint_basis": _describe_bases(
+            _basis_tokens(
+                [
+                    {b["model"]: b["output_tokens"]}
+                    for r in rows
+                    for b in r["footprint_basis"]
+                ]
+            )
+        ),
     }
+
+
+def _sum_or_none(values: Any) -> Optional[float]:
+    """Sum of the values that are set; None when none is."""
+    present = [v for v in values if v is not None]
+    return sum(present) if present else None
 
 
 def sort_rows(
@@ -311,6 +438,9 @@ def sort_rows(
         # Decimal-as-string costs sort lexicographically without coercion.
         if sort_by == "cost_usd" and v is not None:
             return Decimal(str(v))
+        if sort_by in _FOOTPRINT_COLUMNS:
+            # Rows with no estimate sort below every estimate.
+            return (v is not None, v or 0.0)
         return v
 
     return sorted(rows, key=key, reverse=reverse)
@@ -350,6 +480,68 @@ async def _fetch_usage_rows(
 # ---------------------------------------------------------------------------
 
 
+def _format_personal_impact_coverage(estimated: int, total: int) -> str | None:
+    if estimated == 0:
+        return None
+    if estimated == total:
+        return "all"
+
+    scaled = 100 * estimated
+    if scaled < total:
+        return "less than 1%"
+    if scaled > 99 * total:
+        return "more than 99%"
+    return f"about {scaled / total:.0f}%"
+
+
+@router.get("/me/footprint", tags=["llm-usage"])
+@limiter.limit(_RATE_LIMIT_DEFAULT)
+async def personal_impact_summary(
+    request: Request,
+    response: Response,
+    period: Literal["30-days", "year-to-date"] = "30-days",
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> PersonalImpactSummary:
+    """Summarize stored footprint estimates for the signed-in account."""
+    settings = await user_effective_settings(session, user.id)
+    if not personal_impact_enabled(settings):
+        raise HTTPException(
+            status_code=403, detail="Personal environmental impact is off."
+        )
+
+    today = datetime.now(timezone.utc).date()
+    start = (
+        today - timedelta(days=_DEFAULT_RANGE_DAYS - 1)
+        if period == "30-days"
+        else today.replace(month=1, day=1)
+    )
+    from_dt, to_dt = _resolve_date_range(start, today)
+    result = await session.execute(
+        text(
+            f"""
+            SELECT COALESCE(SUM(ua.completion_tokens), 0) AS completion_tokens,
+                   {_footprint_sums("ua", include_basis=False)}
+            FROM user_activity ua
+            WHERE ua.user_id = :user_id
+              AND ua.created_at >= :from_dt AND ua.created_at < :to_dt
+            """
+        ),
+        {"user_id": user.id, "from_dt": from_dt, "to_dt": to_dt},
+    )
+    response.headers["Cache-Control"] = "private, no-store"
+    row = result.mappings().one()
+    total = row["completion_tokens"]
+    estimated = total - row["footprint_unestimated_tokens"]
+    return PersonalImpactSummary(
+        from_date=start,
+        to_date=today,
+        estimated_output_tokens=estimated,
+        coverage_label=_format_personal_impact_coverage(estimated, total),
+        **row,
+    )
+
+
 @router.get("/summary", tags=["llm-usage"])
 async def llm_usage_summary(
     bucket: str = Query("week"),
@@ -377,12 +569,51 @@ async def llm_usage_summary(
     return {
         "rows": rows,
         "totals": totals,
+        # What each model's figures rest on, once per model rather than per
+        # row: the screen's pop-up for a Basis badge shows it.
+        "footprint_sources": [
+            describe_sources(b["model"]) for b in totals["footprint_basis"]
+        ],
+        "footprint_method": footprint_method(),
         "bucket": bucket,
         "group_by": group_by,
         "from_date": from_dt.date().isoformat(),
         "to_date": (to_dt - timedelta(days=1)).date().isoformat(),
         "activity_type": activity_type,
     }
+
+
+# Export columns for the estimated footprint, in base units, as stored.
+_FOOTPRINT_HEADERS = (
+    "Energy min (kWh)",
+    "Energy max (kWh)",
+    "Emissions min (kg CO2eq)",
+    "Emissions max (kg CO2eq)",
+    "Water min (L)",
+    "Water max (L)",
+    "Output tokens with no footprint estimate",
+    "Footprint basis",
+)
+
+
+def _basis_text(basis: List[Dict[str, Any]]) -> str:
+    """e.g. "nova-2-lite: 1200 output tokens, assumed (Amazon publishes ...)"."""
+    parts = []
+    for b in basis:
+        how = f"assumed ({b['assumption']})" if b["assumed"] else "EcoLogits"
+        sources = ", ".join(b["ecologits_models"])
+        parts.append(
+            f"{b['model']}: {b['output_tokens']} output tokens, {how}: {sources}"
+        )
+    return "; ".join(parts)
+
+
+def _footprint_cells(r: Dict[str, Any]) -> List[Any]:
+    return [
+        *(r[c] for c in _FOOTPRINT_COLUMNS),
+        r["footprint_unestimated_tokens"],
+        _basis_text(r["footprint_basis"]),
+    ]
 
 
 @router.get("/export", tags=["llm-usage"])
@@ -425,6 +656,7 @@ async def llm_usage_export(
             "Completion Tokens",
             "Total Tokens",
             "Cost (USD)",
+            *_FOOTPRINT_HEADERS,
         ],
     )
     for r in rows:
@@ -438,6 +670,7 @@ async def llm_usage_export(
                 r["completion_tokens"],
                 r["total_tokens"],
                 float(r["cost_usd"]) if r["cost_usd"] is not None else None,
+                *_footprint_cells(r),
             ],
         )
     append_text_row(
@@ -450,6 +683,7 @@ async def llm_usage_export(
             totals["completion_tokens"],
             totals["total_tokens"],
             float(totals["cost_usd"]),
+            *_footprint_cells(totals),
         ],
     )
 

@@ -24,6 +24,7 @@
     },
     "assistant": {
       "enabled": true,
+      "citation_check_model": "qwen3-next-80b-instruct",
       "max_search_results": 20,
       "max_iterations": 3,
       "max_queries": 4,
@@ -179,7 +180,8 @@
     "qwen3-next-80b-instruct": {
       "model": "Qwen/Qwen3-Next-80B-A3B-Instruct",
       "provider": "huggingface",
-      "inference_provider": "deepinfra"
+      "inference_provider": "deepinfra",
+      "max_tokens": 2000
     },
     "llama-3.1-8b-instruct": {
       "model": "meta-llama/Llama-3.1-8B-Instruct",

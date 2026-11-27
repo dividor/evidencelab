@@ -97,12 +97,10 @@ export const useSectionChanges = (section: BriefSection, readOnly: boolean) => {
   const [versionEntryId, setVersionEntryId] = useState<string | null>(null);
   const audit = section.audit ?? [];
   const pendingRunId = readOnly ? null : section.pendingReview?.runId ?? null;
-  // A change already awaiting review when the brief opens shows as plain
-  // text, with no review buttons. The review (tracked changes, Keep and
-  // Reject) opens for a change made while the brief is open, or when the
-  // change is chosen from the Section History.
+  // A change waiting when the brief opens shows the draft and review buttons.
+  // A new change or one opened from Section History starts with its diff.
   const [hideChanges, setHideChanges] = useState(true);
-  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(!!pendingRunId);
   const openReview = (): void => {
     setReviewOpen(true);
     setHideChanges(false);

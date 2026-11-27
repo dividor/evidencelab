@@ -10,7 +10,10 @@ import '@fontsource/open-sans/600.css';
 import './index.css';
 import App from './App';
 import { installClickDiagnostics } from './utils/clickDiagnostics';
+import { restoreAdminPath } from './utils/adminLocation';
 import { initAnalytics } from './utils/analytics';
+
+restoreAdminPath();
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
