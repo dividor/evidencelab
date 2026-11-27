@@ -48,7 +48,10 @@ from ui.backend.services.search_defaults import (
     default_section_types,
 )
 from ui.backend.services.search_models import search_warnings
-from ui.backend.services.test_evaluators import evaluate_assertions
+from ui.backend.services.test_evaluators import (
+    UnverifiedOverlapQuote,
+    evaluate_assertions,
+)
 from ui.backend.utils.filter_helpers import resolve_doc_level_filters
 
 logger = logging.getLogger(__name__)
@@ -817,7 +820,7 @@ async def evaluate_case(
             "latency_ms": int((time.time() - started) * 1000),
             "error_message": (
                 "The evaluator could not grade this output."
-                if output is not None
+                if output is not None and not isinstance(exc, UnverifiedOverlapQuote)
                 else str(exc)[:500]
             ),
             **_case_usage_totals(output),

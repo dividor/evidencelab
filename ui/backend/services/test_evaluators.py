@@ -27,6 +27,15 @@ AssertionResult = Dict[str, Any]
 JudgeFn = Callable[[str, str], Any]
 
 
+class UnverifiedOverlapQuote(ValueError):
+    """Safe to show in an evaluation result after both attempts fail."""
+
+    def __init__(self):
+        super().__init__(
+            "The repetition judge could not verify its quoted text against both sections."
+        )
+
+
 def _result(
     atype: str, passed: bool, message: str, score: Optional[float] = None
 ) -> AssertionResult:

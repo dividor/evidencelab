@@ -28,7 +28,11 @@ from ui.backend.services.llm_choice import (
     combo_default,
     default_combo,
 )
-from ui.backend.services.test_evaluators import brief_assertion_type, judge_rubric_key
+from ui.backend.services.test_evaluators import (
+    UnverifiedOverlapQuote,
+    brief_assertion_type,
+    judge_rubric_key,
+)
 
 
 def configure_brief(config, combo):
@@ -230,13 +234,22 @@ async def _grade(output, prompt, model, system, schema=BriefVerdict):
         output.setdefault("judge_usage", []).append(usage)
         try:
             return schema.model_validate_json(raw, context=output), prompt
-        except ValidationError:
+        except ValidationError as exc:
+            unmatched = schema is OverlapVerdict and any(
+                item["type"] == "value_error" for item in exc.errors()
+            )
             if attempt:
+                if unmatched:
+                    raise UnverifiedOverlapQuote() from exc
                 raise
             template = assistant_prompt_templates.get_template(
                 "brief_experiment_judge.j2"
             )
-            prompt += "\n" + template.render(repair=True)
+            prompt += "\n" + template.render(
+                repair=True,
+                unmatched_verdict=raw if unmatched else None,
+                other_sections=output.get("siblings") or [],
+            )
     raise RuntimeError("The judge did not return a verdict.")
 
 

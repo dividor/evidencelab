@@ -336,6 +336,30 @@ async def test_overlap_judge_retries_a_comparison_with_an_invented_quote(monkeyp
     cb = await brief.judge_brief(out, [a], "grader")
     assert evaluate_assertion(a, out, cb)["passed"]
     assert len(out["judge_usage"]) == 2
+    correction = replies.await_args_list[1].args[0]
+    assert (
+        "invented result" in correction and out["siblings"][0]["content"] in correction
+    )
+
+
+@pytest.mark.asyncio
+async def test_unverifiable_repetition_quotes_report_which_check_errored(monkeypatch):
+    from ui.backend.services.test_evaluators import UnverifiedOverlapQuote
+
+    invalid = (
+        '{"reason":"Duplicate.","repeats":[{"new_clause":"unknown",'
+        '"other_heading":"Other","existing_clause":"invented"}]}'
+    )
+    monkeypatch.setattr(runner, "_judge_call", AsyncMock(return_value=(invalid, {})))
+    result = await runner.evaluate_case(
+        {},
+        [{"type": "brief_overlap"}],
+        AsyncMock(return_value=draft()),
+        runner.make_judge_factory({"judge_model": "grader"}),
+    )
+    assert result["status"] == "error"
+    assert result["error_message"] == str(UnverifiedOverlapQuote())
+    assert result["actual_output"]["summary"] == draft()["summary"]
 
 
 @pytest.mark.asyncio
