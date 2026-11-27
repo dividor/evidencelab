@@ -4,6 +4,7 @@ import logging
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
+from pipeline.db.config import get_default_filter_fields
 from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.auth.schemas import BriefSectionPrompt
 from ui.backend.services.assistant_research import (
@@ -21,7 +22,9 @@ from ui.backend.services.search import map_field_to_storage, search_chunks
 logger = logging.getLogger(__name__)
 
 
-def _format_search_result(r: Any) -> Dict[str, Any]:
+def _format_search_result(
+    r: Any, fields: Optional[Dict[str, str]] = None
+) -> Dict[str, Any]:
     """Format a Qdrant ScoredPoint into a plain dict."""
     payload = r.payload if hasattr(r, "payload") else r
     # Qdrant payloads use "map_title"; fall back to "title" for tests/dicts
@@ -34,6 +37,11 @@ def _format_search_result(r: Any) -> Dict[str, Any]:
         "doc_id": payload.get("doc_id", ""),
         "title": title,
         "country": payload.get("map_country"),
+        "document_fields": {
+            label: payload[key]
+            for key, label in (fields or {}).items()
+            if payload.get(key) not in (None, "", [])
+        },
         "text": payload.get("text", ""),
         "score": getattr(r, "score", payload.get("score", 0.0)),
         "page": page,
@@ -302,8 +310,14 @@ class SearchTracker:
         )
         if kwargs.get("wide_search"):
             points = _spread_across_documents(points, self.RESULTS_PER_SEARCH)
+        fields = {
+            map_field_to_storage(key): label
+            for key, label in get_default_filter_fields(self.data_source or "").items()
+            if key != "title"
+        }
         formatted = [
-            _format_search_result(r) for r in self._apply_field_boost(points, query)
+            _format_search_result(r, fields)
+            for r in self._apply_field_boost(points, query)
         ]
         self._enrich_from_postgres(formatted, self.data_source)
         self._enrich_doc_links(formatted, self.data_source)

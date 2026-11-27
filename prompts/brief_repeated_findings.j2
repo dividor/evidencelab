@@ -10,6 +10,7 @@ In 'pairs' quote each clause of the candidate in order, and the exact earlier wo
 The candidate quotes together must reproduce the whole candidate sentence, ignoring citation markers and punctuation.
 Without a matching earlier clause for any part, keep the entire sentence.
 Never use the same sentence as its own proof.
+Omit the entire finding from duplicates if any clause lacks an earlier quotation.
 Return JSON with 'duplicates', a list of {id,pairs:[{new_clause,existing_clause}]}.
 Return an empty list if there are no fully repeated findings.
 {%- else -%}

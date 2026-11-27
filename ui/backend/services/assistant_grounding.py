@@ -10,7 +10,10 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, TypeAdapter
 
-from ui.backend.services.agent_passages import passage_for_agent
+from ui.backend.services.agent_passages import (
+    passage_for_agent,
+    passage_title_with_fields,
+)
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.assistant_source_attribution import source_attribution_issues
 from ui.backend.services.brief_citation_model import cited_numbers_in_order
@@ -59,7 +62,7 @@ _HEADING = re.compile(r"^(#{1,6})[ \t]+\S")
 _CITATION = re.compile(r"\[(\d+(?:\s*[,–-]\s*\d+)*)\]")
 _SENTENCES_PER_CHECK = 4
 _CITATIONS_PER_CHECK = 6
-_CONCURRENT_CHECKS = 3
+MAX_CONCURRENT_REVIEW_REQUESTS = 3
 
 
 class InvalidAssistantResponse(ValueError):
@@ -159,7 +162,9 @@ def render_evidence(passages: list[Passage]) -> str:
         content = passage_for_agent(passage["text"])
         if len(content) > 2400:
             content = content[:1800] + "\n[excerpt continues]\n" + content[-600:]
-        rows.append(f'[{passage["global_index"]}] {passage["title"]}\n{content}')
+        rows.append(
+            f'[{passage["global_index"]}] {passage_title_with_fields(passage)}\n{content}'
+        )
     return "\n\n".join(rows)
 
 
@@ -234,7 +239,7 @@ async def check_answer_citations(
         "assistant_grounding_check.j2"
     ).render(brief_section=brief_section, prepared_quotes=bool(prepared_quotes))
     template = assistant_prompt_templates.get_template("assistant_research_request.j2")
-    concurrency = asyncio.Semaphore(_CONCURRENT_CHECKS)
+    concurrency = asyncio.Semaphore(MAX_CONCURRENT_REVIEW_REQUESTS)
 
     async def check_group(group: list[dict]) -> tuple[list[str], set[int]]:
         labels = dict.fromkeys(index for row in group for index in row["citations"])

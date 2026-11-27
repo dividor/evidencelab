@@ -21,7 +21,8 @@ def _words(text: str) -> str:
 
 class RepeatedClause(BaseModel):
     new_clause: str = Field(min_length=1)
-    existing_clause: str = Field(min_length=1)
+    # An empty quote supplies no evidence for removing the new clause.
+    existing_clause: str
 
 
 class RepeatedSentence(BaseModel):

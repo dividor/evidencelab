@@ -1,5 +1,6 @@
 """Build a Brief section from sentences checked against their own evidence."""
 
+import asyncio
 import re
 from heapq import nlargest
 
@@ -11,13 +12,18 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from starlette.concurrency import run_in_threadpool
 
 from ui.backend.auth.schemas import BriefSectionPrompt
-from ui.backend.services.agent_passages import passage_for_agent
+from ui.backend.services.agent_passages import (
+    passage_for_agent,
+    passage_title_with_fields,
+)
 from ui.backend.services.assistant_grounding import (
+    MAX_CONCURRENT_REVIEW_REQUESTS,
     EvidenceQuote,
     InvalidAssistantResponse,
     Passage,
     ReviewRequest,
     check_answer_citations,
+    citation_check_batches,
     numbered_sentences,
     retain_supported_sentences,
 )
@@ -248,27 +254,43 @@ async def _review_finding_scope(
 ) -> tuple[str, list[str]]:
     sentences = numbered_sentences(draft)
     template = assistant_prompt_templates.get_template("brief_finding_scope.j2")
-    request = template.render(
-        heading=section.outline[section.current].title,
-        topic=section.topic,
-        subject=subject,
-        guidance=section.focus,
-        instructions=section.instructions,
-        voice=section.voice_instructions,
-        introduces=brief_child_headings(section),
-        other_headings=[
+    batches = list(citation_check_batches(sentences))
+    concurrency = asyncio.Semaphore(MAX_CONCURRENT_REVIEW_REQUESTS)
+    system = template.render(system=True)
+    assignment = {
+        "heading": section.outline[section.current].title,
+        "topic": section.topic,
+        "subject": subject,
+        "guidance": section.focus,
+        "instructions": section.instructions,
+        "voice": section.voice_instructions,
+        "introduces": brief_child_headings(section),
+        "other_headings": [
             s.title for i, s in enumerate(section.outline) if i != section.current
         ],
-        sentences=[
-            _finding_for_scope(row, evidence, prepared_quotes, similar)
-            for row in sentences
-        ],
-    )
-    decision: FindingScopeReview = await review(
-        template.render(system=True), request, [], config, _FINDING_SCOPE
-    )
-    if sorted(row.id for row in decision.reviews) != [row["id"] for row in sentences]:
-        raise InvalidAssistantResponse("The scope check must assess each finding once")
+        "whole_section": draft if len(batches) > 1 else "",
+    }
+
+    async def review_batch(batch: list[dict]) -> list[FindingScopeDecision]:
+        request = template.render(
+            **assignment,
+            sentences=[
+                _finding_for_scope(row, evidence, prepared_quotes, similar)
+                for row in batch
+            ],
+        )
+        async with concurrency:
+            result: FindingScopeReview = await review(
+                system, request, [], config, _FINDING_SCOPE
+            )
+        if sorted(row.id for row in result.reviews) != [row["id"] for row in batch]:
+            raise InvalidAssistantResponse(
+                "The scope check must assess each finding once"
+            )
+        return result.reviews
+
+    decisions = await asyncio.gather(*(review_batch(batch) for batch in batches))
+    decision = FindingScopeReview(reviews=[row for batch in decisions for row in batch])
     return _apply_scope_review(draft, sentences, decision, prepared_quotes)
 
 
@@ -287,7 +309,7 @@ def _finding_for_scope(
         "similar": similar.get(text, []),
         "sources": [
             {
-                "title": evidence[label]["title"],
+                "title": passage_title_with_fields(evidence[label]),
                 "subject_quote": evidence[label]["brief_subject_evidence"],
             }
             for label in row["citations"]

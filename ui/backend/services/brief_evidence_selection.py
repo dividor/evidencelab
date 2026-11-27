@@ -5,7 +5,10 @@ import logging
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-from ui.backend.services.agent_passages import passage_for_agent
+from ui.backend.services.agent_passages import (
+    passage_for_agent,
+    passage_title_with_fields,
+)
 from ui.backend.services.assistant_grounding import (
     InvalidAssistantResponse,
     Passage,
@@ -80,7 +83,10 @@ async def select_brief_evidence(
     template = assistant_prompt_templates.get_template("brief_evidence_selection.j2")
     system = template.render(system=True)
     entries = {
-        label: [source["title"], *split_sentences(passage_for_agent(source["text"]))]
+        label: [
+            passage_title_with_fields(source),
+            *split_sentences(passage_for_agent(source["text"])),
+        ]
         for label, source in evidence.items()
     }
     passages = _numbered_source_passages(entries)
@@ -133,7 +139,7 @@ def _draft_excerpts(evidence: dict[int, Passage], accepted: dict[int, list[str]]
     for passage, lines in accepted.items():
         source = evidence[passage]
         group = [
-            f"Source {passage}: {source['title']}",
+            f"Source {passage}: {passage_title_with_fields(source)}",
             f"Subject: {lines[0]}",
         ]
         for line in lines[1:]:
