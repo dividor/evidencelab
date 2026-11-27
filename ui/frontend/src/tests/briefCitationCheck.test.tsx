@@ -237,3 +237,22 @@ test('shows every section before the optional passage report for a completed ful
   fireEvent.click(report);
   expect(screen.getByText('Showing 3 of 3 passages.', {exact:false})).toBeVisible();
 });
+
+test('a running check displays graded and queued sections in the same table', async () => {
+  mockedAxios.get.mockResolvedValue({data: {...check, check_kind:'full', status:'running', passages:[],
+    summary_stats:{progress:{completed:1,total:3,remaining_sections:[
+      {template:BRIEF_TITLE,heading:'Methods',number:'2'}, {template:BRIEF_TITLE,heading:'Limits',number:'3'},
+    ]}},
+    section_results:[{section_id:'s1',number:'1',heading:'Costs',status:'fail',score:0,
+      factual_claim_mean_score:0.75,factual_claim_pass_rate:0.5,assertion_results:[]}]
+  }});
+  render(<BriefCheckDetail checkId="chk1" dataSource="uneg" onBack={jest.fn()} />);
+  const table = await screen.findByRole('table', {name:'Section and brief'});
+  expect(table).toHaveTextContent('Factual Claim Mean Score');
+  expect(table).toHaveTextContent('Factual Claim Pass Rate');
+  const completed = screen.getByRole('button',{name:'Expand Costs'}).closest('tr');
+  expect(completed).toHaveTextContent('0.75');
+  expect(completed).toHaveTextContent('50%');
+  expect(table).toHaveTextContent('Running');
+  expect(table).toHaveTextContent('Queued');
+});

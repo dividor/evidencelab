@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../../config';
 import type { BriefAccess, BriefCheckCandidate, BriefCitationCheck } from '../../../types/testing';
-import { formatPercent, formatTimestamp } from './testingFormat';
+import { ClaimHeaders, ClaimCells } from './BriefScoreStats';
+import { formatPercent, formatElapsed, formatScore, formatTimestamp } from './testingFormat';
 import { VERDICT_LABEL } from './citationCheckFormat';
 
 // The "Briefs" sub-view: pick a brief and run the citation check on it. Admins
@@ -159,6 +160,7 @@ const BriefCheckList: React.FC<BriefCheckListProps> = ({ modelCombo, onOpenCheck
               <th>Updated</th>
               <th>Sections</th>
               <th>Cited passages</th>
+              <th>Pass rate</th><th>Mean Total Score</th><ClaimHeaders /><th>Duration</th>
               <th>Last check</th>
               <th></th>
             </tr>
@@ -182,6 +184,10 @@ const BriefCheckList: React.FC<BriefCheckListProps> = ({ modelCombo, onOpenCheck
                   <td>{formatTimestamp(b.updated_at)}</td>
                   <td>{b.researched_sections}</td>
                   <td>{b.cited_passages}</td>
+                  <td>{formatPercent(last?.summary_stats?.pass_rate)}</td>
+                  <td>{formatScore(last?.summary_stats?.mean_score)}</td>
+                  <ClaimCells stats={last?.summary_stats} />
+                  <td>{formatElapsed(last?.summary_stats?.duration_ms)}</td>
                   <td>
                     <span className="text-muted">{lastCheckSummary(last)}</span>
                     {last?.brief_version_number != null && (

@@ -1,5 +1,6 @@
-import type { BriefSectionReview } from '../../../types/testing';
-import { ResultRow, ResultTable } from './ResultTable';
+import type { BriefSectionReview, RunProgress } from '../../../types/testing';
+import { RunStats, RunProgressBar } from './BriefScoreStats';
+import { RemainingSections, ResultRow, ResultTable } from './ResultTable';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../../config';
@@ -72,7 +73,7 @@ const isActive = (status?: string): boolean => status === 'pending' || status ==
 /*  Summary header                                                    */
 /* ------------------------------------------------------------------ */
 
-function SectionReviews({ sections, counts, title }: { title: string; sections: BriefSectionReview[]; counts?: NonNullable<CheckDetailType['summary_stats']>['section_counts'] }) {
+function SectionReviews({ sections, counts, title, remaining }: { remaining?: RunProgress['remaining_sections']; title: string; sections: BriefSectionReview[]; counts?: NonNullable<CheckDetailType['summary_stats']>['section_counts'] }) {
   const [showAll, setShowAll] = useState(true);
   const attention = sections.filter(section => section.status !== 'pass');
   const shown = showAll || !attention.length ? sections : attention;
@@ -84,9 +85,10 @@ function SectionReviews({ sections, counts, title }: { title: string; sections: 
       </button>}
     </p>
     <div className="testing-run"><div className="testing-run-body">
-    <ResultTable heading="Section and brief" timeLabel="Check time">
-      {shown.map(section => <ResultRow key={section.section_id} result={section}
+    <ResultTable brief heading="Section and brief" timeLabel="Check time">
+      {shown.map(section => <ResultRow brief key={section.section_id} result={section}
         savedSection={{ template: title, number: section.number, heading: section.heading }} />)}
+      <RemainingSections sections={remaining} />
     </ResultTable>
     </div></div>
   </div>;
@@ -138,16 +140,22 @@ const Summary: React.FC<{ detail: CheckDetailType }> = ({ detail }) => {
 };
 
 function CheckResults({ detail, children }: React.PropsWithChildren<{ detail: CheckDetailType }>) {
-  if (detail.check_kind !== 'full' || !detail.section_results?.length) {
-    return <><Summary detail={detail} />{children}</>;
-  }
+  if (detail.check_kind !== 'full') return <><Summary detail={detail} />{children}</>;
+  const active = isActive(detail.status);
   return <>
-    <SectionReviews title={detail.brief_title} sections={detail.section_results} counts={detail.summary_stats?.section_counts} />
+    {active && <RunProgressBar progress={detail.summary_stats?.progress} unit="section" />}
+    {detail.status === 'failed' && <Summary detail={detail} />}
+    <RunStats brief stats={detail.summary_stats} total={detail.summary_stats?.progress?.total ?? detail.section_results?.length}
+      passed={detail.summary_stats?.section_counts?.pass} failed={detail.summary_stats?.section_counts?.fail}
+      errored={detail.summary_stats?.section_counts?.error} started={detail.started_at} finished={detail.finished_at} />
+    <SectionReviews title={detail.brief_title} sections={detail.section_results || []} counts={detail.summary_stats?.section_counts}
+      remaining={active ? detail.summary_stats?.progress?.remaining_sections : undefined} />
+    {detail.status === 'completed' &&
     <details className="testing-case-block">
       <summary>Passage evidence and run statistics</summary>
       <Summary detail={detail} />
       {children}
-    </details>
+    </details>}
   </>;
 }
 

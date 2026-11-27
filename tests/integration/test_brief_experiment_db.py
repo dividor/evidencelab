@@ -345,3 +345,88 @@ async def test_missing_draft_migration_updates_only_unwritten_brief_results_and_
             await conn.rollback()
     finally:
         await engine.dispose()
+
+
+async def test_score_migration_preserves_recorded_grades_and_nonbrief_runs():
+    from sqlalchemy import bindparam, text
+    from sqlalchemy.dialects.postgresql import JSONB
+
+    from alembic.config import Config
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from alembic.script import ScriptDirectory
+
+    migration = ScriptDirectory.from_config(Config("alembic.ini")).get_revision(
+        "0048_brief_score_summaries"
+    )
+
+    def upgrade(connection):
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.module.upgrade()
+
+    engine = create_async_engine(DATABASE_URL)
+    try:
+        async with engine.begin() as conn:
+            for statement in (
+                "CREATE TEMP TABLE test_datasets (id int, capability text)",
+                "CREATE TEMP TABLE test_experiments (id int, dataset_id int, "
+                "status text, summary_stats jsonb)",
+                "CREATE TEMP TABLE test_runs (id int, experiment_id int, run_number int, "
+                "status text, summary_stats jsonb)",
+                "CREATE TEMP TABLE test_results (run_id int, assertion_results jsonb)",
+                "CREATE TEMP TABLE brief_citation_checks (id int, status text, check_kind text, "
+                "section_results jsonb, summary_stats jsonb)",
+                "INSERT INTO test_datasets VALUES (1,'brief'),(2,'search')",
+                "INSERT INTO test_experiments VALUES "
+                "(1,1,'completed','{}'),(2,2,'completed','{}')",
+                """INSERT INTO test_runs VALUES (1,1,1,'completed','{"total": 1}'),
+                (2,2,1,'completed','{"total": 1}')""",
+            ):
+                await conn.execute(text(statement))
+            assertions = [
+                dict(
+                    type="brief_factual",
+                    score=0,
+                    claim_grades=[dict(score=0.8, passed=False)],
+                )
+            ]
+            section = dict(status="fail", assertion_results=assertions)
+            await conn.execute(
+                text("INSERT INTO test_results VALUES (1,:grades)").bindparams(
+                    bindparam("grades", type_=JSONB)
+                ),
+                {"grades": assertions},
+            )
+            await conn.execute(
+                text(
+                    "INSERT INTO brief_citation_checks VALUES "
+                    "(1,'completed','full',:sections,'{}'), "
+                    "(2,'running','full',:sections,'{}')"
+                ).bindparams(bindparam("sections", type_=JSONB)),
+                {"sections": [section]},
+            )
+            await conn.run_sync(upgrade)
+            await conn.run_sync(upgrade)
+            metrics = dict(factual_claim_mean_score=0.8, factual_claim_pass_rate=0)
+            checks = await conn.execute(
+                text(
+                    "SELECT section_results, summary_stats FROM brief_citation_checks ORDER BY id"
+                )
+            )
+            assert checks.all() == [
+                ([section], dict(pass_rate=0, mean_score=0, **metrics)),
+                ([section], {}),
+            ]
+            assert (
+                await conn.scalars(text("SELECT assertion_results FROM test_results"))
+            ).all() == [assertions]
+            runs = await conn.scalars(
+                text("SELECT summary_stats FROM test_runs ORDER BY id")
+            )
+            assert runs.all() == [dict(total=1, **metrics), {"total": 1}]
+            parents = await conn.scalars(
+                text("SELECT summary_stats FROM test_experiments ORDER BY id")
+            )
+            assert parents.all() == [metrics, {}]
+    finally:
+        await engine.dispose()

@@ -14,6 +14,7 @@ from ui.backend.services.brief_experiment_claims import (
 )
 from ui.backend.services.brief_grading_errors import brief_grading_error
 from ui.backend.services.brief_outline_numbers import outline_numbers
+from ui.backend.services.brief_score_metrics import section_total_score
 from ui.backend.services.brief_template_evaluation import (
     DEFAULT_BRIEF_EXPECTATIONS,
     grade_template_checks,
@@ -187,9 +188,4 @@ def section_metrics(section):
             (c["message"] for c in checks if c.get("not_run")), None
         )
         return dict(score=None, error_message=error)
-    return dict(
-        score=min(
-            (c["score"] for c in checks if c.get("score") is not None), default=None
-        ),
-        error_message=None,
-    )
+    return dict(score=section_total_score(section), error_message=None)

@@ -199,3 +199,70 @@ async def test_saved_and_historical_check_remain_distinct_after_an_edit(
         assert row["explanation"] == claim["explanation"] == mark["explanation"]
     assert len(marks) == 2
     assert len(list(book["Flagged"].values)) == 2
+
+
+async def test_sections_and_progress_become_visible_together_before_the_next_grade(
+    session, monkeypatch
+):
+    from sqlalchemy import select
+
+    from ui.backend.services import saved_brief_check_runner as runner
+
+    owner = User(id=uuid4(), email=f"{uuid4()}@example.org", hashed_password="unused")
+    material = content("Output rose.")
+    material["sections"].append(
+        {**material["sections"][0], "id": "second", "title": "Methods"}
+    )
+    brief = Brief(user_id=owner.id, title="Two sections", content=material)
+    session.add(owner)
+    await session.flush()
+    session.add(brief)
+    await session.flush()
+    v = await ensure_version(session, brief)
+    await session.flush()
+    check = BriefCitationCheck(
+        brief_id=brief.id,
+        brief_title=brief.title,
+        brief_version_id=v.id,
+        brief_version_number=v.number,
+        check_kind="full",
+        status="pending",
+    )
+    session.add(check)
+    await session.commit()
+
+    async def grade(output, position, missing_voice, model):
+        row = (
+            await session.execute(
+                select(
+                    BriefCitationCheck.section_results, BriefCitationCheck.summary_stats
+                ).where(BriefCitationCheck.id == check.id)
+            )
+        ).one()
+        progress = row.summary_stats["progress"]
+        assert progress["completed"] == len(row.section_results) == position
+        assert [s["heading"] for s in progress["remaining_sections"]] == [
+            "Readings",
+            "Methods",
+        ][position:]
+        if position:
+            assert row.section_results[0]["assertion_results"][0]["claim_grades"][0][
+                "passed"
+            ]
+        return [
+            dict(
+                type="brief_factual",
+                passed=True,
+                score=1,
+                claim_grades=[dict(claim=1, passed=True, score=1, reason="Confirmed.")],
+            )
+        ]
+
+    monkeypatch.setattr(runner, "grade_saved_section", grade)
+    monkeypatch.setattr(citation_check_runner, "_record_check_usage", AsyncMock())
+    await runner.run_full_check(session, check)
+    await session.refresh(check, ["section_results", "summary_stats"])
+    assert [s["section_id"] for s in check.section_results] == ["s", "second"]
+    assert (
+        "progress" not in check.summary_stats and check.summary_stats["pass_rate"] == 1
+    )

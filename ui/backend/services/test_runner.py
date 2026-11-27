@@ -49,6 +49,7 @@ from ui.backend.services.brief_template_evaluation import (
 )
 from ui.backend.services.citations import render_reference_lines
 from ui.backend.services.evaluation_metrics import compute_summary_stats
+from ui.backend.services.evaluation_metrics import progress_stats as _progress_stats
 from ui.backend.services.llm_choice import JUDGE, group_choice
 from ui.backend.services.search_defaults import (
     SYSTEM_SEARCH_DEFAULTS,
@@ -986,19 +987,6 @@ async def _mark_failed(session, experiment: TestExperiment, message: str) -> Non
     await session.commit()
 
 
-def _progress_stats(completed: int, total: int, sections=None) -> Dict[str, Any]:
-    """A lightweight progress marker stored in a run's ``summary_stats`` while it
-    is in flight, so the polling UI can show "completed of total cases".
-
-    It is replaced by the real aggregate stats (``compute_summary_stats``) once
-    the run finishes, so a running run never carries pass/score numbers.
-    """
-    progress = {"completed": completed, "total": total}
-    if sections is not None:
-        progress["remaining_sections"] = sections[completed:]
-    return {"progress": progress}
-
-
 def _active_case_plan(
     matrix: Dict[str, Any], cases: List[TestCase], capability: Optional[str] = None
 ) -> List[Tuple[TestCase, List[Dict[str, Any]]]]:
@@ -1193,6 +1181,10 @@ async def _execute(
     run.summary_stats = compute_summary_stats(
         case_results, int((time.time() - started) * 1000)
     )
+    if dataset.capability == CAPABILITY_BRIEF:
+        from ui.backend.services.brief_score_metrics import factual_claim_metrics
+
+        run.summary_stats = {**run.summary_stats, **factual_claim_metrics(case_results)}
     run.status = EXPERIMENT_COMPLETED
     run.finished_at = _utcnow()
     _mirror_run_to_experiment(experiment, run)

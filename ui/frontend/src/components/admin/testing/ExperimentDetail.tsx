@@ -3,20 +3,18 @@ import axios from 'axios';
 import API_BASE_URL from '../../../config';
 import type {
   ExperimentDetail as ExperimentDetailType,
-  RunProgress,
   TestCase,
   TestRun,
 } from '../../../types/testing';
 import {
-  formatCostUsd,
   formatMs,
   formatPercent,
   formatScore,
   formatTimestamp,
-  formatTokens,
 } from './testingFormat';
 import RunPassRateChart from './RunPassRateChart';
-import { BriefSectionTitle, ResultRow, ResultTable } from './ResultTable';
+import { RunStats, RunProgressBar } from './BriefScoreStats';
+import { RemainingSections, ResultRow, ResultTable } from './ResultTable';
 import { runConfigHeadline, runConfigRows } from './runConfig';
 
 interface ExperimentDetailProps {
@@ -31,62 +29,6 @@ const isActive = (status?: string): boolean =>
   status === 'pending' || status === 'running';
 
 /* ------------------------------------------------------------------ */
-/*  Per-run summary strip — every number labelled with its unit        */
-/* ------------------------------------------------------------------ */
-
-const RunStats: React.FC<{ run: TestRun }> = ({ run }) => {
-  const stats = run.summary_stats;
-  return (
-    <div className="testing-summary-header">
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Pass rate</span>
-        <span>{formatPercent(stats?.pass_rate)}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Mean score</span>
-        <span>{formatScore(stats?.mean_score)}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">{run.config?.capability === 'brief' ? 'Total sections' : 'Total cases'}</span>
-        <span>{stats?.total ?? '-'}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Passed</span>
-        <span>{stats?.passed ?? '-'}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Failed</span>
-        <span>{stats?.failed ?? '-'}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Errored</span>
-        <span>{stats?.errored ?? '-'}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Duration</span>
-        <span>{formatMs(stats?.duration_ms)}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Tokens</span>
-        <span>{formatTokens(stats?.total_tokens)}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Cost</span>
-        <span>{formatCostUsd(stats?.cost_usd)}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Started</span>
-        <span>{formatTimestamp(run.started_at)}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Finished</span>
-        <span>{formatTimestamp(run.finished_at)}</span>
-      </div>
-    </div>
-  );
-};
-
-/* ------------------------------------------------------------------ */
 /*  One run: collapsible header + its per-case results                */
 /* ------------------------------------------------------------------ */
 
@@ -95,43 +37,6 @@ const passRateLevel = (rate?: number | null): string => {
   if (rate >= 1) return 'good';
   if (rate > 0) return 'warn';
   return 'bad';
-};
-
-/* Live progress for an in-flight run: "k of N cases (z%)" plus a bar. The
-   backend publishes `progress` on summary_stats while running and replaces it
-   with the real stats on completion. */
-const RunProgressBar: React.FC<{ progress?: RunProgress | null; unit: string }> = ({ progress, unit }) => {
-  if (!progress) {
-    return (
-      <div className="testing-run-progress" role="status">
-        <span className="testing-run-progress-label">Starting…</span>
-      </div>
-    );
-  }
-  const { completed, total } = progress;
-  const fraction = total > 0 ? completed / total : 0;
-  return (
-    <div className="testing-run-progress" role="status">
-      <div className="testing-run-progress-label">
-        <span>
-          {completed} of {total} {unit}{total === 1 ? '' : 's'} processed
-        </span>
-        <span className="testing-run-progress-pct">{formatPercent(fraction)}</span>
-      </div>
-      <div
-        className="testing-run-progress-track"
-        role="progressbar"
-        aria-valuenow={completed}
-        aria-valuemin={0}
-        aria-valuemax={total}
-      >
-        <div
-          className="testing-run-progress-fill"
-          style={{ width: `${Math.round(fraction * 100)}%` }}
-        />
-      </div>
-    </div>
-  );
 };
 
 /* ------------------------------------------------------------------ */
@@ -242,7 +147,7 @@ const RunSection: React.FC<{
             </span>
             <span className="testing-run-metric">
               <strong>{formatScore(stats?.mean_score)}</strong>
-              <span className="testing-run-metric-label">score</span>
+              <span className="testing-run-metric-label">Mean Total Score</span>
             </span>
             <span className="testing-run-metric">
               <strong>{formatMs(stats?.duration_ms)}</strong>
@@ -258,18 +163,17 @@ const RunSection: React.FC<{
         <div className="testing-run-body">
           {stats?.error && <div className="auth-error">Run error: {stats.error}</div>}
           {active && <RunProgressBar progress={stats?.progress} unit={unit} />}
-          <RunStats run={run} />
+          <RunStats stats={stats} brief={isBrief} total={stats?.total} passed={stats?.passed} failed={stats?.failed}
+            errored={stats?.errored} started={run.started_at} finished={run.finished_at} />
           <RunConfigPanel run={run} previous={previous} />
-          <ResultTable heading={isBrief ? 'Section and template' : 'Case'}>
+          <ResultTable brief={isBrief} heading={isBrief ? 'Section and template' : 'Case'}>
               {results.map((r) => (
-                <ResultRow key={r.id} result={r} input={r.test_case_id ? caseInputs[r.test_case_id] : undefined} />
+                <ResultRow key={r.id} brief={isBrief} result={r} input={r.test_case_id ? caseInputs[r.test_case_id] : undefined} />
               ))}
-              {stats?.progress?.remaining_sections?.map((section, index) => (
-                <tr key={index}><td /><BriefSectionTitle {...section} /><td>{index === 0 ? 'Running' : 'Queued'}</td><td colSpan={3} /></tr>
-              ))}
+              <RemainingSections sections={stats?.progress?.remaining_sections} />
               {results.length === 0 && !stats?.progress?.remaining_sections?.length && (
                 <tr>
-                  <td colSpan={6} className="text-muted">
+                  <td colSpan={isBrief ? 8 : 6} className="text-muted">
                     {active ? 'Running — results appear here as each case finishes…' : 'No results.'}
                   </td>
                 </tr>

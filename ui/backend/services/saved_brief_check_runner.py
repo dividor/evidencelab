@@ -10,6 +10,8 @@ from ui.backend.auth.models import Brief, BriefVersion
 from ui.backend.auth.testing_models import BriefCitationCheck
 from ui.backend.services import brief_versions
 from ui.backend.services.brief_claim_records import bind_claims, claim_passages
+from ui.backend.services.brief_score_metrics import saved_brief_scores
+from ui.backend.services.evaluation_metrics import progress_stats
 from ui.backend.services.saved_brief_evaluation import (
     grade_saved_section,
     section_inputs,
@@ -48,7 +50,16 @@ async def run_full_check(session, check):
     total = len(inputs)
     check.status = "running"
     check.started_at = datetime.now(timezone.utc)
-    check.summary_stats = {"progress": {"completed": 0, "total": total}}
+    outline = [
+        dict(
+            template=check.brief_title,
+            heading=o["assignment"]["heading"],
+            number=o["assignment"]["heading_number"],
+        )
+        for o, _, _ in inputs
+    ]
+    check.section_results = []
+    check.summary_stats = progress_stats(0, total, outline)
     await session.commit()
     sections, usage = [], []
     offset = 0
@@ -70,9 +81,11 @@ async def run_full_check(session, check):
         if section["brief_evidence"]:
             offset += sum(len(p) for p in section["brief_evidence"]["paragraphs"])
         usage.extend(output.get("judge_usage", []))
-        check.summary_stats = {"progress": {"completed": len(sections), "total": total}}
+        # Append only this section to the database snapshot, in the transaction
+        # that advances the progress counter. Other readers see both together.
+        check.section_results = BriefCitationCheck.section_results.concat([section])
+        check.summary_stats = progress_stats(len(sections), total, outline)
         if len(sections) == total:
-            check.section_results = sections
             check.summary_stats = await run_in_threadpool(
                 claim_summary, sections, usage, started, check.judge_model
             )
@@ -99,6 +112,7 @@ def full_summary(rows, sections, usage, started, model):
     completion = sum(e.get("completion_tokens") or 0 for e in usage)
     cost = compute_cost(model, prompt, completion)
     stats.update(
+        **saved_brief_scores(sections),
         prompt_tokens=prompt,
         completion_tokens=completion,
         total_tokens=prompt + completion,

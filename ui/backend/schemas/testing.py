@@ -28,6 +28,7 @@ from ui.backend.services.brief_experiment_claims import (
 )
 from ui.backend.services.brief_experiment_overlap import link_saved_repetitions
 from ui.backend.services.brief_grading_errors import brief_grading_error
+from ui.backend.services.brief_score_metrics import factual_claim_metrics
 
 # ---------------------------------------------------------------------------
 # Datasets
@@ -162,6 +163,8 @@ class TestResultRead(BaseModel):
     test_case_id: uuid.UUID | None
     status: str
     score: Optional[float] = None
+    factual_claim_mean_score: Optional[float] = None
+    factual_claim_pass_rate: Optional[float] = None
     actual_output: Optional[Dict[str, Any]] = None
     brief_evidence: Optional[Dict[str, Any]] = None
     assertion_results: Optional[List[Dict[str, Any]]] = None
@@ -185,6 +188,11 @@ class TestResultRead(BaseModel):
             and self.actual_output.get("capability") == "brief"
             and self.assertion_results
         ):
+            metrics = factual_claim_metrics(
+                [{"assertion_results": self.assertion_results}]
+            )
+            self.factual_claim_mean_score = metrics["factual_claim_mean_score"]
+            self.factual_claim_pass_rate = metrics["factual_claim_pass_rate"]
             if (
                 self.status == "error"
                 and self.error_message == "An expectation could not be graded."

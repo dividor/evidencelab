@@ -799,19 +799,32 @@ async def get_brief_check(
     session: AsyncSession = Depends(get_async_session),
 ) -> BriefCitationCheckRead:
     check = await _get_check(session, check_id, admin)
-    await session.refresh(check, attribute_names=["passages", "section_results"])
+    # Read progress and completed sections from the same committed snapshot.
+    await session.refresh(
+        check,
+        attribute_names=[
+            "passages",
+            "section_results",
+            "summary_stats",
+            "status",
+            "started_at",
+            "finished_at",
+        ],
+    )
     current = await _current_version(session, check.brief_id)
     return await run_in_threadpool(_detail_read, check, current)
 
 
 def _detail_read(check, current):
     detail = BriefCitationCheckDetail.model_validate(check)
+    from ui.backend.services.brief_score_metrics import factual_claim_metrics
     from ui.backend.services.saved_brief_evaluation import section_metrics
 
     detail.brief_changed = brief_changed(check, current)
     if detail.section_results:
         detail.section_results = [
-            {**s, **section_metrics(s)} for s in detail.section_results
+            {**s, **section_metrics(s), **factual_claim_metrics([s])}
+            for s in detail.section_results
         ]
     if uses_claim_records(check):
         detail.passages = [

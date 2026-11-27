@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import type { TestResult } from '../../../types/testing';
 import { formatMs, formatScore, prettyJson } from './testingFormat';
+import { ClaimCells, ClaimHeaders } from './BriefScoreStats';
 import { resultWarnings } from './resultWarnings';
 import AssertionResultRow from './AssertionResultRow';
 import GeneratedSection from './GeneratedSection';
 
-export function ResultTable({ heading, timeLabel = 'Latency', children }: {
-  heading: string; timeLabel?: string; children: React.ReactNode;
+export function ResultTable({ heading, timeLabel = 'Latency', brief = false, children }: {
+  heading: string; timeLabel?: string; brief?: boolean; children: React.ReactNode;
 }) {
   return <table className="admin-table testing-result-table" aria-label={heading}><thead><tr>
     <th aria-label="expand" /><th>{heading}</th><th>Status</th>
-    <th>Score</th><th>{timeLabel}</th><th>Error</th>
+    <th>{brief ? 'Total Score' : 'Score'}</th>{brief && <ClaimHeaders />}<th>{timeLabel}</th><th>Error</th>
   </tr></thead><tbody>{children}</tbody></table>;
 }
 
@@ -187,6 +188,13 @@ export const BriefSectionTitle = ({ template, heading, number }: { template: str
   </td>
 );
 
+export function RemainingSections({ sections }: { sections?: SectionLabel[] }) {
+  return <>{sections?.map((section, index) => (
+    <tr key={section.number || index}><td /><BriefSectionTitle {...section} />
+      <td>{index === 0 ? 'Running' : 'Queued'}</td><td colSpan={5} /></tr>
+  ))}</>;
+}
+
 const ResultToggle = ({expanded, label}: {expanded: boolean; label: string}) => (
   <td className="testing-result-caret">
     <button type="button" className="testing-row-toggle" aria-expanded={expanded}
@@ -197,7 +205,7 @@ const ResultToggle = ({expanded, label}: {expanded: boolean; label: string}) => 
 );
 
 type SectionLabel = { template: string; heading: string; number?: string };
-type ResultData = Pick<TestResult, 'status' | 'actual_output' | 'brief_evidence' | 'score' | 'latency_ms' | 'error_message' | 'assertion_results'>;
+type ResultData = Pick<TestResult, 'factual_claim_mean_score' | 'factual_claim_pass_rate' | 'status' | 'actual_output' | 'brief_evidence' | 'score' | 'latency_ms' | 'error_message' | 'assertion_results'>;
 
 function Expectations({ result, template }: { result: ResultData; template: boolean }) {
   const grades = result.assertion_results || [];
@@ -210,19 +218,25 @@ function Expectations({ result, template }: { result: ResultData; template: bool
   </div>;
 }
 
-export const ResultRow: React.FC<{ result: ResultData; input?: Record<string, unknown>; savedSection?: SectionLabel }> = ({
-  result,
-  input,
-  savedSection,
-}) => {
-  const [expanded, setExpanded] = useState(false);
-  const [showOutput, setShowOutput] = useState(false);
-  const assignment = result.actual_output?.assignment as Record<string, unknown> | undefined;
+function resultLabels(input?: Record<string, unknown>, assignment?: Record<string, unknown>, savedSection?: SectionLabel) {
   const topic = str(assignment?.topic) || str(input?.query);
   const heading = savedSection?.heading || str(assignment?.heading) || str(input?.heading);
   const label = savedSection || (assignment?.template_name ? {
     template: str(assignment.template_name), heading, number: str(assignment.heading_number),
   } : null);
+  return { topic, heading, label };
+}
+
+export const ResultRow: React.FC<{ result: ResultData; input?: Record<string, unknown>; savedSection?: SectionLabel; brief?: boolean }> = ({
+  result,
+  input,
+  savedSection,
+  brief = false,
+}) => {
+  const [expanded, setExpanded] = useState(false);
+  const [showOutput, setShowOutput] = useState(false);
+  const assignment = result.actual_output?.assignment as Record<string, unknown> | undefined;
+  const { topic, heading, label } = resultLabels(input, assignment, savedSection);
   const warnings = resultWarnings(result.actual_output);
   return (
     <>
@@ -242,6 +256,7 @@ export const ResultRow: React.FC<{ result: ResultData; input?: Record<string, un
           </span>
         </td>
         <td>{formatScore(result.score)}</td>
+        {brief && <ClaimCells stats={result} />}
         <td>{formatMs(result.latency_ms)}</td>
         <td className={result.error_message ? 'testing-result-error' : 'testing-result-warning'}>
           {result.error_message || warnings.join('; ')}
@@ -249,7 +264,7 @@ export const ResultRow: React.FC<{ result: ResultData; input?: Record<string, un
       </tr>
       {expanded && (
         <tr className="testing-result-detail-row">
-          <td colSpan={6}>
+          <td colSpan={brief ? 8 : 6}>
             <div className="testing-result-detail">
               <ResultQuery topic={topic} heading={heading} input={input} />
               <GeneratedSection result={result} label={savedSection ? "Saved section" : "Generated section"} />

@@ -90,7 +90,12 @@ export interface RunProgress {
   total: number;
 }
 
-export interface SummaryStats {
+export interface FactualClaimMetrics {
+  factual_claim_mean_score?: number | null;
+  factual_claim_pass_rate?: number | null;
+}
+
+export interface SummaryStats extends FactualClaimMetrics {
   total: number;
   passed: number;
   failed: number;
@@ -136,7 +141,7 @@ export interface BriefEvalEvidence {
   references: BriefEvalReference[];
 }
 
-export interface TestResult {
+export interface TestResult extends FactualClaimMetrics {
   id: string;
   experiment_id: string;
   run_id?: string | null;
@@ -187,7 +192,9 @@ export interface CheckSectionStats {
   flagged_share: number;
 }
 
-export interface CheckSummaryStats {
+export interface CheckSummaryStats extends FactualClaimMetrics {
+  pass_rate?: number;
+  mean_score?: number | null;
   section_counts?: Record<ResultStatus, number>;
   total?: number;
   verdicts?: Record<CitationVerdict, number>;
@@ -288,7 +295,7 @@ export interface BriefCitationCheckPassage {
   error_message?: string | null;
 }
 
-export type BriefSectionReview = Pick<TestResult, 'actual_output' | 'brief_evidence' | 'assertion_results' | 'status' | 'score' | 'latency_ms' | 'error_message'> & {
+export type BriefSectionReview = FactualClaimMetrics & Pick<TestResult, 'actual_output' | 'brief_evidence' | 'assertion_results' | 'status' | 'score' | 'latency_ms' | 'error_message'> & {
   section_id: string; heading: string; number: string;
 };
 
