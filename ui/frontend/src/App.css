@@ -12323,6 +12323,10 @@ a.admin-citation-clickable:hover {
   min-width: 15rem;
 }
 
+.testing-saved-briefs-table .testing-last-check-heading {
+  min-width: 14rem;
+}
+
 .testing-saved-briefs-table .testing-brief-section-title {
   overflow-wrap: break-word;
 }

@@ -162,7 +162,7 @@ const BriefCheckList: React.FC<BriefCheckListProps> = ({ modelCombo, onOpenCheck
                 <th>Sections</th>
                 <th>Cited passages</th>
                 <th>Pass rate</th><th>Mean Total Score</th><ClaimHeaders /><th>Duration</th>
-                <th>Last check</th>
+                <th className="testing-last-check-heading">Last check</th>
                 <th></th>
               </tr>
             </thead>
