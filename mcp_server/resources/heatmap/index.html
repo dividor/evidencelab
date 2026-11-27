@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Evidence Lab Heatmapper</title>
+  <style>
+    :root {
+      font-family: var(--font-sans, system-ui, sans-serif);
+      color: var(--color-text-primary, CanvasText);
+      background: var(--color-background-primary, Canvas);
+      --grid-line: color-mix(in srgb, currentColor 16%, transparent);
+      --cell-color: light-dark(#6bbdb4, #195c59);
+      --accent: light-dark(#155b54, #8ed8ca);
+    }
+    [hidden] { display: none !important; }
+    body { margin: 0; padding: .8rem; font-size: .875rem; }
+    h1 { font-size: 1.15rem; margin: 0 0 .6rem; }
+    h2 { font-size: 1rem; margin: 0; }
+    label { display: grid; gap: .25rem; font-weight: 600; }
+    :where(select, textarea, button) { font: inherit; }
+    :where(select, textarea, button):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    select, textarea, button { padding: .35rem .5rem; border: 1px solid var(--grid-line); border-radius: .35rem; }
+    button:not(:disabled) { cursor: pointer; }
+    .setup, .actions { display: flex; align-items: end; flex-wrap: wrap; gap: .5rem .8rem; }
+    .setup label { min-width: 8rem; }
+    select { max-width: 14rem; }
+    #query-field { margin: .5rem 0; }
+    #query-field textarea { max-width: 30rem; }
+    #status { margin: .5rem 0; }
+    #viewport { overflow-x: auto; margin: .6rem 0; }
+    table { border-spacing: .2rem; text-align: center; font-variant-numeric: tabular-nums; }
+    caption { text-align: left; margin-bottom: .3rem; font-weight: 600; }
+    th { min-width: 3.6rem; font-size: .8rem; padding: .2rem; }
+    tbody th { text-align: left; min-width: 7rem; max-width: 14rem; overflow-wrap: anywhere; }
+    td { padding: 0; }
+    td button {
+      width: 100%; min-height: 2rem; color: inherit;
+      background: color-mix(in srgb, var(--cell-color) var(--fill), transparent);
+    }
+    td button[aria-pressed="true"] { border: 2px solid var(--accent); font-weight: 700; }
+    #details { border-top: 1px solid var(--grid-line); margin-top: .8rem; padding-top: .7rem; }
+    #documents { padding-inline-start: 1.25rem; }
+    #documents li { margin-bottom: .35rem; overflow-wrap: anywhere; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Heatmapper</h1>
+    <div id="controls" hidden>
+      <div class="setup">
+        <label>Rows <select id="rows"></select></label>
+        <label>Columns <select id="columns"></select></label>
+        <button id="generate" type="button">Generate</button>
+      </div>
+      <label id="query-field" hidden>Search queries, one per row
+        <textarea id="queries" rows="3" maxlength="2003"></textarea>
+      </label>
+    </div>
+    <p id="status" role="status">Loading the heatmap…</p>
+    <div id="viewport" tabindex="0" aria-label="Heatmap grid" hidden></div>
+    <a id="open" hidden>Open in Evidence Lab</a>
+    <section id="details" aria-labelledby="cell-title" hidden>
+      <h2 id="cell-title"></h2>
+      <p id="cell-status" role="status"></p>
+      <ol id="documents"></ol>
+      <div class="actions">
+        <button id="more" hidden>Show more documents</button>
+        <button id="ask" disabled>Ask Claude about this cell</button>
+      </div>
+    </section>
+  </main>
+  <!-- HEATMAPPER_SCRIPT -->
+</body>
+</html>

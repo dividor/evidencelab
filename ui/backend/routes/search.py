@@ -104,7 +104,8 @@ def _convert_region_to_doc_ids(core_filters: Dict[str, Any], pg) -> None:
     region = core_filters.pop("region", None)
     if not region:
         return
-    doc_ids = pg.fetch_doc_ids_by_region(region)
+    selection = ",".join(region) if isinstance(region, list) else region
+    doc_ids = pg.fetch_doc_ids_by_region(selection)
     _intersect_doc_id_filter(core_filters, doc_ids)
 
 
@@ -182,9 +183,12 @@ def _convert_src_fields_to_doc_ids(
         raw_key = src_field_mapping.get(core_field)
         if not raw_key:
             continue
-        values = [
-            v.strip() for v in str(core_filters.pop(core_field)).split(",") if v.strip()
-        ]
+        selection = core_filters.pop(core_field)
+        values = (
+            selection
+            if isinstance(selection, list)
+            else [v.strip() for v in selection.split(",") if v.strip()]
+        )
         _intersect_doc_id_filter(
             core_filters, doc_ids_from_pg_jsonb(pg, raw_key, values)
         )
@@ -529,7 +533,7 @@ def _build_facet_filter(core_filters: Dict[str, Any], data_source: Optional[str]
         if not value or core_field.endswith("_min") or core_field.endswith("_max"):
             continue
         storage_field = resolve_storage_field(core_field, data_source)
-        if core_field == "published_year":
+        if core_field == "published_year" and not isinstance(value, (list, tuple, set)):
             value = str(value)
         facet_conditions.append(
             qmodels.FieldCondition(key=storage_field, match=_filter_match(value))
@@ -756,6 +760,37 @@ def _apply_post_retrieval_boosts(
     return results
 
 
+def prepare_chunk_results(
+    *,
+    pg,
+    db,
+    results,
+    data_source,
+    source,
+    limit,
+    min_chunk_size,
+    query,
+    field_boost,
+    field_boost_fields,
+    auto_min_score,
+    deduplicate,
+):
+    """Build and rank the same display results for Search and Heatmapper."""
+    built = _fetch_and_build_results(pg, results, data_source, limit, min_chunk_size)
+    if built is None:
+        return None
+    return _apply_post_retrieval_boosts(
+        built,
+        query,
+        field_boost,
+        field_boost_fields,
+        auto_min_score,
+        deduplicate,
+        db,
+        source,
+    )
+
+
 def _split_facet_values(raw_counts) -> List[str]:
     """Expand raw facet counts into individual values, splitting comma-separated entries."""
     values: set = set()
@@ -942,22 +977,23 @@ async def search(
 
         t2 = time.time()
         effective_limit = wide_limit * wide_group_size if wide_search else limit
-        filtered_results = _fetch_and_build_results(
-            pg, results, data_source, effective_limit, min_chunk_size
+        filtered_results = await run_in_threadpool(
+            prepare_chunk_results,
+            pg=pg,
+            db=db,
+            results=results,
+            data_source=data_source,
+            source=source,
+            limit=effective_limit,
+            min_chunk_size=min_chunk_size,
+            query=q,
+            field_boost=field_boost,
+            field_boost_fields=field_boost_fields,
+            auto_min_score=auto_min_score,
+            deduplicate=deduplicate,
         )
         if filtered_results is None:
             return SearchResponse(results=[], total=0, query=q, filters={})
-
-        filtered_results = _apply_post_retrieval_boosts(
-            filtered_results,
-            q,
-            field_boost,
-            field_boost_fields,
-            auto_min_score,
-            deduplicate,
-            db,
-            source,
-        )
 
         t3 = time.time()
         logger.info("[TIMING] post_build: %.3fs", t3 - t2)
@@ -1078,6 +1114,30 @@ def _format_document_result(
     )
 
 
+DOCSEARCH_DEFAULT_LIMIT = 50000
+
+
+def find_document_points(*, q, limit, core_filters, source, db, pg):
+    """Select indexed document hits using the same filters as /docsearch."""
+    indexed_doc_ids = _get_indexed_doc_ids(pg, source)
+    if not indexed_doc_ids:
+        return [], None, SearchResponse(results=[], total=0, query=q, filters={})
+    _resolve_docsearch_filters(core_filters, db, pg, source)
+    title_filter = core_filters.get("title")
+    early_response = _handle_title_filter(pg=pg, core_filters=core_filters, q=q)
+    if early_response:
+        return [], title_filter, early_response
+    combined_filter = _build_docsearch_filters(q, core_filters, indexed_doc_ids, db)
+    if combined_filter is None:
+        return (
+            [],
+            title_filter,
+            SearchResponse(results=[], total=0, query=q, filters={}),
+        )
+    results = db._scroll_documents(query_filter=combined_filter, end_idx=limit)
+    return results[:limit], title_filter, None
+
+
 @router.get("/docsearch", response_model=SearchResponse)
 @limiter.limit(RATE_LIMIT_SEARCH)
 async def docsearch(
@@ -1086,7 +1146,7 @@ async def docsearch(
         "",
         description="Search query for document title/summary (empty for filter-only)",
     ),
-    limit: int = Query(50000, description="Maximum results"),
+    limit: int = Query(DOCSEARCH_DEFAULT_LIMIT, description="Maximum results"),
     # Core field names (mapped to source fields internally)
     organization: Optional[str] = Query(None, description="Filter by organization"),
     title: Optional[str] = Query(None, description="Filter by title (partial match)"),
@@ -1109,47 +1169,30 @@ async def docsearch(
     pg = get_pg_for_source(source)
 
     try:
-        indexed_doc_ids = _get_indexed_doc_ids(pg, source)
-        if not indexed_doc_ids:
-            return SearchResponse(results=[], total=0, query=q, filters={}, facets=None)
-
         core_filters = _build_core_filters(
             organization, title, published_year, document_type, country, language
         )
         add_dynamic_filters(core_filters, request.query_params, source)
-        # Fields faceted from PostgreSQL (language, region, src_* JSONB) aren't
-        # on the Qdrant document payload — resolve them to a doc_id constraint
-        # so Heatmapper counts match the facets, then expand "; "-joined
-        # payload values. Both query the databases, hence the threadpool.
-        await run_in_threadpool(
-            _resolve_docsearch_filters,
+        results, title_filter, early_response = await run_in_threadpool(
+            find_document_points,
+            q=q,
+            limit=limit,
             core_filters=core_filters,
+            source=source,
             db=db,
             pg=pg,
-            source=source,
-        )
-
-        title_filter = core_filters.get("title")
-        early_response = await run_in_threadpool(
-            _handle_title_filter, pg=pg, core_filters=core_filters, q=q
         )
         if early_response:
             return early_response
 
-        combined_filter = _build_docsearch_filters(q, core_filters, indexed_doc_ids, db)
-        if combined_filter is None:
-            return SearchResponse(results=[], total=0, query=q, filters={})
-
-        results = await run_in_threadpool(
-            db._scroll_documents, query_filter=combined_filter, end_idx=limit
+        doc_ids = [str(point.id) for point in results if point.id]
+        sys_fields_map = (
+            await run_in_threadpool(pg.fetch_docs, doc_ids=doc_ids) if doc_ids else {}
         )
-
-        doc_ids = [str(point.id) for point in results[:limit] if point.id]
-        sys_fields_map = pg.fetch_docs(doc_ids) if doc_ids else {}
 
         documents = [
             result
-            for point in results[:limit]
+            for point in results
             if (result := _format_document_result(point, sys_fields_map, source))
             is not None
         ]
@@ -1202,6 +1245,20 @@ async def search_facet_values_endpoint(
     except Exception as e:
         logger.error(f"Facet search error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def read_filter_facets(*, source, db, pg, fields, core_filters) -> Facets:
+    """Read the corpus-wide facet values used by the web and MCP heatmaps."""
+    facet_filter = _build_facet_filter(core_filters, source)
+    values, ranges = build_facets_from_db(
+        db,
+        fields,
+        facet_filter,
+        resolve_storage_field,
+        pg=pg,
+        src_field_mapping=get_src_field_mapping(source),
+    )
+    return Facets(facets=values, filter_fields=fields, range_fields=ranges)
 
 
 @router.get("/facets", response_model=Facets)
@@ -1295,19 +1352,13 @@ async def get_facets(
             )
 
         build_needed_fields(filter_fields_config, source)
-        facet_filter = _build_facet_filter(core_filters, source)
-        facets_result, range_fields = build_facets_from_db(
-            db,
-            filter_fields_config,
-            facet_filter,
-            resolve_storage_field,
+        return await run_in_threadpool(
+            read_filter_facets,
+            source=source,
+            db=db,
             pg=pg,
-            src_field_mapping=src_field_mapping,
-        )
-        return Facets(
-            facets=facets_result,
-            filter_fields=filter_fields_config,
-            range_fields=range_fields,
+            fields=filter_fields_config,
+            core_filters=core_filters,
         )
 
     except ValueError as e:

@@ -15,6 +15,8 @@ MCP_URL = os.getenv("MCP_BASE_URL", "http://mcp:8001") + "/mcp"
 API_KEY = os.getenv("API_SECRET_KEY", os.getenv("REACT_APP_API_KEY", ""))
 # The CI config lists several data sources, so a tool call must name one.
 DATA_SOURCE = "uneg"
+API_URL = os.getenv("API_BASE_URL") or "http://api:8000"
+HEATMAP_URI = "ui://evidencelab/heatmap.html"
 
 
 def _mcp_call(method: str, params: dict | None = None, call_id: int = 1) -> dict:
@@ -50,6 +52,13 @@ def _tool_call(name: str, arguments: dict) -> dict:
     pytest.fail("No text content in tool response")
 
 
+def _structured_tool(name: str, request: dict) -> dict:
+    body = _mcp_call("tools/call", {"name": name, "arguments": {"request": request}})
+    result = body["result"]
+    assert not result["isError"], result["content"]
+    return result["structuredContent"]
+
+
 class TestMCPIntegration:
     """MCP server integration tests using pipeline-ingested data."""
 
@@ -74,7 +83,72 @@ class TestMCPIntegration:
         names = {t["name"] for t in tools}
         assert "search" in names
         assert "get_document" in names
+        assert {"heatmap", "heatmap_cell"} <= names
         assert "ask_assistant" not in names  # removed — use A2A for research
+
+    def test_heatmap_resource(self):
+        data = _mcp_call("resources/read", {"uri": HEATMAP_URI})
+        resource = data["result"]["contents"][0]
+        assert resource["uri"] == HEATMAP_URI
+        assert resource["mimeType"] == "text/html;profile=mcp-app"
+        assert '<script type="module">' in resource["text"]
+        assert "<title>Evidence Lab Heatmapper</title>" in resource["text"]
+
+    def test_heatmap_document_counts_and_drill_down_match_web_calls(self):
+        query = {"data_source": DATA_SOURCE}
+        facets = requests.get(
+            f"{API_URL}/facets",
+            params=query,
+            headers={"X-API-Key": API_KEY},
+            timeout=30,
+        )
+        facets.raise_for_status()
+        values = facets.json()["facets"]
+        grid = _structured_tool(
+            "heatmap",
+            {
+                **query,
+                "row_dimension": "organization",
+                "row_values": [item["value"] for item in values["organization"][:2]],
+                "column_dimension": "published_year",
+                "column_values": [
+                    item["value"] for item in values["published_year"][:2]
+                ],
+            },
+        )
+        checked = []
+        for row_index, row in enumerate(grid["rows"]["values"]):
+            for column_index, column in enumerate(grid["columns"]["values"]):
+                cell = requests.get(
+                    f"{API_URL}/docsearch",
+                    params={
+                        **query,
+                        "organization": row["value"],
+                        "published_year": column["value"],
+                    },
+                    headers={"X-API-Key": API_KEY},
+                    timeout=30,
+                )
+                cell.raise_for_status()
+                assert grid["counts"][row_index][column_index] == cell.json()["total"]
+                if cell.json()["total"]:
+                    checked.append((row_index, column_index, cell.json()["results"]))
+        assert checked, "The seeded grid must exercise a populated cell"
+        row_index, column_index, documents = checked[0]
+        detail = _structured_tool(
+            "heatmap_cell",
+            {
+                "grid": grid["request"],
+                "row": row_index,
+                "column": column_index,
+                "cutoff": grid["cutoff"],
+                "fingerprint": grid["fingerprints"][row_index][column_index],
+            },
+        )
+        assert detail["count"] == len(documents)
+        assert [document["doc_id"] for document in detail["documents"]] == [
+            document["doc_id"] for document in documents[:20]
+        ]
 
     def test_tools_have_descriptions(self):
         """All tools have non-empty descriptions."""

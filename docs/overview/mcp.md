@@ -6,7 +6,7 @@ Evidence Lab can be connected to AI platforms and agent frameworks via two open 
 |---|---|---|
 | **Protocol** | Model Context Protocol | Agent-to-Agent |
 | **Used by** | LLMs (Claude, ChatGPT) calling tools | AI agents delegating full research tasks |
-| **Returns** | Raw passages, document metadata | Synthesised answers with citations |
+| **Returns** | Raw passages, document metadata, interactive heatmaps | Synthesised answers with citations |
 | **URL** | `/mcp` | `/a2a` |
 | **Auth** | OAuth 2.0 or API Key | API Key or Bearer token |
 
@@ -56,6 +56,28 @@ Retrieve full metadata for a specific document by ID.
 |-----------|---------|-------------|
 | `doc_id` | *required* | Document identifier (from search results) |
 | `data_source` | `"uneg"` | Collection containing the document |
+
+#### `heatmap`
+
+Compare document or paragraph counts in an interactive grid. With an MCP Apps
+host such as Claude on the web or desktop, you can change the axes, select a
+cell to see the documents, ask Claude about it, and open the grid in Evidence
+Lab. Text-only clients can read the counts from the tool result.
+
+Try asking Claude to use the Evidence Lab Heatmapper. Put “school feeding”
+and “education in emergencies” on the rows and publication years 2022, 2023,
+and 2024 on the columns. Use the UNEG data source and count Documents.
+
+Pass the options in the tool's `request` object. Supply `data_source`,
+`row_dimension`, and `column_dimension`. Use facet names such as
+`organization` and `published_year`. Add `row_values`, `column_values`, or
+`filters` to narrow the grid. Use `row_dimension: "queries"` with
+`row_queries` for separate topics, or `query` for a single topic across
+attribute rows. Set `metric` to `documents` or `chunks`. A grid has at
+most four rows, six columns, and 24 cells.
+
+See [Heatmapper](../using-evidence-lab/heatmapper.md#heatmapper-in-claude)
+for what counts describe and which controls are available.
 
 ### Authentication
 

@@ -8,6 +8,14 @@
 # BuildKit builds only the stages the chosen target needs, so `--target runtime`
 # never downloads the test browsers.
 
+# Assemble the MCP App without Node or network access at runtime.
+FROM node:22-alpine AS heatmapper-app
+WORKDIR /build
+COPY mcp_server/resources/heatmap/package*.json ./
+RUN npm ci --legacy-peer-deps --ignore-scripts
+COPY mcp_server/resources/heatmap/build.mjs mcp_server/resources/heatmap/index.html mcp_server/resources/heatmap/view.js ./
+RUN npm run build
+
 # Stage 1: system packages and Python dependencies shared by every target
 FROM python:3.11-slim AS base
 
@@ -70,6 +78,8 @@ ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
 FROM base AS runtime
 
 COPY . .
+COPY --from=heatmapper-app /build/dist/heatmap.html /opt/evidencelab/mcp-apps/heatmap.html
+ENV MCP_APP_ASSET_DIR=/opt/evidencelab/mcp-apps
 
 # Ensure /app/data is a directory so bind-mounts work even if the repo has a symlink
 RUN rm -rf /app/data && mkdir -p /app/data
@@ -80,6 +90,8 @@ CMD ["python", "pipeline/download.py"]
 FROM test-tools AS test
 
 COPY . .
+COPY --from=heatmapper-app /build/dist/heatmap.html /opt/evidencelab/mcp-apps/heatmap.html
+ENV MCP_APP_ASSET_DIR=/opt/evidencelab/mcp-apps
 
 RUN rm -rf /app/data && mkdir -p /app/data
 
