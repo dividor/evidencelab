@@ -896,6 +896,23 @@ async def test_execute_when_experiment_no_longer_pending_then_not_run(monkeypatc
     assert experiment.summary_stats == {"error": "Cancelled by user"}
 
 
+async def test_execute_when_experiment_is_a_draft_then_run_directly(monkeypatch):
+    """Only the Run route queues an experiment as pending; a draft (or a
+    completed one run again) executed directly is nobody else's and runs."""
+    case = TestCase(id=uuid.uuid4(), input={"query": "a"})
+    _fake_engine(monkeypatch, [case])
+    experiment = _planned_experiment(case.id, status="draft")
+    dataset = TestDataset(
+        id=experiment.dataset_id, capability="search", data_source="uneg"
+    )
+    session = _FakeSession(dataset, experiment)
+
+    await _execute(session, experiment)
+
+    assert experiment.status == "completed"
+    assert [type(r).__name__ for r in session.added] == ["TestRun", "TestResult"]
+
+
 async def test_execute_when_run_cancelled_midway_then_stops_keeping_cancel(monkeypatch):
     c1, c2 = uuid.uuid4(), uuid.uuid4()
     cases = [

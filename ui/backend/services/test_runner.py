@@ -28,6 +28,7 @@ from ui.backend.auth.testing_models import (
     CAPABILITY_BRIEF,
     CAPABILITY_SEARCH,
     EXPERIMENT_COMPLETED,
+    EXPERIMENT_DRAFT,
     EXPERIMENT_FAILED,
     EXPERIMENT_PENDING,
     EXPERIMENT_RUNNING,
@@ -1145,6 +1146,11 @@ async def _record_run_usage(
         logger.warning("Failed to record evaluation run usage", exc_info=True)
 
 
+# Statuses a runner may take over. The Run route queues as pending; a draft
+# or completed experiment can be executed directly (tests, scripts).
+_CLAIMABLE = (EXPERIMENT_PENDING, EXPERIMENT_DRAFT, EXPERIMENT_COMPLETED)
+
+
 async def _execute(
     session, experiment: TestExperiment, triggered_by_user_id=None
 ) -> None:
@@ -1165,19 +1171,20 @@ async def _execute(
         created_by_user_id=triggered_by_user_id or experiment.created_by_user_id,
     )
     session.add(run)
-    # The experiment is ours only while it still says pending: a cancel, or
-    # orphan recovery on another api copy, may have failed it meanwhile.
+    # The experiment is ours only while nobody else holds it: a running row
+    # belongs to another api copy, and a failed one was cancelled, or failed
+    # as orphaned, after it was queued.
     claimed = await write_while(
         session,
         TestExperiment,
         experiment_id,
-        (EXPERIMENT_PENDING,),
+        _CLAIMABLE,
         status=EXPERIMENT_RUNNING,
         started_at=run.started_at,
         finished_at=None,
     )
     if not claimed:
-        logger.info("Experiment %s is no longer pending; not run", experiment_id)
+        logger.info("Experiment %s is running or was stopped; not run", experiment_id)
         return
     await session.refresh(run)
 
