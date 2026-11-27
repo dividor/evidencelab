@@ -5,6 +5,7 @@ from starlette.concurrency import run_in_threadpool
 
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.brief_experiment_claims import brief_claim_evidence
+from ui.backend.services.citation_fidelity import locate_quote, quotable_text
 
 
 class SupportingQuote(BaseModel):
@@ -44,8 +45,6 @@ class ClaimGrades(BaseModel):
 
 
 def _evidence_issue(grade, claim, sources):
-    from ui.backend.services.citation_fidelity import locate_quote, quotable_text
-
     if grade.factual and grade.score > 0 and not grade.supporting_quotes:
         return "The judge gave credit without a supporting quote."
     for quote in grade.supporting_quotes:
@@ -152,6 +151,40 @@ def _unresolved_grade(number, grade, issue):
     }
 
 
+def _quote_locations(claim, sources, previous):
+    """Locate the prior reply's quotes only in the references on this sentence."""
+    excerpts = {
+        label: quotable_text(sources[label])
+        for label in claim["citations"]
+        if label in sources
+    }
+    locations = []
+    for quote in previous.get("supporting_quotes", []):
+        matches = {}
+        for label, excerpt in excerpts.items():
+            status = locate_quote(quote["quote"], [excerpt])["status"]
+            if status != "missing":
+                matches[label] = status
+        locations.append({**quote, "found_in": matches})
+    return locations
+
+
+def _repair_prompt(template, pending, sources, issues, ungraded):
+    return template.render(
+        repair=[c["claim"] for c in pending],
+        problems=issues,
+        quote_locations={
+            c["claim"]: _quote_locations(c, sources, ungraded[c["claim"]])
+            for c in pending
+        },
+        uncited=[
+            c["claim"]
+            for c in pending
+            if not any(sources.get(k, {}).get("text") for k in c["citations"])
+        ],
+    )
+
+
 async def _grade_batch(claims, sources, context, template, system, output, model):
     from ui.backend.services.test_runner import _judge_call
 
@@ -166,14 +199,8 @@ async def _grade_batch(claims, sources, context, template, system, output, model
             sources={k: v for k, v in sources.items() if k in labels},
         )
         if issues:
-            prompt += "\n" + template.render(
-                repair=[c["claim"] for c in pending],
-                problems=issues,
-                uncited=[
-                    c["claim"]
-                    for c in pending
-                    if not any(sources.get(k, {}).get("text") for k in c["citations"])
-                ],
+            prompt += "\n" + await run_in_threadpool(
+                _repair_prompt, template, pending, sources, issues, ungraded
             )
         prompts.append(system + "\n\n" + prompt)
         raw, usage = await _judge_call(prompt, model, system, max_tokens=2400)

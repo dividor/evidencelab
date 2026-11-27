@@ -10,7 +10,7 @@ import ExperimentDetail from './testing/ExperimentDetail';
 import SavedEvaluationRecord from './testing/SavedEvaluationRecord';
 
 function DatasetsView({ id }: { id?: string }) {
-  const back = () => openAdminLocation({ page: 'testing' });
+  const back = () => openAdminLocation({ page: 'testing', testing: 'datasets' });
   const openDataset = (dataset: TestDataset) => openAdminLocation({ page: 'testing', dataset: dataset.id });
   const viewExperiments = (dataset: TestDataset) =>
     openAdminLocation({ page: 'testing', testing: 'experiments', dataset: dataset.id });
@@ -62,12 +62,12 @@ function ExperimentsView() {
 
 export default function TestingManager() {
   const { testing, dataset } = useAdminLocation();
-  const experiments = testing === 'experiments';
+  const experiments = testing === 'experiments' || (!testing && !dataset);
   return (
     <div className="admin-tab-content testing-manager">
       <div className="testing-subnav">
         <button className={`btn-sm ${experiments ? '' : 'btn-primary'}`}
-          onClick={() => openAdminLocation({ page: 'testing' })}>Datasets</button>
+          onClick={() => openAdminLocation({ page: 'testing', testing: 'datasets' })}>Datasets</button>
         <button className={`btn-sm ${experiments ? 'btn-primary' : ''}`}
           onClick={() => openAdminLocation({ page: 'testing', testing: 'experiments' })}>Experiments</button>
       </div>

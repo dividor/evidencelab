@@ -379,3 +379,58 @@ async def test_repair_prompt_shows_the_required_quote_fields_for_a_keyed_quote(
         in judge.await_args.args[0]
     )
     assert '{"citation":4,"quote":' in judge.await_args.args[0]
+
+
+async def test_repair_locates_quotes_across_only_the_claims_own_references(monkeypatch):
+    draft = {**output(), "summary": "Costs fell and demand rose [4, 9]."}
+    good, usage = reply([(1, 1, "Both changes were recorded.")])
+    correct = json.loads(good)
+    draft["sources"][1]["text"] = "Demand rose."
+    draft["sources"][2]["text"] = "Demand rose."
+    correct["claims"][0]["supporting_quotes"].append(
+        {"citation": 9, "quote": "Demand rose."}
+    )
+    wrong = json.loads(json.dumps(correct))
+    wrong["claims"][0]["supporting_quotes"][1]["citation"] = 4
+    judge = AsyncMock(
+        side_effect=[(json.dumps(answer), usage) for answer in (wrong, correct)]
+    )
+    monkeypatch.setattr(test_runner, "_judge_call", judge)
+    check = dict(type="brief_factual", rubric=RUBRIC)
+    result = evaluate_assertion(
+        check, draft, await judge_brief(draft, [check], "model")
+    )
+    prompt = judge.await_args.args[0]
+    assert '"found_in": {"9": "verbatim"}' in prompt
+    assert '"found_in": {"4": "verbatim"}' in prompt
+    assert '"8":' not in prompt
+    assert result["passed"] and result["score"] == 1
+
+
+async def test_quote_found_in_another_reference_cannot_automatically_award_credit(
+    monkeypatch,
+):
+    draft = {**output(), "summary": "The second report found costs fell [4, 9]."}
+    bad, usage = reply([(1, 1, "Costs fell.")])
+    response = json.loads(bad)
+    response["claims"][0]["supporting_quotes"][0]["citation"] = 9
+    grade = {
+        **response["claims"][0],
+        "supporting_quotes": [],
+        "score": 0,
+        "unmet": ["The second report did not report falling costs."],
+        "reason": "Only the first report observed a drop.",
+    }
+    judge = AsyncMock(
+        side_effect=[
+            (json.dumps(response), usage),
+            (json.dumps({"claims": [grade]}), usage),
+        ]
+    )
+    monkeypatch.setattr(test_runner, "_judge_call", judge)
+    check = dict(type="brief_factual", rubric=RUBRIC)
+    result = evaluate_assertion(
+        check, draft, await judge_brief(draft, [check], "model")
+    )
+    assert '"found_in": {"4": "verbatim"}' in judge.await_args.args[0]
+    assert result["claim_grades"][0]["verdict"] == "unsupported"

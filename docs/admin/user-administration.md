@@ -224,7 +224,7 @@ The panel has two sections:
 
 The **Group Settings** tab lets you configure default search behavior for each group. Users inherit these defaults when they log in, and can still override most of them in the UI; the models chosen on the **LLMs** tab they can't.
 
-You can refresh or bookmark an Admin page. In **Group Settings**, the address includes the selected group and settings tab. In **Testing (Experiments)**, it can reopen the saved dataset or experiment. Back and Forward move between the pages you visited. Save any form changes before refreshing.
+You can refresh or bookmark an Admin page. In **Group Settings**, the address includes the selected group and settings tab. In **Testing → Experiments**, it can reopen the saved dataset or experiment. Back and Forward move between the pages you visited. Save any form changes before refreshing.
 
 ![Admin Group Settings](../images/admin/group-settings.png)
 

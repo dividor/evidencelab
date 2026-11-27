@@ -10316,6 +10316,11 @@ sup.reference-number {
   transition: all 0.2s;
 }
 
+.admin-testing-choices {
+  width: 11rem;
+  right: auto;
+}
+
 .admin-tab:hover {
   color: var(--gray-700);
 }
