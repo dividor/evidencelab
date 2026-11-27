@@ -7,80 +7,160 @@
   <title>{{BRAND_NAME}} Heatmapper</title>
   <style>
     :root {
-      font-family: var(--font-sans, system-ui, sans-serif);
-      color: var(--color-text-primary, CanvasText);
-      background: var(--color-background-primary, Canvas);
-      --grid-line: color-mix(in srgb, currentColor 16%, transparent);
       --brand-primary: #4b778d;
       --brand-primary-light: #7aa8be;
       --brand-accent-dark: #334155;
-      --cell-color: light-dark(var(--brand-primary-light), var(--brand-primary));
-      --accent: light-dark(var(--brand-accent-dark), var(--brand-primary-light));
+      --font-body: "Open Sans";
+      --font-heading: Poppins;
+      --ink: light-dark(#253746, #e2ebf1);
+      --muted: light-dark(#4f6474, #aebec9);
+      --surface: light-dark(#fff, #1a232b);
+      --panel: light-dark(#f4f7f9, #202c35);
+      --line: light-dark(#d8e1e7, #364754);
+      --accent: light-dark(color-mix(in srgb, var(--brand-accent-dark) 45%, #203344), #b4d5e8);
+      --cell-color: light-dark(
+        color-mix(in srgb, var(--brand-primary-light) 85%, #fff),
+        color-mix(in srgb, var(--brand-primary) 46%, #202c35)
+      );
+      --cell-selected: light-dark(color-mix(in srgb, var(--brand-primary) 54%, #16394e), #a6cde3);
+      font-family: var(--font-body), system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--color-background-primary, Canvas);
     }
-    :root { {{BRAND_COLORS}} }
+    :root { {{BRAND_COLORS}} {{BRAND_FONT_FAMILIES}} }
     [hidden] { display: none !important; }
-    body { margin: 0; padding: .8rem; font-size: .875rem; }
-    header { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-bottom: .6rem; }
-    header img { display: block; height: auto; max-width: min(10rem, 100%); max-height: 1.8rem; }
-    h1 { font-size: 1.15rem; margin: 0; }
-    h2 { font-size: 1rem; margin: 0; }
-    label { display: grid; gap: .25rem; font-weight: 600; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: .85rem; font-size: .875rem; line-height: 1.55; }
+    main { max-width: 54rem; margin-inline: auto; }
+    h1, h2 { margin: 0; font-family: var(--font-heading), system-ui, sans-serif; font-weight: 600; line-height: 1.3; }
+    h1 { font-size: 1.25rem; }
+    h2 { font-size: 1rem; overflow-wrap: anywhere; }
+    header, .setup, .detail-heading, .brand, .actions {
+      display: flex;
+      align-items: center;
+      gap: .65rem;
+      flex-wrap: wrap;
+    }
+    header, .detail-heading { justify-content: space-between; }
+    header { margin-bottom: .9rem; }
+    .brand { flex: 1 1 auto; min-width: 0; }
+    .brand-mark {
+      border-radius: .35rem;
+      background: light-dark(transparent, #f5f8fb);
+      padding: .15rem .2rem;
+    }
+    .brand-mark img { display: block; width: auto; height: 1.9rem; max-width: 9rem; object-fit: contain; object-position: left; }
+    .brand-name { display: block; color: var(--muted); font: 600 .72rem/1.5 var(--font-body), system-ui, sans-serif; }
+    #open { display: inline-flex; gap: .25rem; align-items: baseline; font-size: .75rem; }
+    .workspace, #details { border: 1px solid var(--line); border-radius: .8rem; background: var(--surface); }
+    #controls { padding: .7rem .8rem; background: var(--panel); border-radius: .75rem .75rem 0 0; border-bottom: 1px solid var(--line); }
+    .setup { align-items: flex-end; }
+    .setup label { flex: 1 1 7rem; min-width: 0; }
+    label { display: grid; gap: .22rem; color: var(--muted); font-size: .75rem; font-weight: 600; }
     :where(select, textarea, button) { font: inherit; }
-    :where(select, textarea, button):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-    select, textarea, button { padding: .35rem .5rem; border: 1px solid var(--grid-line); border-radius: .35rem; }
+    select, textarea, button {
+      min-width: 0;
+      min-height: 2.35rem;
+      padding: .32rem .6rem;
+      border: 1px solid var(--line);
+      border-radius: .45rem;
+      color: var(--ink);
+      background: var(--surface);
+    }
+    select, textarea { width: 100%; font-size: .8125rem; }
+    textarea { resize: vertical; }
+    button { font-size: .8125rem; font-weight: 600; }
     button:not(:disabled) { cursor: pointer; }
-    .setup, .actions { display: flex; align-items: end; flex-wrap: wrap; gap: .5rem .8rem; }
-    .setup label { min-width: 8rem; }
-    select { max-width: 14rem; }
-    #query-field { margin: .5rem 0; }
-    #query-field textarea { max-width: 30rem; }
-    #status { margin: .5rem 0; }
-    #viewport { overflow-x: auto; margin: .6rem 0; }
-    table { border-spacing: .2rem; text-align: center; font-variant-numeric: tabular-nums; }
-    caption { text-align: left; margin-bottom: .3rem; font-weight: 600; }
-    th { min-width: 3.6rem; font-size: .8rem; padding: .2rem; }
-    tbody th { text-align: left; min-width: 7rem; max-width: 14rem; overflow-wrap: anywhere; }
+    button:disabled { opacity: .55; }
+    :where(a, select, textarea, button, #viewport):focus-visible { outline: 2px solid var(--cell-selected); outline-offset: 2px; }
+    .primary {
+      background: light-dark(color-mix(in srgb, var(--brand-accent-dark) 42%, #17354a), #b4d5e8);
+      color: light-dark(#fff, #172c3c);
+      border-color: transparent;
+    }
+    .primary:not(:disabled):hover { box-shadow: inset 0 0 0 2px light-dark(#ffffff44, #172c3c55); }
+    #query-field { margin-top: .55rem; }
+    .grid-content { padding: .6rem .8rem; }
+    #status, #cell-status { margin: 0; color: var(--muted); font-size: .75rem; }
+    #status:not(:empty) { margin-top: .35rem; }
+    #viewport { overflow-x: auto; border-radius: .35rem; }
+    table { width: 100%; border-spacing: .28rem; text-align: center; font-variant-numeric: tabular-nums; }
+    caption { text-align: left; color: var(--accent); font-weight: 600; padding: .15rem .28rem; }
+    th { min-width: 3.15rem; color: var(--muted); font-size: .75rem; font-weight: 600; padding: .15rem; }
+    thead th:first-child, tbody th { text-align: left; min-width: 5.6rem; max-width: 12rem; overflow-wrap: anywhere; }
+    thead th:first-child { width: 27%; }
     td { padding: 0; }
     td button {
-      width: 100%; min-height: 2rem; color: inherit;
-      background: color-mix(in srgb, var(--cell-color) var(--fill), transparent);
+      width: 100%;
+      min-height: 2.55rem;
+      padding-inline: .3rem;
+      border-color: transparent;
+      font-size: .9rem;
+      font-weight: 600;
+      background: color-mix(in srgb, var(--cell-color) var(--fill), var(--panel));
     }
-    td button[aria-pressed="true"] { border: 2px solid var(--accent); font-weight: 700; }
-    #details { border-top: 1px solid var(--grid-line); margin-top: .8rem; padding-top: .7rem; }
-    #documents { padding-inline-start: 1.25rem; }
-    #documents li { margin-bottom: .35rem; overflow-wrap: anywhere; }
-    a { color: var(--accent); }
+    td button:hover { border-color: var(--cell-selected); }
+    td button[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--cell-selected); }
+    #details { margin-top: .7rem; padding: .75rem .8rem; }
+    .detail-heading { column-gap: .9rem; row-gap: .35rem; }
+    .detail-heading > div { min-width: 0; }
+    #cell-title { margin-bottom: .15rem; }
+    #documents { margin: .6rem 0 0; padding: 0; list-style: none; }
+    #documents li { padding: .5rem 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+    .doc-title { display: block; font-size: .875rem; font-weight: 600; }
+    .doc-meta { display: block; margin-top: .1rem; color: var(--muted); font-size: .75rem; }
+    .actions { justify-content: center; }
+    .actions:has(button:not([hidden])) { padding-top: .5rem; }
+    a { color: var(--accent); text-decoration: underline; text-underline-offset: .18em; }
+    a:hover { text-decoration-thickness: .12em; }
+    @media (max-width: 420px) {
+      body { padding: .55rem; }
+      .setup { gap: .45rem; }
+      .grid-content, #details, #controls { padding-inline: .55rem; }
+    }
   </style>
 </head>
 <body>
   <main>
     <header>
-      <img src="{{BRAND_LOGO}}" alt="">
-      <h1>{{BRAND_NAME}} Heatmapper</h1>
-    </header>
-    <div id="controls" hidden>
-      <div class="setup">
-        <label>Rows <select id="rows"></select></label>
-        <label>Columns <select id="columns"></select></label>
-        <button id="generate" type="button">Generate</button>
+      <div class="brand">
+        <div class="brand-mark"><img src="{{BRAND_LOGO}}" alt=""></div>
+        <h1><span class="brand-name">{{BRAND_NAME}}</span> Heatmapper</h1>
       </div>
-      <label id="query-field" hidden>Search queries, one per row
-        <textarea id="queries" rows="3" maxlength="2003"></textarea>
-      </label>
+      <a id="open" hidden>Open in {{BRAND_NAME}} <span aria-hidden="true">↗</span></a>
+    </header>
+    <div class="workspace">
+      <div id="controls" hidden>
+        <div class="setup">
+          <label>Rows <select id="rows"></select></label>
+          <label>Columns <select id="columns"></select></label>
+          <button id="generate" type="button" class="primary">Generate</button>
+        </div>
+        <label id="query-field" hidden>Search queries, one per row
+          <textarea id="queries" rows="3" maxlength="2003"></textarea>
+        </label>
+      </div>
+      <div class="grid-content">
+        <div id="viewport" tabindex="0" role="region" aria-label="Heatmap grid" hidden></div>
+        <p id="status" role="status">Loading the heatmap…</p>
+      </div>
     </div>
-    <p id="status" role="status">Loading the heatmap…</p>
-    <div id="viewport" tabindex="0" aria-label="Heatmap grid" hidden></div>
-    <a id="open" hidden>Open in {{BRAND_NAME}}</a>
     <section id="details" aria-labelledby="cell-title" hidden>
-      <h2 id="cell-title"></h2>
-      <p id="cell-status" role="status"></p>
-      <ol id="documents"></ol>
+      <div class="detail-heading">
+        <div>
+          <h2 id="cell-title"></h2>
+          <p id="cell-status" role="status"></p>
+        </div>
+        <button id="ask" class="primary" disabled>Ask Claude about this cell</button>
+      </div>
+      <ul id="documents" role="list"></ul>
       <div class="actions">
         <button id="more" hidden>Show more documents</button>
-        <button id="ask" disabled>Ask Claude about this cell</button>
       </div>
     </section>
   </main>
+  <script type="application/json" id="stock-fonts"><!-- STOCK_FONTS --></script>
+  <script type="application/json" id="brand-fonts">{{BRAND_FONTS}}</script>
   <!-- HEATMAPPER_SCRIPT -->
 </body>
 </html>

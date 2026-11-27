@@ -7,12 +7,16 @@ import re
 from html import escape
 from pathlib import Path
 
+from mcp_server.resources.heatmap_fonts import heatmap_fonts
+
 _BRAND_COLORS = ("--brand-primary", "--brand-primary-light", "--brand-accent-dark")
 _COLOR_DECLARATION = re.compile(
     rf"(?:^|(?<=[{{;]))\s*({'|'.join(_BRAND_COLORS)})\s*:\s*([^;}}]*)"
 )
 _HEX_COLOR = re.compile(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})")
-_TEMPLATE_MARKER = re.compile(r"\{\{(BRAND_NAME|BRAND_LOGO|BRAND_COLORS)\}\}")
+_TEMPLATE_MARKER = re.compile(
+    r"\{\{(BRAND_NAME|BRAND_LOGO|BRAND_COLORS|BRAND_FONT_FAMILIES|BRAND_FONTS)\}\}"
+)
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _MAX_LOGO_BYTES = 512 * 1024
 
@@ -30,11 +34,14 @@ def _site_name(directory: Path | None) -> str:
     return name.strip()
 
 
-def _brand_colors(directory: Path | None) -> str:
+def _theme_css(directory: Path | None) -> str:
     theme = directory / "theme.css" if directory else None
     if theme is None or not theme.exists():
         return ""
-    css = re.sub(r"/\*.*?\*/", "", theme.read_text(encoding="utf-8"), flags=re.DOTALL)
+    return re.sub(r"/\*.*?\*/", "", theme.read_text(encoding="utf-8"), flags=re.DOTALL)
+
+
+def _brand_colors(css: str) -> str:
     colors = {}
     for token, value in _COLOR_DECLARATION.findall(css):
         color = value.strip()
@@ -43,7 +50,7 @@ def _brand_colors(directory: Path | None) -> str:
                 "Heatmapper theme colors must be three- or six-digit hex values."
             )
         colors[token] = color
-    return "; ".join(f"{token}: {color}" for token, color in colors.items())
+    return "".join(f"{token}: {color};" for token, color in colors.items())
 
 
 def _logo_url(directory: Path | None, stock_logo: Path) -> str:
@@ -58,12 +65,16 @@ def _logo_url(directory: Path | None, stock_logo: Path) -> str:
 
 def apply_heatmap_branding(html: str, stock_logo: Path) -> str:
     configured = os.getenv("MCP_BRANDING_DIR")
-    directory = Path(configured) if configured else None
+    directory = Path(configured).resolve() if configured else None
     if directory is not None and not directory.is_dir():
         raise ValueError("The Heatmapper branding folder is unavailable.")
+    css = _theme_css(directory)
+    families, fonts = heatmap_fonts(css, directory) if directory else ("", "[]")
     replacements = {
         "BRAND_NAME": escape(_site_name(directory), quote=True),
         "BRAND_LOGO": _logo_url(directory, stock_logo),
-        "BRAND_COLORS": _brand_colors(directory),
+        "BRAND_COLORS": _brand_colors(css),
+        "BRAND_FONT_FAMILIES": families,
+        "BRAND_FONTS": fonts,
     }
     return _TEMPLATE_MARKER.sub(lambda match: replacements[match[1]], html)

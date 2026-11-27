@@ -2,6 +2,13 @@ import { App } from '@modelcontextprotocol/ext-apps/app-with-deps';
 
 const app = new App({ name: document.title, version: '1.0.0' });
 const element = (id) => document.getElementById(id);
+// FontFace accepts embedded bytes, so the host's sandbox never fetches a font.
+for (const id of ['stock-fonts', 'brand-fonts']) {
+  for (const { family, weight, data } of JSON.parse(element(id).textContent)) {
+    const bytes = Uint8Array.from(atob(data), (character) => character.charCodeAt(0));
+    document.fonts.add(new FontFace(family, bytes, { weight }));
+  }
+}
 const controls = element('controls');
 const rowPicker = element('rows');
 const columnPicker = element('columns');
@@ -63,7 +70,7 @@ function drawTable() {
       const count = grid.counts[rowIndex][columnIndex];
       const capped = grid.capped_cells[rowIndex][columnIndex];
       const button = create('button', count.toLocaleString() + (capped ? '*' : ''), create('td', null, rowElement));
-      button.style.setProperty('--fill', `${count / largest * 82}%`);
+      button.style.setProperty('--fill', `${count / largest * 76}%`);
       button.setAttribute('aria-label', `${row.label}, ${column.label}, ${countLabel(count, metricUnit())}`);
       button.setAttribute('aria-pressed', 'false');
       button.addEventListener('click', () => selectCell(rowIndex, columnIndex, button));
@@ -148,17 +155,16 @@ function selectCell(row, column, button) {
 
 function addDocument(result) {
   const item = create('li', null, documents);
+  const title = create(result.link ? 'a' : 'span', result.title, item);
+  title.className = 'doc-title';
   if (result.link) {
-    const link = create('a', result.title, item);
-    link.href = result.link;
-    link.addEventListener('click', (event) => openLink(event, result.link));
-  } else {
-    create('span', result.title, item);
+    title.href = result.link;
+    title.addEventListener('click', (event) => openLink(event, result.link));
   }
   const words = [result.organization, result.year];
   if (result.paragraph_count !== null) words.push(countLabel(result.paragraph_count, 'paragraph'));
   const description = words.filter(Boolean).join(' · ');
-  if (description) item.append(` · ${description}`);
+  if (description) create('span', description, item).className = 'doc-meta';
 }
 
 async function loadDocuments(selection, offset) {

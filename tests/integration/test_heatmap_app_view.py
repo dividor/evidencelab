@@ -1,6 +1,8 @@
 """Exercise the packaged view inside an MCP Apps message host."""
 
+import base64
 import json
+import re
 from html import escape
 
 import pytest
@@ -38,7 +40,8 @@ window.addEventListener('message', ({source, data}) => {
           count: 2, total_documents: 2, next_offset: null,
           documents: [
             {doc_id: 'one', title: '<img src=x onerror=alert(1)>', paragraph_count: null},
-            {doc_id: 'two', title: 'Education evaluation', paragraph_count: null},
+            {doc_id: 'two', title: 'Education evaluation', paragraph_count: null,
+             organization: 'UNICEF', year: '2024'},
           ],
         }});
       } else {
@@ -113,20 +116,36 @@ def app_host(html: str) -> str:
     )
 
 
+def set_custom_branding(tmp_path, monkeypatch, title):
+    stock = re.search(
+        r'<script type="application/json" id="stock-fonts">(.*?)</script>',
+        load_heatmap_html(),
+    )
+    assert stock is not None
+    face = json.loads(stock[1])[0]
+    fonts = tmp_path / "fonts"
+    fonts.mkdir()
+    (fonts / "Library.woff2").write_bytes(base64.b64decode(face["data"]))
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"name": title}), encoding="utf-8"
+    )
+    (tmp_path / "theme.css").write_text(
+        ":root { --brand-primary-light: #85c1fd; --font-body: 'Library'; }"
+        "@font-face { font-family: 'Library'; src: url('./fonts/Library.woff2'); }",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MCP_BRANDING_DIR", str(tmp_path))
+
+
 @pytest.mark.parametrize("title", ["Evidence Lab", "Evaluation Library"])
 def test_heatmap_view_renders_and_forwards_actions(
     page: Page, title, tmp_path, monkeypatch
 ):
-    if title == "Evaluation Library":
-        (tmp_path / "manifest.json").write_text(
-            json.dumps({"name": title}), encoding="utf-8"
-        )
-        (tmp_path / "theme.css").write_text(
-            ":root { --brand-primary-light: #85c1fd; }", encoding="utf-8"
-        )
-        monkeypatch.setenv("MCP_BRANDING_DIR", str(tmp_path))
-    else:
-        monkeypatch.delenv("MCP_BRANDING_DIR", raising=False)
+    custom = title == "Evaluation Library"
+    monkeypatch.delenv("MCP_BRANDING_DIR", raising=False)
+    if custom:
+        set_custom_branding(tmp_path, monkeypatch, title)
+        page.emulate_media(color_scheme="dark")
     page.set_viewport_size({"width": 380, "height": 760})
     requests = []
     page.on("request", lambda request: requests.append(request.url))
@@ -134,18 +153,39 @@ def test_heatmap_view_renders_and_forwards_actions(
     frame = page.frame_locator("#heatmapper")
     expect(frame.get_by_role("heading", name=f"{title} Heatmapper")).to_be_visible()
     assert frame.locator("header img").evaluate("(logo) => logo.naturalWidth") > 0
-    if title == "Evaluation Library":
+    if custom:
         assert (
             frame.locator("html").evaluate(
                 "(root) => getComputedStyle(root).getPropertyValue('--brand-primary-light').trim()"
             )
             == "#85c1fd"
         )
+    assert frame.locator("html").evaluate(
+        "(root) => root.scrollWidth === root.clientWidth"
+    )
+    loaded = frame.locator("html").evaluate(
+        """async () => {
+            await document.fonts.ready;
+            return [...document.fonts]
+                .filter(face => face.status === "loaded")
+                .map(face => face.family);
+        }"""
+    )
+    assert "Poppins" in loaded
+    body_font = "Library" if custom else "Open Sans"
+    assert body_font in loaded
+    assert body_font in frame.locator("body").evaluate(
+        "(body) => getComputedStyle(body).fontFamily"
+    )
     cell = frame.get_by_role("button", name="UNICEF, 2024, 2 documents")
     expect(cell).to_be_visible()
     cell.focus()
     page.keyboard.press("Enter")
+    expect(
+        frame.get_by_role("heading", name="UNICEF × 2024 · 2 documents")
+    ).to_be_visible()
     expect(frame.get_by_text("Education evaluation")).to_be_visible()
+    expect(frame.locator(".doc-meta").get_by_text("UNICEF · 2024")).to_be_visible()
     expect(frame.get_by_text("<img src=x onerror=alert(1)>")).to_be_visible()
     assert frame.locator("#documents img").count() == 0
     frame.get_by_role("button", name="Ask Claude about this cell").click()
