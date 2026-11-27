@@ -24,7 +24,7 @@ CONSTRUCTION_SITES = 6
 
 
 class _FakePool:
-    """Stands in for ThreadedConnectionPool, counting what it would open."""
+    """Stands in for QueueingConnectionPool, counting what it would open."""
 
     def __init__(self, **kwargs: Any):
         self.kwargs = kwargs
@@ -43,7 +43,7 @@ BUILT: List[_FakePool] = []
 def _isolate_registry(monkeypatch):
     """Each test gets an empty registry and a fake pool class."""
     BUILT.clear()
-    monkeypatch.setattr(base, "ThreadedConnectionPool", _FakePool)
+    monkeypatch.setattr(base, "QueueingConnectionPool", _FakePool)
     saved: Dict[Any, Any] = dict(base._POOL_REGISTRY)
     base._POOL_REGISTRY.clear()
     yield
@@ -147,7 +147,7 @@ class TestCloseAllPools:
                 raise RuntimeError("connection already gone")
 
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(base, "ThreadedConnectionPool", _Angry)
+            mp.setattr(base, "QueueingConnectionPool", _Angry)
             base.PostgresClientBase("uneg")._get_pool()
             base.close_all_pools()
 

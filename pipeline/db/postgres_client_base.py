@@ -4,17 +4,93 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import math
 import os
 import threading
 from datetime import datetime
 from typing import Any, Dict, Optional
 
 import psycopg2
-from psycopg2.pool import ThreadedConnectionPool
+from psycopg2.pool import PoolError, ThreadedConnectionPool
 
 from pipeline.db.config import resolve_data_source
 
 logger = logging.getLogger(__name__)
+
+
+class PostgresPoolTimeout(PoolError):
+    """No pooled connection came free within ``POSTGRES_POOL_TIMEOUT`` seconds.
+
+    The database is busier than the pool can serve. A subclass of psycopg2's
+    ``PoolError``, so code that already handles pool errors still does.
+    """
+
+
+class QueueingConnectionPool(ThreadedConnectionPool):
+    """A thread-safe pool where a caller waits for a connection when all are in use.
+
+    psycopg2's own pools raise ``PoolError("connection pool exhausted")`` the
+    moment ``maxconn`` connections are checked out. One search page asks for
+    its filter counts and a page of document thumbnails at once, each request
+    on its own thread: measured on an AWS deployment, that was more than the
+    default 16 connections, so the filter list and six thumbnails failed even
+    though every query takes milliseconds.
+
+    Here a caller waits until another returns a connection, as SQLAlchemy's
+    pool does. The wait is bounded: after ``timeout`` seconds it raises
+    ``PostgresPoolTimeout``. The pool still never opens more than ``maxconn``
+    connections, so the load on the database server is unchanged.
+
+    A semaphore counts the free places. ``getconn`` takes one before asking
+    the parent pool, so the parent never sees more than ``maxconn`` callers
+    and never raises "exhausted"; ``putconn`` gives the place back once the
+    parent has taken the connection back. Keyed connections are refused: a
+    second ``getconn`` with the same key returns the same connection, which
+    would take a place it never gives back.
+    """
+
+    def __init__(
+        self, minconn: int, maxconn: int, *args: Any, timeout: float, **kwargs: Any
+    ):
+        if not (math.isfinite(timeout) and timeout > 0):
+            raise ValueError(f"timeout must be a number of seconds > 0, got {timeout}")
+        super().__init__(minconn, maxconn, *args, **kwargs)
+        self.timeout = timeout
+        self._free_places = threading.BoundedSemaphore(maxconn)
+
+    def getconn(self, key: Any = None) -> Any:
+        if key is not None:
+            raise ValueError(
+                "QueueingConnectionPool does not hand out keyed connections"
+            )
+        if not self._free_places.acquire(timeout=self.timeout):
+            raise PostgresPoolTimeout(
+                f"no Postgres connection came free within {self.timeout:g}s "
+                f"(all {self.maxconn} in use)"
+            )
+        try:
+            return super().getconn()
+        except BaseException:
+            self._free_places.release()
+            raise
+
+    def putconn(self, conn: Any = None, key: Any = None, close: bool = False) -> None:
+        if key is not None:
+            raise ValueError(
+                "QueueingConnectionPool does not hand out keyed connections"
+            )
+        # The parent raises PoolError for a connection it didn't hand out, so a
+        # place is only given back for a connection that came from this pool.
+        try:
+            super().putconn(conn, close=close)
+        except (psycopg2.OperationalError, psycopg2.InterfaceError):
+            # psycopg2 rolls back a connection returned mid-transaction. If
+            # that fails the connection is broken, and psycopg2 raised before
+            # marking it returned, so its place would be lost for good. Close
+            # it and drop it instead.
+            logger.warning("Closed a broken Postgres connection on return")
+            super().putconn(conn, close=True)
+        self._free_places.release()
 
 
 def build_postgres_dsn() -> str:
@@ -33,11 +109,11 @@ def _pool_bounds() -> tuple[int, int]:
 
     These bound one pool, and there is exactly one pool per process per data
     source (see ``_POOL_REGISTRY``), so ``maxconn`` caps how many queries this
-    process can run against one data source at once. psycopg2 raises
-    ``PoolError`` rather than queueing when the pool is empty, so it must cover
-    the request concurrency the API is sized for. ``minconn`` is how many
-    connections are kept open when returned: psycopg2 closes anything beyond
-    it, so a low value means a fresh connect per request under load.
+    process can run against one data source at once. Past it, a caller waits
+    for a connection to come free (see ``QueueingConnectionPool``).
+    ``minconn`` is how many connections are kept open when returned: psycopg2
+    closes anything beyond it, so a low value means a fresh connect per
+    request under load.
 
     Sizing note: the process-wide floor is ``minconn`` x (data sources in use),
     and the ceiling ``maxconn`` x (data sources in use). Keep that under the
@@ -54,6 +130,19 @@ def _pool_bounds() -> tuple[int, int]:
             f"({maxconn}), got {minconn}"
         )
     return minconn, maxconn
+
+
+def _pool_timeout() -> float:
+    """Seconds a caller waits for a free connection, from ``POSTGRES_POOL_TIMEOUT``."""
+    raw = os.getenv("POSTGRES_POOL_TIMEOUT", "30")
+    message = f"POSTGRES_POOL_TIMEOUT must be a number of seconds > 0, got {raw!r}"
+    try:
+        timeout = float(raw)
+    except ValueError as exc:
+        raise ValueError(message) from exc
+    if not (math.isfinite(timeout) and timeout > 0):
+        raise ValueError(message)
+    return timeout
 
 
 # One pool per (process, data source). A pool is a set of connections to a
@@ -74,11 +163,11 @@ def _pool_bounds() -> tuple[int, int]:
 # sockets inherited from its parent, which would corrupt both sides. The
 # pipeline's own workers use the "spawn" start method, so they begin with an
 # empty registry either way.
-_POOL_REGISTRY: Dict[tuple[int, str, str], ThreadedConnectionPool] = {}
+_POOL_REGISTRY: Dict[tuple[int, str, str], QueueingConnectionPool] = {}
 _POOL_REGISTRY_LOCK = threading.Lock()
 
 
-def get_shared_pool(data_source: str) -> ThreadedConnectionPool:
+def get_shared_pool(data_source: str) -> QueueingConnectionPool:
     """Return this process's pool for ``data_source``, building it once."""
     dsn = build_postgres_dsn()
     key = (os.getpid(), data_source, dsn)
@@ -91,19 +180,23 @@ def get_shared_pool(data_source: str) -> ThreadedConnectionPool:
         pool = _POOL_REGISTRY.get(key)
         if pool is None:
             minconn, maxconn = _pool_bounds()
-            pool = ThreadedConnectionPool(minconn=minconn, maxconn=maxconn, dsn=dsn)
+            timeout = _pool_timeout()
+            pool = QueueingConnectionPool(
+                minconn=minconn, maxconn=maxconn, dsn=dsn, timeout=timeout
+            )
             _POOL_REGISTRY[key] = pool
             logger.debug(
-                "Opened Postgres pool for %r in pid %s (min=%s, max=%s)",
+                "Opened Postgres pool for %r in pid %s (min=%s, max=%s, wait=%ss)",
                 data_source,
                 key[0],
                 minconn,
                 maxconn,
+                timeout,
             )
     return pool
 
 
-def checkout_live_connection(pool: ThreadedConnectionPool):
+def checkout_live_connection(pool: QueueingConnectionPool):
     """A connection from POOL that the server still answers on.
 
     The server can end a pooled connection while it sits idle: a database
@@ -162,7 +255,7 @@ class PostgresClientBase:
         self._ensured_doc_map_columns: set[str] = set()
         self._ensured_chunk_sys_columns: set[str] = set()
 
-    def _get_pool(self) -> ThreadedConnectionPool:
+    def _get_pool(self) -> QueueingConnectionPool:
         return get_shared_pool(self.data_source)
 
     @contextlib.contextmanager
