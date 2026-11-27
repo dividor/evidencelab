@@ -95,28 +95,39 @@ Each researched section shows its word count next to its heading, and the line u
 
 A top-level heading that has sub-headings is written as a short **introduction**: it frames the theme and says what each sub-heading goes on to examine, and leaves the findings to the sub-sections. It never adds headings of its own, and it does not cover in detail what its sub-headings will.
 
-- **Length** — an introduction is kept short: about 120 words unless you set a length on that section itself in its research panel. It is never longer than the brief's own section length. Administrators can change the default length (`target_words`) and the number of automatic re-runs (`heading_retries`) in `config.json` under `application.brief.introductions`; if the setting is left out, 120 words and one re-run are used.
+- **Length** — an introduction inherits the smaller of the brief’s target and the introduction default (normally 120 words). A target you set directly on the introduction takes precedence. Administrators can change the default length (`target_words`) and the number of automatic re-runs (`heading_retries`) in `config.json` under `application.brief.introductions`; if the setting is left out, 120 words and one re-run are used.
 - **Order** — **Start deep research** and **Regenerate All** write each heading's sub-sections first and its introduction last, so the introduction can point to what the sub-sections actually say.
 - **Headings** — if an introduction still comes back with headings of its own, it is researched again automatically (once by default). If it still has them after that, it is kept as written, with a warning on the section and a note in its **Section History**, so you can edit them out or choose **Regenerate** under **Ask AI**.
 - **Edits** — **Edit** and **Get Updates** preserve the section's role as an introduction.
 
-When choosing evidence, Brief reads the passage alongside the document title and any catalogue fields available from the library’s search filters. This helps it distinguish reports about different subjects even when their titles are similar.
+#### How a section is drafted and revised
 
-The writer develops the section in paragraphs and pairs factual sentences with supporting passages. If a draft omits a citation, the writer can correct the paragraph using the retrieved excerpts. If a draft is short, the writer can revise the whole section using its earlier sources and additional evidence. The revised wording goes through the same checks. When a first draft runs long, the writer receives its measured word count and the target. It can shorten the explanation as a whole. If the checked text still needs trimming, Evidence Lab keeps sentences in order and stops at a sentence boundary. The citation checker reads the preceding sentence when checking a comparison or explanation. Before saving, the writer compares the section with earlier findings and the other written sections. To remove a repeated sentence, it must quote the whole finding and identify earlier wording that already establishes each part. An introduction frames the subject shared by its children. Specific examples, figures and detailed outcomes belong under the relevant child heading. Administrators can compare paragraph quality, length and overlap across runs with [Brief experiments](../admin/evaluation.md#compare-generated-brief-sections).
+One click on **Research this section** can involve several model requests. Brief searches the library, selects passages that match the assigned heading, and asks the writer for cited paragraphs. It uses document titles and catalogue fields to distinguish sources about different subjects. A first draft that meets the length and editorial checks can be used immediately.
+
+| What the writer needs to fix | What happens during generation |
+| --- | --- |
+| A sentence has a missing or incorrect citation | Brief looks for a retrieved passage that supports the whole sentence. The writer can revise the wording to match the evidence. Unsupported findings are left out. |
+| The draft is short | The writer can make another pass using its earlier sources and additional relevant passages. It keeps the requested voice and develops the same section. |
+| The draft is long | The writer receives the measured word count and target so it can condense the explanation. If further trimming is needed, Brief keeps sentences in their original order and stops at a sentence boundary. |
+| The prose is unclear or repeats another section | Brief checks the section in context. The writer can repair a dangling reference or unclear opening. To remove a repeated finding, the reviewer must identify earlier wording that already conveys it. |
+
+These revisions are automatic and limited. The writing review also runs when the group’s optional citation checker is off. By default, sections describe findings directly. To discuss what a study did not measure, ask for evidence limitations in the heading or writing instructions. The writer must cite the source documenting the limitation.
 
 #### Section length
 
-A brief can ask for sections of about a given number of words. Choose a **Section length** when you start a brief (Short, Standard, Long, a custom number, or *No target*, which lets the model decide, as before), change it for the whole brief in **Regenerate All**, or override it for one section in that section's research panel, where *Use brief target* inherits the brief's setting. The target is remembered with the brief. Your team may set a default in the group settings.
+Use **Section length** to set the word target. Use the prompt to explain what deserves the space. For example, a 350-word section might ask the writer to explain an observed change, compare two settings, and describe the conditions under which the change occurred.
 
-Several settings help the writer aim for the requested length.
+| Where you set the length | Which sections use it |
+| --- | --- |
+| **Group Settings → Brief** | Supplies a starting length for new briefs. Administrators can also edit the group’s section writing prompt here. **Reset to Default** restores the shipped wording in the editor. |
+| **Template or brief** | The template can supply the starting target. Change it when you create the brief or in **Ask AI → Regenerate All**. Sections set to **Use brief target** inherit it. Introductions have the shorter default described above. |
+| **One section’s research panel** | A target set here takes precedence for that heading, including an introduction. |
 
-1. The research prompt asks for about that many words, in place of its usual "at least three or four paragraphs".
-2. The model's output limit allows more output for longer requests. This limit counts model tokens, including the supporting quotations.
-3. When a section comes back more than a quarter longer than its target, Evidence Lab condenses it with an AI edit that keeps every citation. You will see *Condensing to about N words* in the section's activity while that runs, and the edit is recorded in the section's **Section History**.
+The shipped choices are **Short** (150 words), **Standard** (350), **Long** (700), **Custom** (50–3,000), and **No target**. The model’s output allowance grows for longer targets so it has room to finish. The writer still measures the finished prose in words. In the Brief workspace, a section that exceeds its target by more than 25% by default triggers a separate **Condensing** edit, recorded in **Section History**. Administrators can configure the presets, range and workspace condensing tolerance under `application.brief.target_words` in `config.json`.
 
-When a draft is short, the writer looks for further supported detail in the retrieved passages. A narrow question can still finish below target. The presets, the allowed range and the tolerance are set in `config.json` under `application.brief.target_words`.
+A section can finish short when additional text would go beyond the evidence. In a [Brief experiment](../admin/evaluation.md#compare-generated-brief-sections), the word-count check grades the finished section. A failing grade does not send it back to the writer.
 
-When a draft sentence is missing a citation, the writer looks for a retrieved excerpt that supports the complete sentence. Before saving, it reads the checked section as a whole. If removing a sentence has left an unclear opening or a reference to something the reader has never been told, the writer can revise the section using its original passages. This writing review also runs when the group's automatic citation check is turned off.
+#### Reading citations
 
 Citations work like the rest of Evidence Lab: inline number badges link to the source document and page, an expandable **Evidence** panel lists the supporting documents for that section, and a compiled **References** list appears at the end of the brief. Citation numbers run consecutively across the whole brief in reading order (the first citation in the brief is `[1]`). By default there is one number per cited passage — the same numbering the Research Assistant uses, so a document cited from three pages carries three numbers. Two **Group by document** checkboxes above the References list change how the list is laid out, and the single-per-document option also changes the numbering itself (see [Export to Word](#5-export-to-word) below). The grouping you choose is saved with the brief.
 
@@ -207,23 +218,18 @@ Briefs shared with you appear under **Shared with me** in Brief Central, labelle
 
 ### 7. Templates
 
-A template stores a heading structure, and the instructions for researching each heading, so the next brief starts with the shape and focus you want rather than a blank outline or an AI-generated one.
+A Brief template is a reusable outline. It can carry the research prompt, voice & tone profile, and word target for the whole brief. Each heading or subheading can add research instructions and override the inherited voice or length.
 
-What a template keeps:
+| To do this | Steps |
+| --- | --- |
+| Create a template from scratch | Open **Brief Central → Templates → New template**. Name it, add headings and subheadings, and use **Prompt** beside a heading to set its instructions, voice or length. Select **Save template**. |
+| Reuse an existing brief | Open it and select **Save as Template**. **Include prompts and settings** is on by default. Turn on **Include section text** if new briefs should start with the existing prose too. Review the headings and save. |
+| Start a brief | Select **Use Template** on its card, or select the template under **New brief → Manual**. Give the brief a title and adjust its settings. You can change an individual heading’s prompt, voice and length later in its research panel. |
+| Change a template | Select **Edit** on a template you own. Subsequent briefs inherit the changes. Briefs you already created retain their own settings. To adapt someone else’s shared template, use **Copy** to make your own version. |
 
-- **Headings and sub-headings**, and optionally the text written under each.
-- **A prompt for each heading** — the research instructions for that section, the same thing you type in a section's Research panel (for example, *emphasise sub-Saharan Africa and evidence since 2020*).
-- **A voice & tone profile and a length for each heading**, when a section should differ from the rest of the brief.
-- **Settings for the whole brief** — a brief prompt applied to every section, a default voice & tone profile and a default section length.
+For example, a template might set a 350-word target and a plain-language voice for the whole brief. Its **Findings** heading can ask for a comparison of measured outcomes, while **Recommendations** can use a 150-word target and a voice profile written for decision-makers.
 
-By default, generated sections describe the findings directly. To include a discussion of evidence gaps, ask for it in the heading or writing instructions. The writer must cite the source that documents the limitation. Administrators can edit the default writing instructions for their group under **Group Settings → Brief**.
-
-Working with templates:
-
-- **Save a brief as a template** — open a brief and click **Save as Template**. Each section's prompt, voice and length, and the brief's own prompt, voice and length, are carried into the template. Two switches decide what is kept: **Include section text** (off by default) and **Include prompts and settings** (on by default). You can edit everything before saving.
-- **Create one from scratch** — on the **Templates** tab in Brief Central, click **New template** and add headings (and sub-headings) by hand. Click **Prompt** beside a heading to give it a prompt, a voice and a length.
-- **Edit a template** — click **Edit** on a template you own. Changes apply to briefs started from it afterwards; briefs already started keep what they began with.
-- **Use a template** — click **Use Template** on a template card, or pick it in the **Manual** tab of the New brief dialog. The dialog fills in the template's brief prompt, voice and length, which you can change before creating the brief. Each section starts with its heading's prompt, voice and length, so **Research this section** and **Start deep research** use them without retyping, and you can still change them in the section's research panel.
+Administrators can also select templates in a [Brief experiment](../admin/evaluation.md#compare-generated-brief-sections). The experiment uses the **template name as the research topic**, so give it a name that identifies the subject you want to test. Each selected heading and subheading produces its own result. Editing the original template changes future runs.
 
 ---
 
