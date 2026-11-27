@@ -60,6 +60,7 @@ import { generateUUID } from './utils/uuid';
 import { mergeFacetField } from './utils/facetMerge';
 import AdminPanel from './components/admin/AdminPanel';
 import { AssistantTab } from './components/assistant/AssistantTab';
+import { WanderingSpinner } from './components/WanderingSpinner';
 import { BriefTab } from './components/brief/BriefTab';
 import { AuthGate } from './components/auth/AuthGate';
 import { DEFAULT_SECTION_TYPES, DEFAULT_FIELD_BOOST_FIELDS, buildSearchURL, getSearchStateFromURL } from './utils/searchUrl';
@@ -3109,6 +3110,7 @@ function App() {
         }
         briefTab={searchModelsReady ? (
           <BriefTab
+            isActive={activeTab === 'brief'}
             dataSource={dataSource}
             assistantModelConfig={assistantModelConfig}
             semanticModelConfig={semanticHighlightModelConfig}
@@ -3132,7 +3134,7 @@ function App() {
             }}
             onResultClick={handleResultClick}
           />
-        ) : <div role="status">Loading research settings…</div>}
+        ) : activeTab === 'brief' && <WanderingSpinner />}
         heatmapTab={heatmapTab}
         documentsTab={documentsTab}
         statsTab={statsTab}

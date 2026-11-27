@@ -48,6 +48,7 @@ const openLlmsTab = async () => {
 
 describe('Group Settings > LLMs', () => {
   beforeEach(() => {
+    window.history.replaceState(null, '', '/admin');
     jest.clearAllMocks();
   });
 

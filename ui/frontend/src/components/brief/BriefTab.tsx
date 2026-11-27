@@ -12,6 +12,7 @@ import {
 } from '../../utils/exportResultsToDocx';
 import { withDocumentYears } from '../../utils/briefExportYears';
 import { BriefReference, ReferenceGrouping } from './briefTypes';
+import { WanderingSpinner } from '../WanderingSpinner';
 import { BriefCentral } from './BriefCentral';
 import { BriefRegenAllModal, NewBriefSubmit } from './BriefCentralModals';
 import { BriefShareModal } from './BriefShareDialog';
@@ -229,6 +230,7 @@ const BriefWorkspace: React.FC<{
 };
 
 interface BriefTabProps {
+  isActive?: boolean;
   dataSource: string;
   // The configured chat / deep-research model, used for outline + section research.
   assistantModelConfig?: SummaryModelConfig | null;
@@ -333,7 +335,52 @@ export const briefWordExportOptions = (
 const checkableBriefId = (loggedIn: boolean, id: string | null): string | null =>
   loggedIn && id ? id : null;
 
+// The template draft when saving the open brief as a template: its headings
+// with each section's text, prompt, voice and length, and the brief's own
+// prompt, voice and length. The editor's switches decide what is kept.
+const templateFromBrief = (brief: UseBriefReturn): TemplateDraft => ({
+  id: null,
+  fromBrief: true,
+  name: `${brief.briefTitle.slice(0, 40)} template`,
+  description: 'Saved from a brief',
+  headings: brief.sections.map((s) =>
+    draftHeading({
+      title: s.title,
+      sub: s.level === 2,
+      text: s.content || null,
+      prompt: s.guidance || null,
+      voice_profile_id: s.voiceId ?? null,
+      target_words: s.targetWords ?? null,
+    }),
+  ),
+  withText: false,
+  withSettings: true,
+  prompt: brief.instructions,
+  voiceId: brief.briefVoiceId,
+  targetWords: brief.targetWords,
+});
+
+function BriefLanding({ brief, loggedIn, central, onOpenBrief, onCreateBrief }: {
+  brief: UseBriefReturn;
+  loggedIn: boolean;
+  central: ReturnType<typeof useBriefCentral>;
+  onOpenBrief: (id: string) => void;
+  onCreateBrief: (args: NewBriefSubmit) => void;
+}) {
+  if (!loggedIn) return <BriefSeed brief={brief} />;
+  return (
+    <>
+      {brief.error && <div className="brief-error brief-error-banner">{brief.error}</div>}
+      {brief.outlineLoading ? <BriefGeneratingPanel brief={brief} /> : (
+        <BriefCentral central={central} onOpenBrief={onOpenBrief} onCreateBrief={onCreateBrief}
+          defaultTargetWords={brief.targetWords} />
+      )}
+    </>
+  );
+}
+
 export const BriefTab: React.FC<BriefTabProps> = ({
+  isActive = true,
   dataSource,
   assistantModelConfig,
   rerankerModel,
@@ -409,17 +456,15 @@ export const BriefTab: React.FC<BriefTabProps> = ({
     [brief],
   );
 
-  // Keep the URL canonical: App's tab navigation pushes a bare /brief, which
-  // would strip the open brief's id (and break copy-from-address-bar links).
-  // Restore it whenever the workspace has a brief open. Runs on every render —
-  // pathname isn't reactive state — and is an idempotent replaceState.
+  // Returning to the Brief tab reopens the workspace kept in memory.
   useEffect(() => {
-    if (!loggedIn || !brief.currentBriefId || brief.stage === 'seed') return;
-    const want = briefPath(brief.currentBriefId);
-    if (window.location.pathname !== want && briefIdFromLocation() === null) {
-      window.history.replaceState(null, '', want);
+    if (!isActive || !loggedIn || !brief.currentBriefId || brief.stage === 'seed') return;
+    const url = new URL(window.location.href);
+    if (url.pathname.replace(/\/$/, '') === briefPath(null)) {
+      url.pathname = briefPath(brief.currentBriefId);
+      window.history.replaceState(window.history.state, '', url);
     }
-  });
+  }, [isActive, loggedIn, brief.currentBriefId, brief.stage]);
 
   const backToCentral = useCallback(() => {
     brief.reset();
@@ -473,58 +518,13 @@ export const BriefTab: React.FC<BriefTabProps> = ({
     [exportBusy, brief, dataSource],
   );
 
-  // The template draft when saving the open brief as a template: its headings
-  // with each section's text, prompt, voice and length, and the brief's own
-  // prompt, voice and length. The editor's switches decide what is kept.
-  const templateFromBrief: TemplateDraft = {
-    id: null,
-    fromBrief: true,
-    name: `${brief.briefTitle.slice(0, 40)} template`,
-    description: 'Saved from a brief',
-    headings: brief.sections.map((s) =>
-      draftHeading({
-        title: s.title,
-        sub: s.level === 2,
-        text: s.content || null,
-        prompt: s.guidance || null,
-        voice_profile_id: s.voiceId ?? null,
-        target_words: s.targetWords ?? null,
-      }),
-    ),
-    withText: false,
-    withSettings: true,
-    prompt: brief.instructions,
-    voiceId: brief.briefVoiceId,
-    targetWords: brief.targetWords,
-  };
-
-  // Logged-in outline generation runs from the New-brief modal — surface the
-  // live research activity instead of silently sitting on the landing page.
-  const landing = loggedIn ? (
-    brief.outlineLoading ? (
-      <>
-        {brief.error && <div className="brief-error brief-error-banner">{brief.error}</div>}
-        <BriefGeneratingPanel brief={brief} />
-      </>
-    ) : (
-      <>
-        {brief.error && <div className="brief-error brief-error-banner">{brief.error}</div>}
-        <BriefCentral
-          central={central}
-          onOpenBrief={openBrief}
-          onCreateBrief={createBrief}
-          defaultTargetWords={brief.targetWords}
-        />
-      </>
-    )
-  ) : (
-    <BriefSeed brief={brief} />
-  );
+  if (brief.openingSavedBrief) return isActive ? <WanderingSpinner /> : null;
 
   return (
     <div className={`brief-tab${brief.stage === 'seed' ? '' : ' brief-tab-full'}`}>
       {brief.stage === 'seed' ? (
-        landing
+        <BriefLanding brief={brief} loggedIn={loggedIn} central={central}
+          onOpenBrief={openBrief} onCreateBrief={createBrief} />
       ) : (
         <BriefWorkspace
           brief={brief}
@@ -562,7 +562,7 @@ export const BriefTab: React.FC<BriefTabProps> = ({
       )}
       {workspaceModal === 'template' && (
         <BriefTemplateModal
-          draft={templateFromBrief}
+          draft={templateFromBrief(brief)}
           voices={brief.voices}
           onSave={async (d) => {
             await central.saveTemplate(null, draftToPayload(d));
