@@ -258,7 +258,14 @@ def _brief_grade_request(template, output, kind, rubric):
             paragraphs=re.split(r"\n\s*\n", output["summary"].strip()),
             words=len(strip_citation_markers(output["summary"]).split()),
             siblings=output["siblings"],
-            sources=output["sources"],
+            sources=[
+                {
+                    key: source[key]
+                    for key in ("index", "title", "page", "headings", "text")
+                    if key in source
+                }
+                for source in output["sources"]
+            ],
             standard=output["reference_standard"],
             overlap_only=overlap,
             writing_only=writing,

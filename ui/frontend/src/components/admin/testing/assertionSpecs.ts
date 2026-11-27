@@ -76,6 +76,10 @@ const judgeSpec: AssertionTypeSpec = {
   label: 'LLM judge',
   fields: [
     {
+      key: 'label', label: 'Check name', type: 'text',
+      placeholder: 'For example, Accuracy of the cited figures',
+    },
+    {
       key: 'rubric',
       label: 'Judge prompt',
       type: 'textarea',
@@ -158,3 +162,19 @@ export const getAssertionSpec = (
   capability: TestCapability,
   type: string,
 ): AssertionTypeSpec | undefined => getAssertionSpecs(capability).find((s) => s.type === type);
+
+// Existing starter experiments recorded the criterion text without a display name.
+const starterCriterionNames: Record<string, string> = {
+  'Check factual grounding against the cited excerpts.': 'Factual support from citations',
+  'Read the brief topic together with its section heading.': 'Relevance to the assigned topic and heading',
+  'Check whether the voice, tone and language suit the requested reader.': 'Voice and tone for the reader',
+  'Does the section read as developed, connected prose?': 'Paragraph development and flow',
+};
+
+export function judgeCriterionName(type: string, rubric: unknown, label?: unknown): string {
+  if (typeof label === 'string' && label.trim()) return label.trim();
+  const text = typeof rubric === 'string' ? rubric.trim() : '';
+  const opening = text.match(/^[\s\S]*?[.!?](?=\s|$)/)?.[0] || text;
+  return starterCriterionNames[opening] || opening ||
+    (type === 'brief_writing' ? 'Writing quality' : 'Custom grading criterion');
+}

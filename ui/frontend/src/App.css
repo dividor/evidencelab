@@ -13700,3 +13700,8 @@ fieldset.group-assistant-options {
   border: 1px solid var(--color-border, #d0d7de);
   border-radius: 4px;
 }
+
+.testing-generated-section > summary {
+  display: list-item;
+  cursor: pointer;
+}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import axios from 'axios';
 import ExperimentDetail from '../components/admin/testing/ExperimentDetail';
 
@@ -73,6 +73,37 @@ beforeEach(() => {
 const noop = () => undefined;
 
 describe('ExperimentDetail run progress', () => {
+  test('shows the saved brief below its query and names each grading criterion', async () => {
+    const text = 'Technicians identified a pressure loss [4].\n\nThe replacement held pressure [8].';
+    const result = {
+      id: 'res', status: 'pass', actual_output: {
+        capability: 'brief', summary: text, written: true, words: 10,
+        assignment: { topic: 'Equipment maintenance', heading: 'Inspection', target_words: 12 },
+      },
+      assertion_results: [
+        { type: 'llm_judge', passed: true, rubric: 'Check factual grounding against the cited excerpts. Check the numbers.' },
+        { type: 'llm_judge', passed: true, rubric: 'Read the brief topic together with its section heading. Check the population.' },
+        { type: 'llm_judge', passed: true, label: 'Test conditions', rubric: 'Verify the temperature.' },
+        { type: 'llm_judge', passed: true, rubric: 'Does the draft specify the units? Check the pressure.' },
+      ],
+    };
+    mockGet({ ...completedDetail, runs: [{ ...completedDetail.runs[0], results: [result] }] });
+    render(<ExperimentDetail experimentId="e1" onBack={noop} onEdit={noop} />);
+    fireEvent.click(await screen.findByText('Inspection'));
+    const panel = screen.getByText('Generated section').closest('details')!;
+    expect(panel).not.toHaveAttribute('open');
+    expect(panel.previousElementSibling).toContainElement(screen.getByText('Equipment maintenance'));
+    expect(panel.nextElementSibling).toContainElement(screen.getByText('Expectations'));
+    fireEvent.click(within(panel).getByText('Generated section'));
+    expect(panel).toHaveAttribute('open');
+    expect(panel.querySelector('.testing-brief-prose')?.textContent).toBe(text);
+    expect(screen.getByText('Factual support from citations')).toBeInTheDocument();
+    expect(screen.getByText('Relevance to the assigned topic and heading')).toBeInTheDocument();
+    expect(screen.getByText('Test conditions')).toBeInTheDocument();
+    expect(screen.getByText('Does the draft specify the units?')).toBeInTheDocument();
+    expect(screen.queryByText('llm_judge')).not.toBeInTheDocument();
+  });
+
   test('shows a live "k of N cases" indicator while a run is in progress', async () => {
     mockGet(runningDetail);
     render(<ExperimentDetail experimentId="e1" onBack={noop} onEdit={noop} />);

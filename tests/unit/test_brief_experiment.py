@@ -206,9 +206,16 @@ async def test_writing_and_grounding_with_same_rubric_get_independent_inputs(
     monkeypatch,
 ):
     output = draft()
+    output["sources"][0].update(
+        title="Operations review",
+        page=12,
+        headings=["Timeliness"],
+        bbox={"coordinates": [101, 202, 303, 404]},
+    )
     rubric = "Is the text suitable?"
     criteria = [
-        {"type": kind, "rubric": rubric} for kind in ("llm_judge", "brief_writing")
+        {"type": kind, "rubric": rubric, "label": label}
+        for kind, label in (("llm_judge", "Evidence"), ("brief_writing", "Audience"))
     ]
     replies = AsyncMock(
         side_effect=[
@@ -220,6 +227,20 @@ async def test_writing_and_grounding_with_same_rubric_get_independent_inputs(
     cb = await brief.judge_brief(output, criteria, "grader")
     results = [evaluate_assertion(a, output, cb) for a in criteria]
     assert [r["score"] for r in results] == [0.4, 1]
+    assert [r["label"] for r in results] == ["Evidence", "Audience"]
+    prompt = results[0]["judge_prompt"]
+    assert all(
+        text in prompt
+        for text in (
+            "Operations review",
+            '"page": 12',
+            '"index": 7',
+            "Processing time fell by half.",
+            "Timeliness",
+        )
+    )
+    assert "bbox" not in prompt and "coordinates" not in prompt
+    assert output["sources"][0]["bbox"]["coordinates"] == [101, 202, 303, 404]
     assert "editor only" in results[0]["judge_prompt"]
     assert "editor only" not in results[1]["judge_prompt"]
     assert "Productivity" not in results[1]["judge_prompt"]

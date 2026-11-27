@@ -55,6 +55,7 @@ export interface TestCase {
 
 export interface AssertionResult {
   type: string;
+  label?: string;
   passed: boolean;
   message: string;
   score?: number;

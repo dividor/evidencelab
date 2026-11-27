@@ -229,6 +229,8 @@ Each case generates one new section through Brief's research and writing workflo
 
 A case can finish research without producing a publishable section. For example, a revised opening might still refer to an action that no sentence explains. Such a case fails the structure check, which shows the editor’s reason. Its searches and reported token usage are kept with the result. A service or grading exception appears as an error.
 
+Expand a case, then open **Generated section** below the query to read its paragraphs and see the word count. Each expectation shows what it tested. When adding a custom judge criterion, use **Check name** to give it a short title. **Show full prompt sent to the LLM** shows the actual grading input for that run. The Brief judge receives the numbered passages with their text, titles, pages and headings. The document viewer uses the bounding boxes to highlight those passages on a page.
+
 | Check | What to look for |
 | --- | --- |
 | Section format and citations | The section opens with a cited paragraph, uses prose without extra headings or lists, and its numbered citations resolve to the returned sources. |

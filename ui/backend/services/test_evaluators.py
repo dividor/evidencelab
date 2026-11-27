@@ -288,6 +288,8 @@ def eval_llm_judge(
     result = _result(str(a.get("type", "llm_judge")), passed, message, score=score)
     # Surface the rubric + the exact prompt the judge was given (shown per run).
     result["rubric"] = rubric
+    if a.get("label"):
+        result["label"] = a["label"]
     if prompt:
         result["judge_prompt"] = prompt
     return result

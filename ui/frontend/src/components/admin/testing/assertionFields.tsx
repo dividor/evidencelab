@@ -3,7 +3,7 @@
 
 import React from 'react';
 import type { Assertion, TestCapability } from '../../../types/testing';
-import { AssertionFieldSpec, getAssertionSpec } from './assertionSpecs';
+import { AssertionFieldSpec, getAssertionSpec, judgeCriterionName } from './assertionSpecs';
 
 // Build a fresh assertion of `type`, seeded with its fields' default values.
 export const defaultAssertion = (
@@ -41,6 +41,9 @@ const formatParamValue = (val: unknown): string =>
   Array.isArray(val) ? `[${val.join(', ')}]` : String(val);
 
 export const summarizeAssertion = (assertion: Assertion): string => {
+  if (assertion.type === 'llm_judge' || assertion.type === 'brief_writing') {
+    return judgeCriterionName(assertion.type, assertion.rubric, assertion.label);
+  }
   const params = Object.entries(assertion)
     .filter(([key]) => key !== 'type')
     .map(([key, val]) => `${key}=${formatParamValue(val)}`)

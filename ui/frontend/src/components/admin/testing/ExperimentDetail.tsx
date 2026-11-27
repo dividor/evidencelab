@@ -21,6 +21,7 @@ import {
 import RunPassRateChart from './RunPassRateChart';
 import { resultWarnings } from './resultWarnings';
 import { runConfigHeadline, runConfigRows } from './runConfig';
+import { judgeCriterionName } from './assertionSpecs';
 
 interface ExperimentDetailProps {
   experimentId: string;
@@ -100,8 +101,21 @@ const briefCheckLabels: Record<string, string> = {
 
 const AssertionResultRow: React.FC<{ result: AssertionResult }> = ({ result }) => {
   const [showPrompt, setShowPrompt] = useState(false);
+  const label = result.type === 'llm_judge' || result.type === 'brief_writing'
+    ? judgeCriterionName(result.type, result.rubric, result.label)
+    : briefCheckLabels[result.type] || result.type.replace(/_/g, ' ');
   return (
     <div className="testing-assertion-result">
+      <div className="testing-assertion-result-main">
+        <span className={`testing-badge testing-badge-${result.passed ? 'pass' : 'fail'}`}>
+          {result.passed ? 'pass' : 'fail'}
+        </span>
+        <span className="testing-assertion-result-type">{label}</span>
+        {result.score !== undefined && (
+          <span className="testing-assertion-result-score">score: {formatScore(result.score)}</span>
+        )}
+        <span className="testing-assertion-result-message">{result.message}</span>
+      </div>
       {(Boolean(result.rubric || result.judge_prompt)) && (
         <div className="testing-judge-rubric">
           <div className="testing-judge-rubric-text">
@@ -125,20 +139,6 @@ const AssertionResultRow: React.FC<{ result: AssertionResult }> = ({ result }) =
           )}
         </div>
       )}
-      <div className="testing-assertion-result-main">
-        <span
-          className={`testing-badge testing-badge-${result.passed ? 'pass' : 'fail'}`}
-        >
-          {result.passed ? 'pass' : 'fail'}
-        </span>
-        <span className="testing-assertion-result-type">{briefCheckLabels[result.type] || result.type}</span>
-        {result.score !== undefined && (
-          <span className="testing-assertion-result-score">
-            score: {formatScore(result.score)}
-          </span>
-        )}
-        <span className="testing-assertion-result-message">{result.message}</span>
-      </div>
     </div>
   );
 };
@@ -210,7 +210,6 @@ const ResultOutput: React.FC<{ output: OutputBlob }> = ({ output }) => {
 
   const summary = str(output.summary);
   const brief = output.capability === 'brief';
-  const assignment = output.assignment as Record<string, unknown> | undefined;
   const references = asArray(output.references);
   const sources = asArray(brief ? output.sources : output.search_results);
   const searchResults = asArray(output.results);
@@ -219,9 +218,12 @@ const ResultOutput: React.FC<{ output: OutputBlob }> = ({ output }) => {
     <div className="testing-output">
       {summary ? (
         <>
-          <span className="testing-case-label">{brief ? str(assignment?.heading) : 'AI summary (with references)'}</span>
-          {brief && <p>{String(output.words)} words{assignment?.target_words ? ` of ${assignment.target_words} requested` : ''}</p>}
-          <div className={brief ? 'testing-brief-prose' : 'testing-summary-text'}>{summary}</div>
+          {!brief && (
+            <>
+              <span className="testing-case-label">AI summary (with references)</span>
+              <div className="testing-summary-text">{summary}</div>
+            </>
+          )}
           {brief && asArray(output.siblings).map((s, i) => (
             <details key={i}><summary>Compare with {str(s.title)}</summary><p>{str(s.content)}</p></details>
           ))}
@@ -279,6 +281,39 @@ const ResultOutput: React.FC<{ output: OutputBlob }> = ({ output }) => {
 /*  Expandable result row                                             */
 /* ------------------------------------------------------------------ */
 
+const GeneratedSection: React.FC<{ output: OutputBlob }> = ({ output }) => {
+  if (output?.capability !== 'brief') return null;
+  const assignment = output.assignment as Record<string, unknown> | undefined;
+  const text = str(output.summary);
+  return (
+    <details className="testing-case-block testing-generated-section">
+      <summary className="testing-case-label">Generated section</summary>
+      {text && output.written !== false ? (
+        <>
+          <p>{String(output.words)} words{assignment?.target_words ? ` of ${assignment.target_words} requested` : ''}</p>
+          <div className="testing-brief-prose">{text}</div>
+        </>
+      ) : <p>No section was written.</p>}
+    </details>
+  );
+};
+
+const ResultQuery: React.FC<{
+  topic: string; heading: string; input?: Record<string, unknown>;
+}> = ({ topic, heading, input }) => {
+  const extra = Object.entries(input || {}).filter(([key]) => key !== 'query');
+  return (
+    <div className="testing-case-block">
+      <span className="testing-case-label">Query</span>
+      <div className="testing-query">{topic || '(no query)'}</div>
+      {heading && <span>{heading}</span>}
+      {!input?.heading && extra.length > 0 && (
+        <pre className="testing-pre">{prettyJson(Object.fromEntries(extra))}</pre>
+      )}
+    </div>
+  );
+};
+
 const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> }> = ({
   result,
   input,
@@ -318,20 +353,8 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
         <tr className="testing-result-detail-row">
           <td colSpan={6}>
             <div className="testing-result-detail">
-              <div className="testing-case-block">
-                <span className="testing-case-label">Query</span>
-                <div className="testing-query">{topic || '(no query)'}</div>
-                {heading && <span>{heading}</span>}
-                {input && !input.heading && Object.keys(input).some((k) => k !== 'query') && (
-                  <pre className="testing-pre">
-                    {prettyJson(
-                      Object.fromEntries(
-                        Object.entries(input).filter(([k]) => k !== 'query'),
-                      ),
-                    )}
-                  </pre>
-                )}
-              </div>
+              <ResultQuery topic={topic} heading={heading} input={input} />
+              <GeneratedSection output={result.actual_output} />
               {warnings.length > 0 && (
                 <div className="testing-case-block">
                   <span className="testing-case-label">Warnings</span>
@@ -361,7 +384,7 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
                   <span className="testing-collapse-caret" aria-hidden>
                     {showOutput ? '▾' : '▸'}
                   </span>
-                  <span className="testing-case-label">Output</span>
+                  <span className="testing-case-label">{result.actual_output?.capability === 'brief' ? 'Sources and supporting details' : 'Output'}</span>
                 </button>
                 {showOutput && <ResultOutput output={result.actual_output} />}
               </div>
