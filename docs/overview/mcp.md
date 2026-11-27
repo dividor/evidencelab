@@ -64,9 +64,10 @@ host such as Claude on the web or desktop, you can change the axes, select a
 cell to see the documents, ask Claude about it, and open the grid in Evidence
 Lab. Text-only clients can read the counts from the tool result.
 
-Try asking Claude to use the Evidence Lab Heatmapper. Put “school feeding”
-and “education in emergencies” on the rows and publication years 2022, 2023,
-and 2024 on the columns. Use the UNEG data source and count Documents.
+Try asking Claude:
+
+> Use the Evidence Lab Heatmapper on UNEG. Show UNDP and UNICEF as rows
+> and publication years 2022, 2023, and 2024 as columns. Count documents.
 
 Pass the options in the tool's `request` object. Supply `data_source`,
 `row_dimension`, and `column_dimension`. Use facet names such as

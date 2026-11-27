@@ -1,6 +1,8 @@
 """Verify MCP Apps metadata, tool responses, authorization, and accounting."""
 
 import secrets
+import shutil
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 from urllib.parse import parse_qs, urlsplit
 
@@ -67,8 +69,13 @@ async def test_stateless_wire_grid_and_app_only_drill_down(
     monkeypatch.setenv("MCP_APP_ASSET_DIR", str(tmp_path))
     monkeypatch.setattr(http_server, "REQUIRE_AUTH", True)
     monkeypatch.setattr(oauth, "_APP_BASE_URL", "https://example.org/evidence/")
+    monkeypatch.delenv("MCP_BRANDING_DIR", raising=False)
+    source_root = Path(__file__).parents[2]
+    shutil.copyfile(
+        source_root / "ui" / "frontend" / "public" / "logo.png", tmp_path / "logo.png"
+    )
     (tmp_path / "heatmap.html").write_text(
-        "<!doctype html><title>App</title>", encoding="utf-8"
+        "<!doctype html><title>{{BRAND_NAME}} Heatmapper</title>", encoding="utf-8"
     )
     plan = Mock(return_value=planned_grid)
     monkeypatch.setattr(heatmap_axes, "plan_heatmap", plan)
@@ -118,7 +125,7 @@ async def test_stateless_wire_grid_and_app_only_drill_down(
         resource = await rpc("resources/read", {"uri": HEATMAP_URI})
         entry = resource.json()["result"]["contents"][0]
         assert entry["mimeType"] == HEATMAP_MIME_TYPE
-        assert entry["text"] == "<!doctype html><title>App</title>"
+        assert entry["text"] == "<!doctype html><title>Evidence Lab Heatmapper</title>"
         assert entry["_meta"] == resource_metadata(oauth.public_mcp_url())
 
         response = await rpc(

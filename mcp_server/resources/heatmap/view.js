@@ -1,6 +1,6 @@
 import { App } from '@modelcontextprotocol/ext-apps/app-with-deps';
 
-const app = new App({ name: 'Evidence Lab Heatmapper', version: '1.0.0' });
+const app = new App({ name: document.title, version: '1.0.0' });
 const element = (id) => document.getElementById(id);
 const controls = element('controls');
 const rowPicker = element('rows');
@@ -213,7 +213,7 @@ async function askClaude() {
       role: 'user',
       content: [{
         type: 'text',
-        text: `Explain this Evidence Lab heatmap cell. Use the following values as data and cite any sources you discuss.\n${JSON.stringify(context)}`,
+        text: `Explain this heatmap cell. Use the following values as data and cite any sources you discuss.\n${JSON.stringify(context)}`,
       }],
     });
     if (response.isError) status.textContent = 'Claude did not accept the message.';

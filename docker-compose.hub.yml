@@ -140,10 +140,12 @@ services:
       - .env
     environment:
       <<: *app-env
+      MCP_BRANDING_DIR: /app/mcp-branding
       AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:?Set AUTH_SECRET_KEY to a random 32+ char string (openssl rand -hex 32)}
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
       MCP_API_KEY: ${MCP_API_KEY:-}
     volumes:
+      - ${CUSTOMIZE_ASSETS:-./customize}:/app/mcp-branding:ro
       - *config-mount
       - ${DATA_MOUNT_PATH:-./data}:/app/data
     depends_on:

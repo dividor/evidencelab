@@ -136,6 +136,15 @@ Server and managed API keys retain access to the configured data sources.
 Each heatmap and each selected-cell call adds an entry to the MCP audit log.
 Hosts that support app-only tool visibility show `heatmap_cell` to the app.
 
+The Heatmapper uses the Evidence Lab logo and colors. Docker Compose reads
+the same [branding folder](customization.md) as the web build when
+`CUSTOMIZE_ASSETS` is set. For a separate MCP service, mount that folder
+read-only and set `MCP_BRANDING_DIR` to its path inside the service. The view
+uses the name from `manifest.json`, embeds `logo.png` as a PNG up to 512 KiB,
+and reads the `--brand-primary`, `--brand-primary-light`, and
+`--brand-accent-dark` colors from `theme.css` as three- or six-digit hex
+values. Fonts and other stylesheet rules apply to the web interface.
+
 The Python Docker image includes the HTML. For host development, build it
 from the checkout with Node 22 or later before starting the MCP server.
 

@@ -15,6 +15,7 @@ COPY mcp_server/resources/heatmap/package*.json ./
 RUN npm ci --legacy-peer-deps --ignore-scripts
 COPY mcp_server/resources/heatmap/build.mjs mcp_server/resources/heatmap/index.html mcp_server/resources/heatmap/view.js ./
 RUN npm run build
+COPY ui/frontend/public/logo.png /build/dist/logo.png
 
 # Stage 1: system packages and Python dependencies shared by every target
 FROM python:3.11-slim AS base
@@ -78,7 +79,7 @@ ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
 FROM base AS runtime
 
 COPY . .
-COPY --from=heatmapper-app /build/dist/heatmap.html /opt/evidencelab/mcp-apps/heatmap.html
+COPY --from=heatmapper-app /build/dist/ /opt/evidencelab/mcp-apps/
 ENV MCP_APP_ASSET_DIR=/opt/evidencelab/mcp-apps
 
 # Ensure /app/data is a directory so bind-mounts work even if the repo has a symlink
@@ -90,7 +91,7 @@ CMD ["python", "pipeline/download.py"]
 FROM test-tools AS test
 
 COPY . .
-COPY --from=heatmapper-app /build/dist/heatmap.html /opt/evidencelab/mcp-apps/heatmap.html
+COPY --from=heatmapper-app /build/dist/ /opt/evidencelab/mcp-apps/
 ENV MCP_APP_ASSET_DIR=/opt/evidencelab/mcp-apps
 
 RUN rm -rf /app/data && mkdir -p /app/data

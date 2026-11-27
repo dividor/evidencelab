@@ -45,9 +45,14 @@ Click any cell in the heatmap to drill down into the underlying data. You can:
 
 ### Heatmapper in Claude
 
-Connect your Evidence Lab server to Claude on the web or desktop and ask it
-to use the `heatmap` tool. You can choose the row and column dimensions, click
-a cell to see matching documents, and use **Ask Claude about this cell**.
+Connect your Evidence Lab server to Claude on the web or desktop, then ask
+for a count by two dimensions:
+
+> Use the Evidence Lab Heatmapper on UNEG. Show UNDP and UNICEF as rows
+> and publication years 2022, 2023, and 2024 as columns. Count documents.
+
+You can choose new row and column dimensions, click a cell to see matching
+documents, and use **Ask Claude about this cell** to discuss the result.
 **Open in Evidence Lab** opens the web Heatmapper with the grid settings the
 web page accepts. The web version may show different results when its search
 settings differ or a shared link cannot carry a filter value containing commas.

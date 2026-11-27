@@ -99,7 +99,8 @@ def app_host(html: str) -> str:
     script = HOST_SCRIPT.replace("__GRID__", json.dumps(grid))
     csp = (
         '<meta http-equiv="Content-Security-Policy" '
-        "content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'\">"
+        "content=\"default-src 'none'; script-src 'unsafe-inline'; "
+        "style-src 'unsafe-inline'; img-src data:\">"
     )
     html = html.replace("<head>", f"<head>{csp}", 1)
     return (
@@ -112,21 +113,43 @@ def app_host(html: str) -> str:
     )
 
 
-def test_heatmap_view_renders_and_forwards_actions(page: Page):
+@pytest.mark.parametrize("title", ["Evidence Lab", "Evaluation Library"])
+def test_heatmap_view_renders_and_forwards_actions(
+    page: Page, title, tmp_path, monkeypatch
+):
+    if title == "Evaluation Library":
+        (tmp_path / "manifest.json").write_text(
+            json.dumps({"name": title}), encoding="utf-8"
+        )
+        (tmp_path / "theme.css").write_text(
+            ":root { --brand-primary-light: #85c1fd; }", encoding="utf-8"
+        )
+        monkeypatch.setenv("MCP_BRANDING_DIR", str(tmp_path))
+    else:
+        monkeypatch.delenv("MCP_BRANDING_DIR", raising=False)
     page.set_viewport_size({"width": 380, "height": 760})
     requests = []
     page.on("request", lambda request: requests.append(request.url))
     page.set_content(app_host(load_heatmap_html()))
     frame = page.frame_locator("#heatmapper")
+    expect(frame.get_by_role("heading", name=f"{title} Heatmapper")).to_be_visible()
+    assert frame.locator("header img").evaluate("(logo) => logo.naturalWidth") > 0
+    if title == "Evaluation Library":
+        assert (
+            frame.locator("html").evaluate(
+                "(root) => getComputedStyle(root).getPropertyValue('--brand-primary-light').trim()"
+            )
+            == "#85c1fd"
+        )
     cell = frame.get_by_role("button", name="UNICEF, 2024, 2 documents")
     expect(cell).to_be_visible()
     cell.focus()
     page.keyboard.press("Enter")
     expect(frame.get_by_text("Education evaluation")).to_be_visible()
     expect(frame.get_by_text("<img src=x onerror=alert(1)>")).to_be_visible()
-    assert frame.locator("img").count() == 0
+    assert frame.locator("#documents img").count() == 0
     frame.get_by_role("button", name="Ask Claude about this cell").click()
-    frame.get_by_role("link", name="Open in Evidence Lab").click()
+    frame.get_by_role("link", name=f"Open in {title}").click()
     frame.get_by_label("Rows").select_option("document_type")
     frame.get_by_role("button", name="Generate").click()
     expect(

@@ -4,7 +4,7 @@ All notable changes to Evidence Lab will be documented in this file.
 
 ## [Unreleased]
 
-- **Heatmapper opens in MCP Apps hosts.** Compare document or paragraph counts in an inline grid, click a cell to see the documents, and open the grid in Evidence Lab. Text-only MCP clients receive the same counts.
+- **Heatmapper opens in MCP Apps hosts.** Compare document or paragraph counts in an inline grid, click a cell to see the documents, and open the grid in Evidence Lab. The view uses the instance’s logo and colors. Text-only MCP clients receive the same counts.
 
 ## [1.6.11] - 2026-11-26
 
