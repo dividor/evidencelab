@@ -205,6 +205,26 @@ class IntroductionVerdict(BaseModel):
         return float(not self.unmet)
 
 
+class RelevanceVerdict(BaseModel):
+    negatives: list[str]
+    positives: list[str]
+    score: float = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def explain_deductions(self):
+        if any(not item.strip() for item in self.negatives + self.positives):
+            raise ValueError("Each listed reason must describe a finding.")
+        if bool(self.negatives) != (self.score < 1):
+            raise ValueError(
+                "Every reduced relevance score needs a specific deduction."
+            )
+        return self
+
+    @property
+    def reason(self):
+        return " ".join(self.negatives or self.positives)
+
+
 async def _grade(output, prompt, model, system, schema=BriefVerdict):
     from ui.backend.services.test_runner import _judge_call
 
@@ -258,7 +278,12 @@ def _brief_grade_request(template, output, kind, rubric):
     writing = kind == "brief_writing"
     return (
         "",
-        template.render(system=True, writing=writing, overlap=overlap),
+        template.render(
+            system=True,
+            writing=writing,
+            overlap=overlap,
+            relevance=kind == "brief_relevance",
+        ),
         template.render(
             rubric=rubric,
             assignment=assignment,
@@ -276,6 +301,7 @@ def _brief_grade_request(template, output, kind, rubric):
             standard=output["reference_standard"],
             overlap_only=overlap,
             writing_only=writing,
+            relevance=kind == "brief_relevance",
         ),
     )
 
@@ -290,6 +316,11 @@ async def _grade_criterion(template, output, kind, assertion, model, schema):
         return (0.0, issue, "")
     verdict, prompt = await _grade(output, prompt, model, system, schema)
     decision = (verdict.score, verdict.reason, system + "\n\n" + prompt)
+    if isinstance(verdict, RelevanceVerdict):
+        return (
+            *decision,
+            {"relevance": verdict.model_dump(include={"negatives", "positives"})},
+        )
     if isinstance(verdict, OverlapVerdict):
         return (
             *decision,
@@ -306,6 +337,7 @@ async def judge_brief(output, assertions, model):
         "brief_overlap": OverlapVerdict,
         "brief_writing": BriefVerdict,
         "brief_voice": BriefVerdict,
+        "brief_relevance": RelevanceVerdict,
         "llm_judge": BriefVerdict,
     }
     for assertion in assertions:
@@ -323,7 +355,7 @@ async def judge_brief(output, assertions, model):
             continue
         key = (
             judge_rubric_key(assertion)
-            if kind in ("llm_judge", "brief_writing")
+            if kind in ("llm_judge", "brief_writing", "brief_relevance")
             else kind
         )
         if key in decisions:

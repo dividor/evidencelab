@@ -921,7 +921,8 @@ def _resolve_case_plan(
         assertion = columns[i]
         override = overrides[i] if i < len(overrides) else None
         if (
-            assertion.get("type") in ("llm_judge", "brief_writing", "brief_factual")
+            assertion.get("type")
+            in ("llm_judge", "brief_writing", "brief_factual", "brief_relevance")
             and isinstance(override, str)
             and override.strip()
         ):

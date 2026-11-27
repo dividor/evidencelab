@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import type { AssertionResult, TestResult } from '../../../types/testing';
 import { judgeCriterionName } from './assertionSpecs';
-import { AssertionEvidence } from './GeneratedSection';
+import GeneratedSection, { AssertionEvidence } from './GeneratedSection';
 import RepetitionEvidence from './RepetitionEvidence';
 import { formatScore } from './testingFormat';
 
 const briefCheckLabels: Record<string, string> = {
-  brief_factual: 'Factual support from citations', brief_voice: 'Selected voice and tone profile', brief_writing: 'Writing quality', brief_paragraphs: 'One-sentence paragraphs',
+  brief_relevance: 'Relevance to the template and section', brief_factual: 'Factual support from citations', brief_voice: 'Selected voice and tone profile', brief_writing: 'Writing quality', brief_paragraphs: 'One-sentence paragraphs',
   brief_intro_scope: 'Introduction scope', brief_length: 'Word count', brief_structure: 'Format and citations', brief_overlap: 'Cross-section repetition',
 };
 
@@ -20,7 +20,37 @@ function ungradedStatus(result: AssertionResult) {
   return result.applicable === false ? 'Not applicable' : '';
 }
 
-const AssertionResultRow: React.FC<{ result: AssertionResult; testResult: Pick<TestResult, "actual_output" | "brief_evidence"> }> = ({ result, testResult }) => {
+function RelevanceAssessment({ result }: { result: AssertionResult }) {
+  if (!result.relevance) return <details><summary>Original assessment</summary><p>{result.message}</p></details>;
+  const { negatives, positives } = result.relevance;
+  return <>
+    <p><strong>Negatives:</strong> {negatives.length === 0 && 'None.'}</p>
+    {negatives.map((item, index) => <p key={index}>{item}</p>)}
+    <details><summary>Positives:</summary>
+      {positives.length ? positives.map((item, index) => <p key={index}>{item}</p>) : <p>None recorded.</p>}
+    </details>
+  </>;
+}
+
+type ResultProps = { result: AssertionResult; testResult: Pick<TestResult, 'actual_output' | 'brief_evidence'> };
+
+function BriefAssessment({ result, testResult }: ResultProps) {
+  if (result.type === 'brief_overlap') return <RepetitionEvidence check={result} output={testResult.actual_output!} />;
+  if (result.type === 'brief_relevance' || result.relevance || result.label === briefCheckLabels.brief_relevance) return <>
+    <RelevanceAssessment result={result} />
+    <GeneratedSection result={testResult} label="Section text and references" />
+  </>;
+  const evidence = <AssertionEvidence assessment={result} result={testResult} />;
+  if (result.factual_support || result.type === 'brief_factual') return <>
+    {evidence}
+    {result.message && (testResult.brief_evidence
+      ? <details><summary>Original section assessment</summary><p>{result.message}</p></details>
+      : <p>{result.message}</p>)}
+  </>;
+  return <><p className="testing-assertion-result-message">{result.message}</p>{evidence}</>;
+}
+
+const AssertionResultRow: React.FC<ResultProps> = ({ result, testResult }) => {
   const [open, setOpen] = useState(false);
   const label = expectationName(result);
   const status = ungradedStatus(result);
@@ -37,7 +67,6 @@ const AssertionResultRow: React.FC<{ result: AssertionResult; testResult: Pick<T
     {result.judge_prompt && <details><summary>Full prompt sent to the LLM</summary><pre className="testing-pre testing-pre-scroll">{result.judge_prompt}</pre></details>}
   </>;
   const detail = <><p className="testing-assertion-result-message">{result.message}</p>{prompts}</>;
-  const factual = result.factual_support || result.type === 'brief_factual';
   if (testResult.actual_output?.capability !== 'brief') return <div className="testing-assertion-result">{heading}{detail}</div>;
   const profile = (testResult.actual_output.assignment as { voice_profile?: { name: string; instructions: string } } | undefined)?.voice_profile;
   return (
@@ -45,19 +74,8 @@ const AssertionResultRow: React.FC<{ result: AssertionResult; testResult: Pick<T
       <summary><span className="testing-disclosure-arrow" aria-hidden="true" />{heading}</summary>
       {open && <div className="testing-assertion-body">
         {result.type === 'brief_voice' && profile && <div><strong>{profile.name}</strong><p>{profile.instructions}</p></div>}
-        {result.type === 'brief_overlap' ? <>
-          <RepetitionEvidence check={result} output={testResult.actual_output} />
-          {prompts}
-        </> : <>
-          {!factual && detail}
-          <AssertionEvidence assessment={result} result={testResult} />
-        </>}
-        {factual && <>
-          {result.message && (testResult.brief_evidence
-            ? <details><summary>Original section assessment</summary><p>{result.message}</p></details>
-            : <p>{result.message}</p>)}
-          {prompts}
-        </>}
+        <BriefAssessment result={result} testResult={testResult} />
+        {prompts}
       </div>}
     </details>
   );

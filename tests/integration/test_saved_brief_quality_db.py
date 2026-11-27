@@ -116,6 +116,11 @@ async def test_saved_and_historical_check_remain_distinct_after_an_edit(
                     ]
                 }
             ), {"prompt_tokens": 12}
+        if "Assess the fit between" in system:
+            return (
+                '{"negatives":[],"positives":["Matches the assigned readings."],"score":1}',
+                {"prompt_tokens": 3},
+            )
         return '{"reason":"Clear.","unmet":[],"score":1}', {"prompt_tokens": 3}
 
     monkeypatch.setattr(test_runner, "_judge_call", judge)

@@ -254,6 +254,45 @@ async def test_unverified_quotation_retries_only_that_claim_and_preserves_other_
     o = output()
     check = {"type": "brief_factual", "rubric": RUBRIC}
     result = evaluate_assertion(check, o, await judge_brief(o, [check], "model"))
-    assert result["error"] and result["claim_grades"][0]["passed"]
+    assert result["passed"] is False and result["score"] == 0
+    assert result["claim_grades"][0]["passed"]
+    assert result["claim_grades"][1]["passed"] is False
+    assert result["claim_grades"][1]["evidence_failed"]
     assert "could not be found in [9]" in result["claim_grades"][1]["reason"]
     assert "Costs dropped." not in call.await_args.args[0]
+
+
+async def test_retry_can_substantiate_a_claim_using_only_the_relevant_excerpt(
+    monkeypatch,
+):
+    o = {**output(), "summary": "Costs fell [4, 9]."}
+    good, usage = reply([(1, 1, "The log confirms the decrease.")])
+    wrong = json.loads(good)
+    wrong["claims"][0]["supporting_quotes"].append(
+        {"citation": 9, "quote": "The costs were lower."}
+    )
+    call = AsyncMock(side_effect=[(json.dumps(wrong), usage), (good, usage)])
+    monkeypatch.setattr(test_runner, "_judge_call", call)
+    check = {"type": "brief_factual", "rubric": RUBRIC}
+    grade = await judge_brief(o, [check], "model")
+    result = evaluate_assertion(check, o, grade)
+    assert result["passed"] and result["score"] == 1
+    assert call.await_count == 2
+
+
+@pytest.mark.parametrize("sources", [[], [{"index": 4, "text": "Costs dropped."}]])
+async def test_completed_grade_without_evidence_fails_even_at_zero_threshold(
+    monkeypatch, sources
+):
+    o = {**output(), "summary": "Costs fell [4].", "sources": sources}
+    raw, usage = reply([(1, 1, "Costs decreased.")])
+    row = json.loads(raw)["claims"][0]
+    row["supporting_quotes"] = []
+    call = AsyncMock(return_value=(json.dumps({"claims": [row]}), usage))
+    monkeypatch.setattr(test_runner, "_judge_call", call)
+    check = {"type": "brief_factual", "rubric": RUBRIC, "threshold": 0}
+    grade = await judge_brief(o, [check], "model")
+    result = evaluate_assertion(check, o, grade)
+    assert result["passed"] is False and result["score"] == 0
+    assert result["claim_grades"][0]["passed"] is False
+    assert call.await_count == 2

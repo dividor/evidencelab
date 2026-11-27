@@ -89,7 +89,7 @@ def _read_claim(rows, claim, sources):
         return None, "The judge returned an incomplete or inconsistent grade."
     cited = any(sources.get(label, {}).get("text") for label in claim["citations"])
     if grade.factual and not cited and grade.score > 0:
-        return None, "An uncited factual claim cannot receive credit."
+        return grade.model_dump(), "An uncited factual claim cannot receive credit."
     issue = _evidence_issue(grade, claim, sources)
     return grade.model_dump(), issue
 
@@ -100,6 +100,18 @@ def _read_batch(raw, pending, sources):
     except ValidationError:
         rows = []
     return [(c["claim"], *_read_claim(rows, c, sources)) for c in pending]
+
+
+def _unresolved_grade(number, grade, issue):
+    if grade is None:
+        return dict(claim=number, error=True, reason=issue)
+    return {
+        **grade,
+        "evidence_failed": True,
+        "score": 0.0,
+        "reason": issue,
+        "unmet": [*grade["unmet"], issue],
+    }
 
 
 async def _grade_batch(claims, sources, context, template, system, output, model):
@@ -133,12 +145,7 @@ async def _grade_batch(claims, sources, context, template, system, output, model
         ):
             if issue:
                 issues[number] = issue
-                ungraded[number] = dict(
-                    claim=number,
-                    error=True,
-                    reason=issue,
-                    supporting_quotes=(grade or {}).get("supporting_quotes", []),
-                )
+                ungraded[number] = _unresolved_grade(number, grade, issue)
             else:
                 accepted[number] = grade
                 issues.pop(number, None)

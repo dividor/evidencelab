@@ -275,6 +275,11 @@ _STARTER_VOICE_RUBRIC = (
 
 def brief_assertion_type(assertion):
     if (
+        assertion["type"] == "llm_judge"
+        and assertion.get("label") == "Relevance to the template and section"
+    ):
+        return "brief_relevance"
+    if (
         assertion["type"] == "brief_writing"
         and assertion.get("rubric") == _STARTER_VOICE_RUBRIC
     ):
@@ -284,7 +289,7 @@ def brief_assertion_type(assertion):
 
 def judge_rubric_key(assertion: Dict[str, Any]) -> str:
     rubric = str(assertion.get("rubric", ""))
-    if assertion.get("type") in ("brief_writing", "brief_factual"):
+    if assertion.get("type") in ("brief_writing", "brief_factual", "brief_relevance"):
         return json.dumps([assertion["type"], rubric])
     return rubric
 
@@ -316,6 +321,8 @@ def eval_llm_judge(
         result["label"] = a["label"]
     if rubric == "brief_overlap" and isinstance(verdict, tuple) and len(verdict) == 4:
         result["repetitions"] = verdict[3]["repetitions"]
+    if isinstance(verdict, tuple) and len(verdict) == 4 and "relevance" in verdict[3]:
+        result["relevance"] = verdict[3]["relevance"]
     if prompt:
         result["judge_prompt"] = prompt
     return result
@@ -345,6 +352,7 @@ _EVALUATORS: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], AssertionResul
 VALID_ASSERTION_TYPES = set(_EVALUATORS) | {
     "brief_voice",
     "brief_factual",
+    "brief_relevance",
     "llm_judge",
     "brief_overlap",
     "brief_intro_scope",
@@ -369,7 +377,14 @@ def _factual_result(assertion, output, judge_fn):
     threshold = float(assertion.get("threshold", 1.0))
     errors = [f"Claim {g['claim']}: {g['reason']}" for g in grades if g.get("error")]
     assessed = [
-        g if g.get("error") else {**g, "passed": g["score"] >= threshold}
+        (
+            g
+            if g.get("error")
+            else {
+                **g,
+                "passed": not g.get("evidence_failed") and g["score"] >= threshold,
+            }
+        )
         for g in grades
     ]
     if errors:
@@ -384,7 +399,7 @@ def _factual_result(assertion, output, judge_fn):
     return {
         **info,
         "score": score,
-        "passed": score >= threshold,
+        "passed": all(g["passed"] for g in assessed),
         "message": "",
         "judge_prompt": prompt,
         "claim_grades": assessed,
@@ -429,7 +444,7 @@ def evaluate_assertion(
                 else "Does this section repeat a finding from another section?"
             ),
         }
-    if atype in ("llm_judge", "brief_writing"):
+    if atype in ("llm_judge", "brief_writing", "brief_relevance"):
         return eval_llm_judge(assertion, output, judge_fn=judge_fn)
     fn = _EVALUATORS.get(str(atype))
     if fn is None:

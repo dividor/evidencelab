@@ -7,6 +7,7 @@ from ui.backend.services.test_evaluators import UnverifiedOverlapQuote
 _CHECK_NAMES = {
     "brief_overlap": "Cross-section repetition",
     "brief_intro_scope": "Introduction scope",
+    "brief_relevance": "Relevance to the template and section",
     "brief_factual": "Factual support from citations",
     "brief_writing": "Writing quality",
     "brief_voice": "Selected voice and tone profile",

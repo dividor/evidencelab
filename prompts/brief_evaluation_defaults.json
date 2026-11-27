@@ -18,8 +18,8 @@
     "label": "Factual support from citations"
   },
   {
-    "type": "llm_judge",
-    "rubric": "Read the brief topic together with its section heading. Name the subject and its defining conditions. Quote words in the cited evidence establishing those conditions for the findings presented. An unspecified or different population, setting, version or period fails even if the issue discussed is similar. Then quote how the draft answers the heading for that subject. Apply any editorial scope notes for this case. A finding on a different question earns no credit. Assess the answer within the scope of its evidence. Discussion of gaps in the review belongs only when explicitly assigned and supported by a cited source.",
+    "type": "brief_relevance",
+    "rubric": "Does the section answer the question assigned by its template, heading and section instructions? Check its subject and any specified population, setting, version or period against the cited material. Identify any requested part that is missing or off topic. Require a measurement or comparison only if the assignment asks for it. Assess the strength of support for individual claims in the factual support check.",
     "threshold": 1,
     "label": "Relevance to the template and section"
   },

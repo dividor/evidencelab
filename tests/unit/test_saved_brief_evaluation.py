@@ -1,5 +1,6 @@
 """Saved sections and experiments share the judge, grades and evidence numbering."""
 
+import json
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -113,6 +114,49 @@ async def test_factual_prompt_and_grade_match_experiment_and_marks_include_uncit
         content, [SimpleNamespace(**r) for r in rows], include_uncited=True
     )
     assert len(coverage(content, pairs, include_uncited=True).covered[sid]) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("timeout", [False, True])
+async def test_saved_and_experiment_distinguish_failed_evidence_from_a_judge_timeout(
+    monkeypatch, timeout
+):
+    from ui.backend.services import test_runner
+    from ui.backend.services.brief_template_evaluation import grade_template_checks
+
+    draft, sid, _ = next(saved.section_inputs(brief_content(), {}))
+    factual = next(
+        c for c in saved.DEFAULT_BRIEF_EXPECTATIONS if c["type"] == "brief_factual"
+    )
+    wrong = {
+        "claim": 1,
+        "factual": True,
+        "score": 1,
+        "reason": "The log reports it.",
+        "unmet": [],
+        "supporting_quotes": [{"citation": 1, "quote": "The meter failed."}],
+    }
+    call = AsyncMock(return_value=(json.dumps({"claims": [wrong]}), {}))
+    if timeout:
+        call.side_effect = TimeoutError()
+    monkeypatch.setattr(test_runner, "_judge_call", call)
+    monkeypatch.setattr(saved, "DEFAULT_BRIEF_EXPECTATIONS", [factual])
+
+    async def judge(output, assertions):
+        return await judge_brief(output, assertions, "model")
+
+    [experiment] = await grade_template_checks(draft, [factual], judge)
+    checks, [passage] = await saved.grade_saved_section(draft, 0, False, "model", 0)
+    assert checks == [experiment]
+    section = saved.section_result(draft, checks, sid, False)
+    if timeout:
+        assert section["status"] == "error" and checks[0]["error"]
+        assert "timed out" in checks[0]["message"]
+        assert passage["verdict"] == "cannot_assess"
+    else:
+        assert section["status"] == "fail" and checks[0]["score"] == 0
+        assert "could not be found" in checks[0]["claim_grades"][0]["reason"]
+        assert passage["verdict"] == "unsupported"
 
 
 @pytest.mark.asyncio

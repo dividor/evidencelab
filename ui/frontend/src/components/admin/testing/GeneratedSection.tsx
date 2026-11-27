@@ -88,7 +88,7 @@ export function AssertionEvidence({ assessment, result }: { assessment: Assertio
   );
 }
 
-export default function GeneratedSection({ result }: { result: Pick<TestResult, "actual_output" | "brief_evidence"> }) {
+export default function GeneratedSection({ result, label = 'Generated section' }: { result: Pick<TestResult, "actual_output" | "brief_evidence">; label?: string }) {
   const output = result.actual_output;
   if (output?.capability !== 'brief') return null;
   const evidence = result.brief_evidence;
@@ -97,7 +97,7 @@ export default function GeneratedSection({ result }: { result: Pick<TestResult, 
   const sources = (output.sources || []) as SavedSource[];
   return (
     <details className="testing-case-block testing-generated-section">
-      <summary className="testing-case-label">Generated section</summary>
+      <summary className="testing-case-label">{label}</summary>
       {savedText && output.written !== false ? (
         <>
           <p>{String(output.words)} words{assignment?.target_words ? ` of ${assignment.target_words} requested` : ''}</p>

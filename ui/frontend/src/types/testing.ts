@@ -61,6 +61,7 @@ export interface RepeatedPassage {
 }
 
 export interface AssertionResult {
+  relevance?: { negatives: string[]; positives: string[] };
   repetitions?: RepeatedPassage[];
   section_assessment?: string;
   type: string;
