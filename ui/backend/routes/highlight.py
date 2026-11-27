@@ -22,6 +22,7 @@ from ui.backend.schemas import (
 from ui.backend.services.ai_daily_limit import AiDailyLimitReached, check_ai_allowance
 from ui.backend.utils.app_limits import get_highlight_max_text_chars
 from ui.backend.utils.app_state import get_db_for_source, get_pg_for_source, logger
+from ui.backend.utils.errors import server_error
 from ui.backend.utils.highlight_helpers import (
     build_clean_text_index_map,
     dedupe_matches,
@@ -183,8 +184,7 @@ async def get_chunk_highlights(
         # stall every other request in this process.
         return await run_in_threadpool(_chunk_highlights_sync, chunk_id, data_source)
     except Exception as e:
-        logger.error(f"Chunk highlight error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "Chunk highlight error", logger) from e
 
 
 def _chunk_highlights_sync(
@@ -257,8 +257,7 @@ async def get_highlights(
             _doc_highlights_sync, doc_id, page, text, data_source
         )
     except Exception as e:
-        logger.error(f"Highlight error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "Highlight error", logger) from e
 
 
 def _doc_highlights_sync(
@@ -720,5 +719,4 @@ async def highlight_text(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Highlight error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "Highlight error", logger) from e
