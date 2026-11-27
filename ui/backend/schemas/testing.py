@@ -313,10 +313,29 @@ class BriefCitationCheckPassageRead(BaseModel):
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
     error_message: Optional[str] = None
+    # A person's acceptance of the citation, made in the Fact Checker: when,
+    # by whom (the name as it was then) and their comment. All None for a
+    # passage nobody accepted.
+    human_accepted_at: Optional[datetime] = None
+    human_accepted_by_name: Optional[str] = None
+    human_acceptance_comment: Optional[str] = None
 
 
 class BriefCitationCheckDetail(BriefCitationCheckRead):
     passages: List[BriefCitationCheckPassageRead] = Field(default_factory=list)
+    # How many of the passages a person accepted. The routes set it.
+    human_accepted: int = 0
+
+
+# The longest comment a person may leave when accepting a citation.
+ACCEPTANCE_COMMENT_MAX = 2000
+
+
+class BriefFactCheckAcceptance(BaseModel):
+    """PUT .../passages/{passage_id}/acceptance: accept the citation of one
+    judged passage, with an optional comment."""
+
+    comment: Optional[str] = Field(default=None, max_length=ACCEPTANCE_COMMENT_MAX)
 
 
 class BriefFactCheckMark(BaseModel):
@@ -336,11 +355,21 @@ class BriefFactCheckMark(BaseModel):
     confidence: Optional[float] = None
     citations: str
     quote_not_in_source: bool
+    # The colour the passage is painted in, and what that colour means: its
+    # verdict, or ``accepted`` once a person accepted the citation.
+    highlight: str
+    highlight_label: str
+    # A person accepted the citation; ``accepted_label`` says who and when,
+    # ``accepted_comment`` is what they wrote (empty when nothing).
+    accepted: bool = False
+    accepted_label: str = ""
+    accepted_comment: str = ""
 
 
 class BriefFactCheckLegendItem(BaseModel):
-    """One verdict of the Fact Checker's legend: its label and how many of
-    the highlighted passages carry it."""
+    """One colour of the Fact Checker's legend: a verdict, or ``accepted``
+    for passages a person accepted, with its label and how many of the
+    highlighted passages are painted in it."""
 
     verdict: str
     label: str
@@ -396,8 +425,9 @@ class BriefFactCheckRead(BaseModel):
     covers at least one section of the brief (``None`` when there is none,
     so the button stays hidden), the version it judged and the brief's
     current version, a note on how they relate, the sections the check no
-    longer covers, the legend of verdict colours with their counts, and the
-    marks (every judged passage of a covered section)."""
+    longer covers, the legend of colours with their counts, the marks (every
+    judged passage of a covered section), and whether this user may accept a
+    citation or withdraw an acceptance."""
 
     check: Optional[BriefCitationCheckRead] = None
     brief_version: Optional[int] = None
@@ -406,6 +436,8 @@ class BriefFactCheckRead(BaseModel):
     changed_sections: List[BriefFactCheckSection] = Field(default_factory=list)
     legend: List[BriefFactCheckLegendItem] = Field(default_factory=list)
     marks: List[BriefFactCheckMark] = Field(default_factory=list)
+    can_accept: bool = False
+    comment_max_length: int = ACCEPTANCE_COMMENT_MAX
 
 
 BriefCheckCandidate.model_rebuild()

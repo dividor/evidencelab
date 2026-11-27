@@ -1342,6 +1342,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
         evidence={factCheck?.evidence ?? null}
         onEnter={factCheck?.onCardEnter}
         onLeave={factCheck?.onCardLeave}
+        acceptance={factCheck?.acceptance ?? null}
         onOpenSource={onResultClick ? handleEvidenceClick : undefined}
       />
     </div>

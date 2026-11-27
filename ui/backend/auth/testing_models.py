@@ -364,6 +364,20 @@ class BriefCitationCheckPassage(Base):
     prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # A person's acceptance of the citation (migration 0047), recorded beside
+    # the judge's verdict, never over it: all null until someone accepts the
+    # passage in the Fact Checker, and null again when that is withdrawn. The
+    # name is a snapshot, so the row still names the person if the account goes.
+    human_accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    human_accepted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    human_accepted_by_name: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    human_acceptance_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

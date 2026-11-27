@@ -66,7 +66,7 @@ from ui.backend.schemas.testing import (
 from ui.backend.services import brief_version_store as versions
 from ui.backend.services.ai_daily_limit import require_ai_allowance
 from ui.backend.services.brief_citation_model import BriefCitationError
-from ui.backend.services.brief_fact_check import brief_changed
+from ui.backend.services.brief_fact_check import accepted_count, brief_changed
 from ui.backend.services.brief_outline_numbers import number_saved_sections
 from ui.backend.services.brief_sharing import user_group_ids
 from ui.backend.services.brief_template_evaluation import (
@@ -685,10 +685,11 @@ def _check_read(
 ) -> BriefCitationCheckRead:
     """A check as the API returns it, saying whether the brief has moved on
     to a newer version than the one the check judged."""
-    model = BriefCitationCheckDetail if detail else BriefCitationCheckRead
-    return model.model_validate(check).model_copy(
-        update={"brief_changed": brief_changed(check, current_version)}
-    )
+    update: dict = {"brief_changed": brief_changed(check, current_version)}
+    if not detail:
+        return BriefCitationCheckRead.model_validate(check).model_copy(update=update)
+    update["human_accepted"] = accepted_count(check.passages)
+    return BriefCitationCheckDetail.model_validate(check).model_copy(update=update)
 
 
 async def _current_version(session: AsyncSession, brief_id: uuid.UUID) -> Optional[int]:

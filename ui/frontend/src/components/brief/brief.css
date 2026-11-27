@@ -3768,6 +3768,17 @@
 .brief-fact-swatch.brief-fact-mark-supported {
   border-bottom-color: var(--brand-success);
 }
+/* A passage whose citation a person accepted: its own colour, whatever the
+   judge's verdict was. */
+.brief-fact-mark-accepted {
+  background: rgba(91, 143, 168, 0.22);
+  background: color-mix(in srgb, var(--brand-primary) 22%, transparent);
+}
+.brief-fact-mark.brief-fact-mark-accepted,
+.brief-fact-badge.brief-fact-mark-accepted,
+.brief-fact-swatch.brief-fact-mark-accepted {
+  border-bottom-color: var(--brand-primary);
+}
 .brief-fact-mark:hover {
   filter: saturate(1.4) brightness(0.97);
 }
@@ -3886,6 +3897,54 @@
   color: var(--brand-text-secondary);
   background: rgba(245, 158, 11, 0.12);
   background: color-mix(in srgb, var(--brand-warning) 12%, transparent);
+}
+/* A person's acceptance of the citation, above the judge's reasoning: who
+   and why once accepted; the button, then the comment and Save, before. */
+.brief-fact-accepted {
+  margin: 0 0 10px;
+  padding: 6px 8px;
+  background: rgba(91, 143, 168, 0.1);
+  background: color-mix(in srgb, var(--brand-primary) 10%, transparent);
+}
+.brief-fact-accepted-who {
+  font-size: 12px;
+  font-weight: 600;
+}
+.brief-fact-accepted-comment {
+  margin: 4px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.brief-fact-accept,
+.brief-fact-accept-form {
+  margin: 0 0 10px;
+}
+.brief-fact-accept-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11.5px;
+  color: var(--brand-text-tertiary);
+}
+.brief-fact-accept-comment {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--brand-border);
+  background: var(--brand-surface);
+  color: var(--brand-text-primary);
+  font: inherit;
+  resize: vertical;
+}
+.brief-fact-accept-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.brief-fact-accept-error {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--brand-error);
 }
 .brief-fact-evidence {
   margin-top: 8px;

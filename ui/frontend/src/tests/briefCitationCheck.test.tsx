@@ -41,6 +41,8 @@ const check = {
   },
 };
 
+const ACCEPTANCE_COMMENT = 'Table 4 of the source gives the halved cost.';
+
 const passage = (over: Partial<BriefCitationCheckPassage>): BriefCitationCheckPassage => ({
   id: 'p', passage_id: 1, brief_section: 'Dropout', passage: 'Dropout fell.', citations: '1',
   documents: `[1] ${KENYA}`, sources: [{ index: 1, title: KENYA, page: 4, pdf_url: 'https://x/y.pdf', excerpt: 'Dropout fell from 12 to 7 percent.' }],
@@ -52,7 +54,7 @@ const passage = (over: Partial<BriefCitationCheckPassage>): BriefCitationCheckPa
 const passages = [
   passage({ id: 'p1', passage_id: 1 }),
   passage({ id: 'p2', passage_id: 2, passage: GIRLS, verdict: 'partially_supported', flagged: true, problems: ['Excerpt does not mention girls.'], quote_not_in_source: true, supporting_quotes: [{ citation: 1, quote: 'girls benefited', status: 'missing' }], quotes_verified: '0/1' }),
-  passage({ id: 'p3', passage_id: 3, brief_section: 'Costs', passage: 'Costs halved.', verdict: 'unsupported', flagged: true, confidence: 0.4 }),
+  passage({ id: 'p3', passage_id: 3, brief_section: 'Costs', passage: 'Costs halved.', verdict: 'unsupported', flagged: true, confidence: 0.4, human_accepted_at: TS, human_accepted_by_name: 'Ada Reviewer', human_acceptance_comment: ACCEPTANCE_COMMENT }),
 ];
 
 const CASH = 'Cash transfers';
@@ -68,7 +70,7 @@ beforeEach(() => {
   mockedAxios.get.mockImplementation((url: string) => {
     if (url.includes('/testing/briefs')) return Promise.resolve({ data: briefs });
     if (url.includes('/config/model-combos')) return Promise.resolve({ data: { 'Azure Foundry': {}, 'Google Vertex': {} } });
-    if (url.includes('/testing/brief-checks/chk1')) return Promise.resolve({ data: { ...check, passages } });
+    if (url.includes('/testing/brief-checks/chk1')) return Promise.resolve({ data: { ...check, passages, human_accepted: 1 } });
     return Promise.resolve({ data: [] });
   });
 });
@@ -81,6 +83,11 @@ describe('filterPassages', () => {
     expect(filterPassages(passages, { ...EMPTY_FILTERS, verdicts: new Set(['unsupported']) }).map((p) => p.passage_id)).toEqual([3]);
     expect(filterPassages(passages, { ...EMPTY_FILTERS, section: 'Costs' }).map((p) => p.passage_id)).toEqual([3]);
     expect(filterPassages(passages, { ...EMPTY_FILTERS, search: 'GIRLS' }).map((p) => p.passage_id)).toEqual([2]);
+    // A passage a person accepted drops out of "not accepted only", and its
+    // comment is searched too.
+    expect(filterPassages(passages, { ...EMPTY_FILTERS, notAcceptedOnly: true }).map((p) => p.passage_id)).toEqual([1, 2]);
+    expect(filterPassages(passages, { ...EMPTY_FILTERS, flaggedOnly: true, notAcceptedOnly: true }).map((p) => p.passage_id)).toEqual([2]);
+    expect(filterPassages(passages, { ...EMPTY_FILTERS, search: 'table 4' }).map((p) => p.passage_id)).toEqual([3]);
   });
 });
 
@@ -172,6 +179,26 @@ describe('BriefCheckDetail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
     expect(screen.getByText('Showing 3 of 3 passages.', { exact: false })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download Excel' })).toBeEnabled();
+  });
+
+  test('a passage a person accepted names them and their comment beside the judge\'s verdict', async () => {
+    render(<BriefCheckDetail checkId={check.id} dataSource="wfp" onBack={jest.fn()} />);
+    await waitFor(() => expect(screen.getByText('Showing 3 of 3 passages.', { exact: false })).toBeInTheDocument());
+    expect(screen.getByRole('columnheader', { name: 'Human accepted' })).toHaveAttribute('title', expect.stringContaining('Fact Checker'));
+    expect(screen.getByRole('columnheader', { name: 'Acceptance comment' })).toBeInTheDocument();
+    // The summary counts it; the judge's figures are as the check left them.
+    expect(screen.getByTitle(/still count in the verdict and Flagged figures/)).toHaveTextContent('Human accepted 1');
+    const row = screen.getByText('Costs halved.').closest('tr') as HTMLTableRowElement;
+    expect(row).toHaveTextContent('Unsupported');
+    expect(row).toHaveTextContent('Accepted');
+    expect(row).toHaveTextContent('Ada Reviewer');
+    expect(row).toHaveTextContent(ACCEPTANCE_COMMENT);
+    const other = screen.getByText(GIRLS).closest('tr') as HTMLTableRowElement;
+    expect(other).not.toHaveTextContent('Accepted');
+
+    fireEvent.click(screen.getByLabelText('Not accepted only'));
+    expect(screen.getByText('Showing 2 of 3 passages.', { exact: false })).toBeInTheDocument();
+    expect(screen.queryByText('Costs halved.')).toBeNull();
   });
 
   test('a running check shows progress and disables export', async () => {

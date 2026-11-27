@@ -28,6 +28,8 @@ export interface PassageFilters {
   verdicts: Set<CitationVerdict>;
   flaggedOnly: boolean;
   quoteNotInSource: boolean;
+  // Hide the passages a person accepted, leaving what is still to review.
+  notAcceptedOnly: boolean;
   section: string;
   search: string;
 }
@@ -36,12 +38,15 @@ export const EMPTY_FILTERS: PassageFilters = {
   verdicts: new Set(),
   flaggedOnly: false,
   quoteNotInSource: false,
+  notAcceptedOnly: false,
   section: '',
   search: '',
 };
 
 const matchesSearch = (p: BriefCitationCheckPassage, needle: string): boolean => {
-  const hay = [p.passage, p.documents, p.explanation, ...p.problems].join(' ').toLowerCase();
+  const hay = [p.passage, p.documents, p.explanation, ...p.problems, p.human_acceptance_comment || '']
+    .join(' ')
+    .toLowerCase();
   return hay.includes(needle);
 };
 
@@ -55,6 +60,7 @@ export const filterPassages = (
       (filters.verdicts.size === 0 || filters.verdicts.has(p.verdict)) &&
       (!filters.flaggedOnly || p.flagged) &&
       (!filters.quoteNotInSource || p.quote_not_in_source) &&
+      (!filters.notAcceptedOnly || !p.human_accepted_at) &&
       (!filters.section || p.brief_section === filters.section) &&
       (!needle || matchesSearch(p, needle)),
   );
@@ -80,6 +86,8 @@ export const SUMMARY_HELP: Record<string, string> = {
     'Passages with any verdict other than Supported. These are the ones to review by hand.',
   quote_not_in_source:
     'Passages where the judge backed its verdict with a quote that cannot be found in the cited excerpt. Treat those verdicts with extra care.',
+  human_accepted:
+    "Passages whose citation a person accepted in the brief's Fact Checker. The judge's verdict is kept; these still count in the verdict and Flagged figures.",
   duration: 'Wall-clock time of the check.',
   tokens: 'Model tokens used by the judge across all passages.',
   cost: 'Estimated cost of the judge calls at the configured model rates.',
@@ -97,6 +105,9 @@ export const COLUMN_HELP: Record<string, string> = {
     'How sure the judge says it is, from 0 to 1. Low confidence on a Supported verdict is worth a second look.',
   quotes_verified:
     'Found / given: how many of the quotes the judge relied on could be located in the cited excerpt. "near" means the same words with small extraction differences.',
+  human_accepted:
+    "Who accepted this citation in the brief's Fact Checker, and when. Empty when nobody did. The judge's verdict stays as it was.",
+  acceptance_comment: 'What the person wrote when accepting the citation.',
 };
 
 export const QUOTES_HELP =

@@ -13,6 +13,13 @@ highlighted in the document in the colour of its verdict, with the judge's
 explanation and the cited excerpts (the parts the judge quoted marked) a
 pointer away.
 
+A person may overrule the judge on a passage: the brief's owner or an
+administrator accepts its citation, with an optional comment. The verdict is
+kept; the acceptance is recorded beside it on the passage row, the passage is
+painted in its own colour from then on, and the Testing (Brief) table lists
+who accepted it and why. An acceptance belongs to the check that judged the
+passage and can be withdrawn.
+
 Checks made before versions were linked carry no version; they apply only
 while the whole brief still reads as they judged it.
 
@@ -27,6 +34,7 @@ Tests: ``tests/unit/test_brief_fact_check.py``.
 import re
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from sqlalchemy import select
@@ -42,6 +50,7 @@ from ui.backend.auth.testing_models import (
 from ui.backend.services import brief_version_store as store
 from ui.backend.services import brief_versions as bv
 from ui.backend.services.brief_citation_model import BriefCitationError
+from ui.backend.services.brief_sharing import owner_name
 from ui.backend.services.citation_fidelity import (
     JUDGE_VERDICTS,
     CitedPassage,
@@ -58,6 +67,10 @@ VERDICT_LABELS = {
     "unsupported": "Unsupported",
     "cannot_assess": "Cannot assess",
 }
+
+# The colour of a passage a person accepted, and how the legend names it.
+ACCEPTED = "accepted"
+ACCEPTED_LABEL = "Human accepted"
 
 
 class FactCheckError(BriefCitationError):
@@ -193,15 +206,34 @@ def _citations(passage: CitedPassage) -> str:
     return ", ".join(str(i) for i in passage.citation_indices)
 
 
+def is_accepted(row: Any) -> bool:
+    """Whether a person accepted the citation of a judged passage."""
+    return row.human_accepted_at is not None
+
+
+def accepted_label(row: Any) -> str:
+    """Who accepted a passage and when, as the document says it; empty for
+    a passage nobody accepted."""
+    at = row.human_accepted_at
+    if at is None:
+        return ""
+    day = at.astimezone(timezone.utc)
+    who = row.human_accepted_by_name or "a deleted account"
+    return f"Accepted by {who} on {day.day} {day:%B %Y}"
+
+
 def fact_check_marks(cov: Coverage) -> List[Dict[str, Any]]:
     """The passages to highlight: every judged passage of a covered section,
-    whatever its verdict, with the judge's reasoning. The passage is given
+    whatever its verdict, with the judge's reasoning and, once a person
+    accepted its citation, who did and what they wrote. The passage is given
     as it reads on screen: the check stores the sentence with its markdown
     (a bold claim keeps its ``**``), while the document searches rendered
     text, which has none of it."""
     marks: List[Dict[str, Any]] = []
     for section_id, pairs in cov.covered.items():
         for passage, row in pairs:
+            verdict_label = VERDICT_LABELS.get(row.verdict, row.verdict)
+            accepted = is_accepted(row)
             marks.append(
                 {
                     "passage_id": row.passage_id,
@@ -209,27 +241,37 @@ def fact_check_marks(cov: Coverage) -> List[Dict[str, Any]]:
                     "section_title": passage.section_title,
                     "passage": strip_inline_markdown(row.passage),
                     "verdict": row.verdict,
-                    "verdict_label": VERDICT_LABELS.get(row.verdict, row.verdict),
+                    "verdict_label": verdict_label,
                     "explanation": row.explanation,
                     "problems": list(row.problems or []),
                     "confidence": row.confidence,
                     "citations": _citations(passage),
                     "quote_not_in_source": row.quote_not_in_source,
+                    "highlight": ACCEPTED if accepted else row.verdict,
+                    "highlight_label": ACCEPTED_LABEL if accepted else verdict_label,
+                    "accepted": accepted,
+                    "accepted_label": accepted_label(row),
+                    "accepted_comment": row.human_acceptance_comment or "",
                 }
             )
     return marks
 
 
 def legend(marks: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Every verdict with its label and how many highlighted passages carry
-    it, in the judge's order, so the document can explain its colours."""
+    """Every colour with its label and how many passages are painted in it,
+    so the document can explain them: the verdicts in the judge's order
+    (counting the passages nobody accepted), then the accepted ones."""
     counts: Dict[str, int] = {}
     for mark in marks:
-        counts[mark["verdict"]] = counts.get(mark["verdict"], 0) + 1
-    return [
+        counts[mark["highlight"]] = counts.get(mark["highlight"], 0) + 1
+    items = [
         {"verdict": v, "label": VERDICT_LABELS[v], "count": counts.get(v, 0)}
         for v in JUDGE_VERDICTS
     ]
+    items.append(
+        {"verdict": ACCEPTED, "label": ACCEPTED_LABEL, "count": counts.get(ACCEPTED, 0)}
+    )
+    return items
 
 
 def _plural(count: int, noun: str) -> str:
@@ -415,12 +457,12 @@ def passage_evidence(row: Any) -> List[Dict[str, Any]]:
     return blocks
 
 
-async def fact_check_evidence(
+async def judged_row(
     session: AsyncSession, brief: Brief, check_id: uuid.UUID, passage_id: int
-) -> Optional[Dict[str, Any]]:
-    """The evidence behind one highlighted passage of a completed check of
-    ``brief``, or None when the check or the passage is not one of its."""
-    row = (
+) -> Optional[BriefCitationCheckPassage]:
+    """One judged passage of a completed check of ``brief``, or None when
+    the check or the passage is not one of its."""
+    return (
         (
             await session.execute(
                 select(BriefCitationCheckPassage)
@@ -437,6 +479,14 @@ async def fact_check_evidence(
         .scalars()
         .first()
     )
+
+
+async def fact_check_evidence(
+    session: AsyncSession, brief: Brief, check_id: uuid.UUID, passage_id: int
+) -> Optional[Dict[str, Any]]:
+    """The evidence behind one highlighted passage of a completed check of
+    ``brief``, or None when the check or the passage is not one of its."""
+    row = await judged_row(session, brief, check_id, passage_id)
     if row is None:
         return None
     # Locating quotes in long excerpts is pure CPU work: off the event loop.
@@ -447,6 +497,67 @@ async def fact_check_evidence(
         "verdict_label": VERDICT_LABELS.get(row.verdict, row.verdict),
         "evidence": evidence,
     }
+
+
+# ---------------------------------------------------------------------------
+# A person's acceptance of a citation
+# ---------------------------------------------------------------------------
+
+
+def may_accept(brief: Brief, user: Any) -> bool:
+    """Whether ``user`` may accept citations of ``brief`` or withdraw an
+    acceptance: its owner and administrators. Someone the brief is only
+    shared with reads it, acceptances included, and changes nothing."""
+    return brief.user_id == user.id or bool(user.is_superuser)
+
+
+def clean_comment(comment: Optional[str]) -> Optional[str]:
+    """A comment as it is stored: trimmed, and None when nothing was said."""
+    return (comment or "").strip() or None
+
+
+async def accept_passage(
+    session: AsyncSession,
+    brief: Brief,
+    check_id: uuid.UUID,
+    passage_id: int,
+    user: Any,
+    comment: Optional[str],
+) -> bool:
+    """Record that ``user`` accepts the citation of one judged passage, with
+    their comment; accepting again replaces who, when and the comment. False
+    when the check or the passage is not one of the brief's."""
+    row = await judged_row(session, brief, check_id, passage_id)
+    if row is None:
+        return False
+    row.human_accepted_at = datetime.now(timezone.utc)
+    row.human_accepted_by_user_id = user.id
+    row.human_accepted_by_name = owner_name(user)
+    row.human_acceptance_comment = clean_comment(comment)
+    await session.commit()
+    return True
+
+
+async def withdraw_acceptance(
+    session: AsyncSession, brief: Brief, check_id: uuid.UUID, passage_id: int
+) -> bool:
+    """Take back the acceptance of one judged passage, leaving the judge's
+    verdict to stand alone again. False when the check or the passage is not
+    one of the brief's."""
+    row = await judged_row(session, brief, check_id, passage_id)
+    if row is None:
+        return False
+    row.human_accepted_at = None
+    row.human_accepted_by_user_id = None
+    row.human_accepted_by_name = None
+    row.human_acceptance_comment = None
+    await session.commit()
+    return True
+
+
+def accepted_count(passages: Sequence[Any]) -> int:
+    """How many of a check's passages a person accepted."""
+    return sum(1 for row in passages if is_accepted(row))
 
 
 # ---------------------------------------------------------------------------

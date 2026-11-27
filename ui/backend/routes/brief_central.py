@@ -38,6 +38,7 @@ from ui.backend.auth.schemas import (
 from ui.backend.auth.users import current_active_user, current_superuser
 from ui.backend.schemas.testing import (
     BriefCitationCheckRead,
+    BriefFactCheckAcceptance,
     BriefFactCheckEvidence,
     BriefFactCheckEvidenceRead,
     BriefFactCheckLegendItem,
@@ -49,9 +50,12 @@ from ui.backend.services import brief_citations as bc
 from ui.backend.services.brief_activity import upsert_brief_activity
 from ui.backend.services.brief_citations_convert import convert_legacy, is_legacy
 from ui.backend.services.brief_fact_check import (
+    accept_passage,
     brief_changed,
     fact_check,
     fact_check_evidence,
+    may_accept,
+    withdraw_acceptance,
 )
 from ui.backend.services.brief_sharing import (
     add_share,
@@ -518,6 +522,13 @@ async def get_brief_fact_check(
     judged against the brief's current one, the sections changed since, and
     every judged passage to highlight with its verdict."""
     brief, _can_edit = await _get_viewable_brief(session, brief_id, user)
+    return await _fact_check_read(session, brief, user)
+
+
+async def _fact_check_read(
+    session: AsyncSession, brief: Brief, user: User
+) -> BriefFactCheckRead:
+    """The Fact Checker's answer for ``brief`` as ``user`` gets it."""
     try:
         answer = await fact_check(session, brief)
     except bc.BriefCitationError as exc:
@@ -538,7 +549,74 @@ async def get_brief_fact_check(
         ],
         legend=[BriefFactCheckLegendItem(**item) for item in answer["legend"]],
         marks=[BriefFactCheckMark(**mark) for mark in answer["marks"]],
+        can_accept=may_accept(brief, user),
     )
+
+
+_NO_SUCH_PASSAGE = "No such passage in a completed check of this brief"
+
+
+async def _get_acceptable_brief(
+    session: AsyncSession, brief_id: uuid.UUID, user: User
+) -> Brief:
+    """A brief whose citations the user may accept: their own or, for an
+    administrator, any. 404 when they cannot see it, 403 when they can only
+    read it."""
+    brief, _can_edit = await _get_viewable_brief(session, brief_id, user)
+    if not may_accept(brief, user):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the brief's owner or an administrator can accept a citation",
+        )
+    return brief
+
+
+@router.put(
+    "/briefs/{brief_id}/fact-check/{check_id}/passages/{passage_id}/acceptance",
+    response_model=BriefFactCheckRead,
+    tags=["briefs"],
+)
+@limiter.limit(_RL_DEFAULT)
+async def accept_brief_fact_check_passage(
+    brief_id: uuid.UUID,
+    check_id: uuid.UUID,
+    passage_id: int,
+    body: BriefFactCheckAcceptance,
+    request: Request,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> BriefFactCheckRead:
+    """Accept the citation of one judged passage, with an optional comment:
+    the judge's verdict is kept and the passage is shown as human accepted
+    from then on. Returns the Fact Checker's answer as it now stands."""
+    brief = await _get_acceptable_brief(session, brief_id, user)
+    if not await accept_passage(
+        session, brief, check_id, passage_id, user, body.comment
+    ):
+        raise HTTPException(status_code=404, detail=_NO_SUCH_PASSAGE)
+    return await _fact_check_read(session, brief, user)
+
+
+@router.delete(
+    "/briefs/{brief_id}/fact-check/{check_id}/passages/{passage_id}/acceptance",
+    response_model=BriefFactCheckRead,
+    tags=["briefs"],
+)
+@limiter.limit(_RL_DEFAULT)
+async def withdraw_brief_fact_check_acceptance(
+    brief_id: uuid.UUID,
+    check_id: uuid.UUID,
+    passage_id: int,
+    request: Request,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> BriefFactCheckRead:
+    """Withdraw the acceptance of one judged passage, so the judge's verdict
+    stands alone again. Returns the Fact Checker's answer as it now stands."""
+    brief = await _get_acceptable_brief(session, brief_id, user)
+    if not await withdraw_acceptance(session, brief, check_id, passage_id):
+        raise HTTPException(status_code=404, detail=_NO_SUCH_PASSAGE)
+    return await _fact_check_read(session, brief, user)
 
 
 @router.get(
@@ -561,9 +639,7 @@ async def get_brief_fact_check_evidence(
     brief, _can_edit = await _get_viewable_brief(session, brief_id, user)
     answer = await fact_check_evidence(session, brief, check_id, passage_id)
     if answer is None:
-        raise HTTPException(
-            status_code=404, detail="No such passage in a completed check of this brief"
-        )
+        raise HTTPException(status_code=404, detail=_NO_SUCH_PASSAGE)
     return BriefFactCheckEvidenceRead(
         passage_id=answer["passage_id"],
         verdict=answer["verdict"],

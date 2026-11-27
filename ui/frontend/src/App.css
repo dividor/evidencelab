@@ -13569,6 +13569,18 @@ button.doc-link:hover {
   min-width: 22rem;
   line-height: 1.4;
 }
+.testing-check-comment {
+  min-width: 12rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* A citation a person accepted in the Fact Checker. */
+.testing-status-accepted {
+  background: rgba(91, 143, 168, 0.18);
+  background: color-mix(in srgb, var(--brand-primary) 18%, transparent);
+  color: var(--brand-primary-dark);
+}
 .testing-citation-links {
   display: inline-flex;
   flex-wrap: wrap;
