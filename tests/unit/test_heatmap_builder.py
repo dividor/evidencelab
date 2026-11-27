@@ -285,8 +285,12 @@ async def test_query_cell_uses_rest_filter_resolution_and_result_preparation(
     monkeypatch.setattr(heatmap_search, "get_db_for_source", lambda _: db)
     monkeypatch.setattr(heatmap_search, "get_pg_for_source", lambda _: pg)
     monkeypatch.setattr("ui.backend.routes.search.search_chunks", search)
-    combo = heatmap_search.UI_MODEL_COMBOS[heatmap_search.get_default_model_combo()]
-    monkeypatch.setitem(combo, "rerank_model_page_size", 25)
+    monkeypatch.setattr(heatmap_search, "get_default_model_combo", lambda: "test")
+    monkeypatch.setattr(
+        heatmap_search,
+        "UI_MODEL_COMBOS",
+        {"test": {"embedding_model": "test-embedding", "rerank_model_page_size": 25}},
+    )
     result = await heatmap_search.search_cell(
         "uneg",
         CellSearch("school meals", {"language": "English", "published_year": "2024"}),
@@ -297,6 +301,7 @@ async def test_query_cell_uses_rest_filter_resolution_and_result_preparation(
         "doc_id": "doc",
         "published_year": ["2024"],
     }
+    assert search.call_args.kwargs["dense_model"] == "test-embedding"
     assert search.call_args.kwargs["max_rerank_candidates"] == 25
 
 
