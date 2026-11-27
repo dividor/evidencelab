@@ -114,10 +114,12 @@ variables {
   db_engine_version       = "17"
   restore_task            = { cpu = 1024, memory = 4096 }
 
-  # null takes the defaults: no alerts.
-  alert_emails      = null
-  bedrock_alarms    = null
-  extra_environment = {}
+  # null takes the defaults: no alerts, the Bedrock call log on for a year.
+  alert_emails                    = null
+  bedrock_alarms                  = null
+  bedrock_call_log                = null
+  bedrock_call_log_retention_days = null
+  extra_environment               = {}
 }
 
 run "without_a_domain_serves_plain_http_on_the_load_balancer" {
@@ -309,18 +311,96 @@ run "only_the_bedrock_models_config_json_lists_may_be_called" {
   }
 
   assert {
-    condition = local.bedrock_resource_arns == sort([
-      "arn:aws:bedrock:*::foundation-model/amazon.nova-2-lite-v1:0",
-      "arn:aws:bedrock:*::foundation-model/amazon.rerank-v1:0",
-      "arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0",
-      "arn:aws:bedrock:*::foundation-model/mistral.mistral-large-2402-v1:0",
-      "arn:aws:bedrock:*:${data.aws_caller_identity.current.account_id}:inference-profile/eu.amazon.nova-2-lite-v1:0",
+    condition = local.bedrock_model_ids == sort([
+      "amazon.rerank-v1:0",
+      "amazon.titan-embed-text-v2:0",
+      "us.amazon.nova-2-lite-v1:0",
+      "mistral.mistral-large-2402-v1:0",
     ])
-    error_message = "The Bedrock policy should allow exactly the config's Bedrock models: the EU profile with its base model, and the plain models, and nothing from other providers."
+    error_message = "The role should get exactly the config's Bedrock models, and nothing from other providers."
   }
   assert {
-    condition     = alltrue([for s in data.aws_iam_policy_document.bedrock[0].statement : sort(tolist(s.resources)) == local.bedrock_resource_arns])
-    error_message = "The policy should be built from that list."
+    condition     = local.bedrock_profile_arns == tolist(["arn:aws:bedrock:us-east-2:${data.aws_caller_identity.current.account_id}:inference-profile/us.amazon.nova-2-lite-v1:0"])
+    error_message = "An inference profile should be allowed in the deployment's region only, where the app calls it."
+  }
+  assert {
+    condition = local.bedrock_direct_model_arns == sort([
+      "arn:aws:bedrock:us-west-2::foundation-model/amazon.rerank-v1:0",
+      "arn:aws:bedrock:us-east-2::foundation-model/amazon.titan-embed-text-v2:0",
+      "arn:aws:bedrock:us-east-2::foundation-model/mistral.mistral-large-2402-v1:0",
+    ])
+    error_message = "Models called directly should be allowed only in the region the app calls them in: chat and embedding models in the deployment's, rerank in its own."
+  }
+  assert {
+    condition     = local.bedrock_routed_model_arns == tolist(["arn:aws:bedrock:*::foundation-model/amazon.nova-2-lite-v1:0"])
+    error_message = "A profile's base model should be allowed in every region it may route to."
+  }
+}
+
+run "the_bedrock_policy_works_only_from_the_nat_gateway_address" {
+  command = plan
+
+  variables {
+    config_json_path = "tests/fixtures/bedrock-config.json"
+  }
+
+  # The NAT gateway's address, known while planning.
+  override_resource {
+    target          = aws_eip.nat
+    override_during = plan
+    values = {
+      public_ip = "203.0.113.10"
+    }
+  }
+
+  assert {
+    condition = (
+      data.aws_iam_policy_document.bedrock[0].statement[0].sid == "FromTheDeploymentOnly"
+      && sort(tolist(data.aws_iam_policy_document.bedrock[0].statement[0].resources)) == sort(concat(local.bedrock_profile_arns, local.bedrock_direct_model_arns))
+      && sort(tolist(data.aws_iam_policy_document.bedrock[0].statement[0].actions)) == tolist(["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"])
+    )
+    error_message = "The profiles and the models called directly should share one statement."
+  }
+  assert {
+    condition = (
+      length(data.aws_iam_policy_document.bedrock[0].statement[0].condition) == 1
+      && one(data.aws_iam_policy_document.bedrock[0].statement[0].condition).test == "IpAddress"
+      && one(data.aws_iam_policy_document.bedrock[0].statement[0].condition).variable == "aws:SourceIp"
+      && tolist(one(data.aws_iam_policy_document.bedrock[0].statement[0].condition).values) == tolist(["203.0.113.10/32"])
+    )
+    error_message = "They should be allowed only from the NAT gateway's address, which every container's calls come from."
+  }
+}
+
+run "base_models_behind_a_profile_are_allowed_only_through_it" {
+  command = plan
+
+  variables {
+    config_json_path = "tests/fixtures/bedrock-config.json"
+  }
+
+  assert {
+    condition = (
+      data.aws_iam_policy_document.bedrock[0].statement[1].sid == "ThroughTheProfilesOnly"
+      && tolist(data.aws_iam_policy_document.bedrock[0].statement[1].resources) == local.bedrock_routed_model_arns
+      && one(data.aws_iam_policy_document.bedrock[0].statement[1].condition).test == "StringLike"
+      && one(data.aws_iam_policy_document.bedrock[0].statement[1].condition).variable == "bedrock:InferenceProfileArn"
+      && tolist(one(data.aws_iam_policy_document.bedrock[0].statement[1].condition).values) == local.bedrock_profile_arns
+    )
+    error_message = "A profile's base model should be callable only through one of the config's profiles, so it can't be called directly in a region nobody watches."
+  }
+}
+
+run "a_config_without_a_profile_has_no_profile_statement" {
+  command = plan
+
+  variables {
+    config_json_path = "tests/fixtures/bedrock-direct-config.json"
+  }
+
+  assert {
+    condition     = length(data.aws_iam_policy_document.bedrock[0].statement) == 1 && length(local.bedrock_routed_model_arns) == 0
+    error_message = "With no inference profile, only the address-limited statement should be made."
   }
 }
 
@@ -371,13 +451,13 @@ run "bedrock_alarms_watch_each_model_and_level_in_its_region" {
   variables {
     alert_emails = ["ops@example.org"]
     bedrock_alarms = {
-      "eu.amazon.nova-2-lite-v1:0" = { input_tokens_per_hour = 2000000, output_tokens_per_hour = 300000 }
-      "amazon.rerank-v1:0"         = { region = "eu-central-1", invocations_per_hour = 5000 }
+      "us.amazon.nova-2-lite-v1:0" = { input_tokens_per_hour = 2000000, output_tokens_per_hour = 300000 }
+      "amazon.rerank-v1:0"         = { region = "us-west-2", invocations_per_hour = 5000 }
     }
   }
 
   assert {
-    condition     = sort(keys(aws_sns_topic.alerts)) == tolist(["eu-central-1", "us-east-2"])
+    condition     = sort(keys(aws_sns_topic.alerts)) == tolist(["us-east-2", "us-west-2"])
     error_message = "An alarm in another region should get a topic there too."
   }
   assert {
@@ -386,28 +466,28 @@ run "bedrock_alarms_watch_each_model_and_level_in_its_region" {
   }
   assert {
     condition = sort(keys(aws_cloudwatch_metric_alarm.bedrock)) == sort([
-      "eu.amazon.nova-2-lite-v1:0 input tokens",
-      "eu.amazon.nova-2-lite-v1:0 output tokens",
+      "us.amazon.nova-2-lite-v1:0 input tokens",
+      "us.amazon.nova-2-lite-v1:0 output tokens",
       "amazon.rerank-v1:0 requests",
     ])
     error_message = "There should be one alarm per model and level set, and none for levels left out."
   }
   assert {
     condition = (
-      aws_cloudwatch_metric_alarm.bedrock["eu.amazon.nova-2-lite-v1:0 output tokens"].metric_name == "OutputTokenCount"
-      && aws_cloudwatch_metric_alarm.bedrock["eu.amazon.nova-2-lite-v1:0 output tokens"].namespace == "AWS/Bedrock"
-      && aws_cloudwatch_metric_alarm.bedrock["eu.amazon.nova-2-lite-v1:0 output tokens"].dimensions == tomap({ ModelId = "eu.amazon.nova-2-lite-v1:0" })
-      && aws_cloudwatch_metric_alarm.bedrock["eu.amazon.nova-2-lite-v1:0 output tokens"].statistic == "Sum"
-      && aws_cloudwatch_metric_alarm.bedrock["eu.amazon.nova-2-lite-v1:0 output tokens"].period == 3600
-      && aws_cloudwatch_metric_alarm.bedrock["eu.amazon.nova-2-lite-v1:0 output tokens"].threshold == 300000
-      && aws_cloudwatch_metric_alarm.bedrock["eu.amazon.nova-2-lite-v1:0 output tokens"].region == "us-east-2"
+      aws_cloudwatch_metric_alarm.bedrock["us.amazon.nova-2-lite-v1:0 output tokens"].metric_name == "OutputTokenCount"
+      && aws_cloudwatch_metric_alarm.bedrock["us.amazon.nova-2-lite-v1:0 output tokens"].namespace == "AWS/Bedrock"
+      && aws_cloudwatch_metric_alarm.bedrock["us.amazon.nova-2-lite-v1:0 output tokens"].dimensions == tomap({ ModelId = "us.amazon.nova-2-lite-v1:0" })
+      && aws_cloudwatch_metric_alarm.bedrock["us.amazon.nova-2-lite-v1:0 output tokens"].statistic == "Sum"
+      && aws_cloudwatch_metric_alarm.bedrock["us.amazon.nova-2-lite-v1:0 output tokens"].period == 3600
+      && aws_cloudwatch_metric_alarm.bedrock["us.amazon.nova-2-lite-v1:0 output tokens"].threshold == 300000
+      && aws_cloudwatch_metric_alarm.bedrock["us.amazon.nova-2-lite-v1:0 output tokens"].region == "us-east-2"
     )
     error_message = "A token alarm should sum the model's output tokens over an hour against its level, in the deployment's region."
   }
   assert {
     condition = (
       aws_cloudwatch_metric_alarm.bedrock["amazon.rerank-v1:0 requests"].metric_name == "Invocations"
-      && aws_cloudwatch_metric_alarm.bedrock["amazon.rerank-v1:0 requests"].region == "eu-central-1"
+      && aws_cloudwatch_metric_alarm.bedrock["amazon.rerank-v1:0 requests"].region == "us-west-2"
       && aws_cloudwatch_metric_alarm.bedrock["amazon.rerank-v1:0 requests"].treat_missing_data == "notBreaching"
     )
     error_message = "A requests alarm should count invocations in the model's own region, and quiet hours should be normal."
@@ -483,7 +563,7 @@ run "a_bedrock_alarm_without_a_level_is_refused" {
 
   variables {
     alert_emails   = ["ops@example.org"]
-    bedrock_alarms = { "amazon.titan-embed-text-v2:0" = { region = "eu-west-1" } }
+    bedrock_alarms = { "amazon.titan-embed-text-v2:0" = { region = "us-west-2" } }
   }
 
   expect_failures = [var.bedrock_alarms]
@@ -500,6 +580,78 @@ run "an_alert_email_that_is_not_an_address_is_refused" {
 }
 
 # --- CloudFront and AWS WAF --------------------------------------------------
+
+# --- Bedrock call log -------------------------------------------------------
+
+run "the_bedrock_call_log_is_on_in_each_region_the_app_calls_without_text" {
+  command = plan
+
+  variables {
+    config_json_path = "tests/fixtures/bedrock-config.json"
+  }
+
+  assert {
+    condition     = sort(keys(aws_bedrock_model_invocation_logging_configuration.this)) == tolist(["us-east-2", "us-west-2"])
+    error_message = "The call log should be on in the deployment's region and in the rerank model's."
+  }
+  assert {
+    condition = alltrue([
+      for r, c in aws_bedrock_model_invocation_logging_configuration.this : (
+        c.region == r
+        && c.logging_config[0].text_data_delivery_enabled == false
+        && c.logging_config[0].image_data_delivery_enabled == false
+        && c.logging_config[0].embedding_data_delivery_enabled == false
+        && c.logging_config[0].video_data_delivery_enabled == false
+        && c.logging_config[0].cloudwatch_config[0].log_group_name == "/aws/bedrock/evidencelab/model-invocations"
+      )
+    ])
+    error_message = "Each region's log should hold who called which model and its token counts, never the text, images, embeddings or video."
+  }
+  assert {
+    condition     = alltrue([for g in aws_cloudwatch_log_group.bedrock_calls : g.retention_in_days == 365])
+    error_message = "By default the call log should be kept for a year."
+  }
+  assert {
+    condition = (
+      one(one(data.aws_iam_policy_document.bedrock_logging_assume[0].statement).principals).identifiers == toset(["bedrock.amazonaws.com"])
+      && length(one(data.aws_iam_policy_document.bedrock_logging_assume[0].statement).condition) == 2
+    )
+    error_message = "Only Bedrock, for this account, should be able to write the log."
+  }
+}
+
+run "the_bedrock_call_log_can_be_turned_off" {
+  command = plan
+
+  variables {
+    config_json_path = "tests/fixtures/bedrock-config.json"
+    bedrock_call_log = false
+  }
+
+  assert {
+    condition     = length(aws_bedrock_model_invocation_logging_configuration.this) == 0 && length(aws_iam_role.bedrock_logging) == 0
+    error_message = "With the call log off nothing should be made."
+  }
+}
+
+run "a_config_without_bedrock_models_has_no_call_log" {
+  command = plan
+
+  assert {
+    condition     = length(aws_bedrock_model_invocation_logging_configuration.this) == 0 && length(aws_cloudwatch_log_group.bedrock_calls) == 0
+    error_message = "With no Bedrock model there is nothing to log."
+  }
+}
+
+run "a_call_log_retention_cloudwatch_does_not_offer_is_refused" {
+  command = plan
+
+  variables {
+    bedrock_call_log_retention_days = 10
+  }
+
+  expect_failures = [var.bedrock_call_log_retention_days]
+}
 
 run "without_cloudfront_the_load_balancer_is_public_and_no_cloudfront_is_made" {
   command = plan

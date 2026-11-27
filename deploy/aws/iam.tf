@@ -2,7 +2,7 @@
 # the secrets (the app keys, the model provider keys and the RDS-managed
 # database password), and the task role the api, mcp, pipeline and migrate
 # containers run as, which may call the Amazon Bedrock models config.json
-# lists and no others.
+# lists and no others, and only from the deployment's own network.
 
 data "aws_iam_policy_document" "ecs_tasks_assume" {
   statement {
@@ -48,53 +48,100 @@ data "aws_caller_identity" "current" {}
 resource "aws_iam_role" "task" {
   name               = "${var.name}-ecs-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json
+
+  # A policy attached to the role outside Terraform is detached before the
+  # role is deleted, so removing the deployment doesn't fail on it.
+  force_detach_policies = true
 }
 
-# Only the Bedrock models config.json offers may be called, so a changed
-# setting or a stray script can't run up a bill on another model. They are
-# the aws_bedrock entries of supported_llms ("model"), supported_embedding_models
-# ("source", "model_id") and supported_rerank_models ("model_id"); adding a
-# model to config.json allows it on the next deploy.
+# Which Bedrock calls the role may make: only the models config.json offers,
+# only in the regions the app calls them in, and only from the deployment's
+# own network.
 #
-# An ID that starts with a geography (eu., us., apac., global., ...) is a
-# cross-region inference profile: the profile itself is allowed, and its base
-# model in every region, because the profile sends requests across regions.
-# Regions stay open (rerank models are offered in only some regions); the
-# model list is what limits cost. A config with no Bedrock model gets no
-# Bedrock permission at all.
+# - The models are the aws_bedrock entries of supported_llms ("model"),
+#   supported_embedding_models ("source", "model_id") and
+#   supported_rerank_models ("model_id"). Adding a model to config.json allows
+#   it on the next deploy.
+# - The app calls chat and embedding models in the deployment's region, and a
+#   rerank model in its own "region", because rerank models are offered in only
+#   some regions.
+# - An ID that starts with a geography (eu., us., apac., global., ...) is a
+#   cross-region inference profile, which may send each request to its model
+#   in another region. The profile is allowed in the region the app calls it
+#   in. Its base model is allowed in every region, but only for requests that
+#   came through one of these profiles (bedrock:InferenceProfileArn).
+# - The profiles and the models called directly are allowed only from the NAT
+#   gateway's address, through which every container reaches AWS (network.tf).
+#   A copy of the role's credentials used anywhere else is refused. The base
+#   models behind a profile carry no address condition: AWS doesn't document
+#   whether the caller's address is still known when a profile's request is
+#   checked in another region, and they can only be reached through a profile,
+#   which checks the address.
+#
+# A config with no Bedrock model gets no Bedrock permission at all.
 locals {
   deploy_config = jsondecode(file(var.config_json_path))
 
-  bedrock_model_ids = sort(distinct(concat(
-    [for m in values(try(local.deploy_config.supported_llms, {})) : m.model if try(m.provider, null) == "aws_bedrock"],
-    [for m in values(try(local.deploy_config.supported_embedding_models, {})) : m.model_id if try(m.source, null) == "aws_bedrock"],
-    [for m in values(try(local.deploy_config.supported_rerank_models, {})) : m.model_id if try(m.provider, null) == "aws_bedrock"],
-  )))
+  # Every Bedrock model config.json lists, with the region the app calls it in.
+  bedrock_models = distinct(concat(
+    [for m in values(try(local.deploy_config.supported_llms, {})) : { id = m.model, region = var.region } if try(m.provider, null) == "aws_bedrock"],
+    [for m in values(try(local.deploy_config.supported_embedding_models, {})) : { id = m.model_id, region = var.region } if try(m.source, null) == "aws_bedrock"],
+    [for m in values(try(local.deploy_config.supported_rerank_models, {})) : { id = m.model_id, region = coalesce(try(m.region, null), var.region) } if try(m.provider, null) == "aws_bedrock"],
+  ))
+  bedrock_model_ids = sort(distinct([for m in local.bedrock_models : m.id]))
+  bedrock_regions   = sort(distinct([for m in local.bedrock_models : m.region]))
 
   bedrock_profile_pattern = "^(?:us|us-gov|eu|apac|global|jp|au|ca)\\.(.+)$"
-  bedrock_profile_ids     = [for id in local.bedrock_model_ids : id if can(regex(local.bedrock_profile_pattern, id))]
-  bedrock_base_model_ids = distinct([
-    for id in local.bedrock_model_ids :
-    can(regex(local.bedrock_profile_pattern, id)) ? regex(local.bedrock_profile_pattern, id)[0] : id
-  ])
+  bedrock_profiles        = [for m in local.bedrock_models : m if can(regex(local.bedrock_profile_pattern, m.id))]
+  bedrock_direct_models   = [for m in local.bedrock_models : m if !can(regex(local.bedrock_profile_pattern, m.id))]
 
-  bedrock_resource_arns = sort(concat(
-    [for id in local.bedrock_base_model_ids : "arn:aws:bedrock:*::foundation-model/${id}"],
-    [for id in local.bedrock_profile_ids : "arn:aws:bedrock:*:${data.aws_caller_identity.current.account_id}:inference-profile/${id}"],
-  ))
+  bedrock_profile_arns = sort(distinct([
+    for m in local.bedrock_profiles : "arn:aws:bedrock:${m.region}:${data.aws_caller_identity.current.account_id}:inference-profile/${m.id}"
+  ]))
+  bedrock_direct_model_arns = sort(distinct([
+    for m in local.bedrock_direct_models : "arn:aws:bedrock:${m.region}::foundation-model/${m.id}"
+  ]))
+  bedrock_routed_model_arns = sort(distinct([
+    for m in local.bedrock_profiles : "arn:aws:bedrock:*::foundation-model/${regex(local.bedrock_profile_pattern, m.id)[0]}"
+  ]))
+
+  bedrock_allowed_source_ips = ["${aws_eip.nat.public_ip}/32"]
 }
 
 data "aws_iam_policy_document" "bedrock" {
-  count = length(local.bedrock_model_ids) > 0 ? 1 : 0
+  count = length(local.bedrock_models) > 0 ? 1 : 0
 
   statement {
+    sid       = "FromTheDeploymentOnly"
     actions   = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
-    resources = local.bedrock_resource_arns
+    resources = concat(local.bedrock_profile_arns, local.bedrock_direct_model_arns)
+
+    condition {
+      test     = "IpAddress"
+      variable = "aws:SourceIp"
+      values   = local.bedrock_allowed_source_ips
+    }
+  }
+
+  dynamic "statement" {
+    for_each = length(local.bedrock_profile_arns) > 0 ? [1] : []
+
+    content {
+      sid       = "ThroughTheProfilesOnly"
+      actions   = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+      resources = local.bedrock_routed_model_arns
+
+      condition {
+        test     = "StringLike"
+        variable = "bedrock:InferenceProfileArn"
+        values   = local.bedrock_profile_arns
+      }
+    }
   }
 }
 
 resource "aws_iam_role_policy" "bedrock" {
-  count = length(local.bedrock_model_ids) > 0 ? 1 : 0
+  count = length(local.bedrock_models) > 0 ? 1 : 0
 
   name   = "invoke-bedrock"
   role   = aws_iam_role.task.id
