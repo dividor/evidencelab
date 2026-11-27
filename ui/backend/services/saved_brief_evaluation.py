@@ -4,15 +4,15 @@ from itertools import takewhile
 from uuid import UUID
 
 from sqlalchemy import select
-from starlette.concurrency import run_in_threadpool
 
 from ui.backend.auth.models import VoiceProfile
+from ui.backend.services.brief_claim_records import SOURCE_FIELDS
 from ui.backend.services.brief_experiment import judge_brief
 from ui.backend.services.brief_experiment_claims import (
     brief_claim_evidence,
-    factual_verdict,
     link_assessment_claims,
 )
+from ui.backend.services.brief_grading_errors import brief_grading_error
 from ui.backend.services.brief_outline_numbers import outline_numbers
 from ui.backend.services.brief_template_evaluation import (
     DEFAULT_BRIEF_EXPECTATIONS,
@@ -21,7 +21,6 @@ from ui.backend.services.brief_template_evaluation import (
     section_word_target,
 )
 from ui.backend.services.citation_fidelity import (
-    extract_cited_passages,
     researched_sections,
     strip_citation_markers,
 )
@@ -112,48 +111,7 @@ def _checks_for(output, position, missing_voice):
     return reasons
 
 
-def _passage_records(output, factual, offset):
-    from ui.backend.services.citation_check_runner import not_judged, passage_record
-
-    section = dict(
-        title=output["assignment"]["heading"],
-        content=output["summary"],
-        sources=output["sources"],
-    )
-    passages = extract_cited_passages(section, include_uncited=True)
-    grades = factual.get("claim_grades") or []
-    if not grades and not factual.get("error"):
-        raise ValueError("A completed factual check must contain its claim grades.")
-    rows = []
-    for n, passage in enumerate(passages):
-        grade = grades[n] if grades else {}
-        error = grade.get("reason") if grade.get("error") else None
-        if not grade:
-            error = factual["message"]
-        decision = (
-            not_judged(passage, error) if error else _passage_decision(grade, passage)
-        )
-        if error and grade.get("supporting_quotes"):
-            decision["supporting_quotes"] = grade["supporting_quotes"]
-        rows.append(passage_record(offset + n + 1, passage, decision, error=error))
-    return rows
-
-
-def _passage_decision(grade, passage):
-    score = grade["score"]
-    verdict = factual_verdict(
-        score, bool(passage.missing_indices and not passage.sources)
-    )
-    return dict(
-        verdict=verdict,
-        supporting_quotes=grade["supporting_quotes"],
-        explanation=grade["reason"],
-        problems=grade["unmet"],
-        confidence=None,
-    )
-
-
-async def grade_saved_section(output, position, missing_voice, model, offset):
+async def grade_saved_section(output, position, missing_voice, model):
     reasons = _checks_for(output, position, missing_voice)
 
     async def judge(draft, checks):
@@ -172,7 +130,7 @@ async def grade_saved_section(output, position, missing_voice, model, offset):
         return [
             dict(**a, not_run=True, message="No section text was saved.")
             for a in checks
-        ], []
+        ]
     graded = iter(
         await grade_template_checks(
             output, [a for a in checks if a["type"] not in reasons], judge
@@ -191,8 +149,7 @@ async def grade_saved_section(output, position, missing_voice, model, offset):
         )
         for a in checks
     ]
-    factual = next(a for a in ordered if a["type"] == "brief_factual")
-    return ordered, await run_in_threadpool(_passage_records, output, factual, offset)
+    return ordered
 
 
 def section_result(output, checks, section_id, missing_voice):
@@ -206,11 +163,7 @@ def section_result(output, checks, section_id, missing_voice):
     # The evaluation view reads the numbered excerpts. Viewer coordinates
     # and generation-time highlights belong to the original document.
     snapshot["sources"] = [
-        {
-            key: src[key]
-            for key in ("index", "title", "page", "headings", "text")
-            if key in src
-        }
+        {key: src[key] for key in SOURCE_FIELDS if key in src}
         for src in output["sources"]
     ]
     return dict(
@@ -223,4 +176,20 @@ def section_result(output, checks, section_id, missing_voice):
         assertion_results=(
             link_assessment_claims(checks, evidence) if evidence else checks
         ),
+    )
+
+
+def section_metrics(section):
+    """Use the experiment's lowest graded score, excluding inapplicable checks."""
+    checks = section["assertion_results"]
+    if section["status"] == "error":
+        error = brief_grading_error(checks) or next(
+            (c["message"] for c in checks if c.get("not_run")), None
+        )
+        return dict(score=None, error_message=error)
+    return dict(
+        score=min(
+            (c["score"] for c in checks if c.get("score") is not None), default=None
+        ),
+        error_message=None,
     )

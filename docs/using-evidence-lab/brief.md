@@ -287,7 +287,7 @@ When an administrator has run a [citation check](../admin/evaluation.md#brief-ci
 
 ![Fact Checker highlights in a brief, each cited passage in the colour of its verdict, with the legend under the title](../images/brief/brief-fact-checker.png)
 
-Click **Fact Checker** to highlight, in place, every cited passage the check judged, each in the colour of its verdict: green for **Supported**, amber for **Partially supported**, red for **Unsupported** and grey for **Cannot assess**. A legend under the brief's title explains the colours and counts the passages carrying each verdict; click the button again to hide the highlights. The highlights are a reading aid: nothing in the brief changes.
+Click **Fact Checker** to highlight each sentence the check judged, each in the colour of its verdict: green for **Supported**, amber for **Partially supported**, red for **Unsupported** and grey for **Cannot assess**. A legend under the brief's title explains the colours and counts the passages carrying each verdict; click the button again to hide the highlights. New checks use the saved **Factual support from citations** assessment. Hover an amber sentence to read what the evidence supports and which part lacks support. A quotation can come from the excerpt or its heading. The highlights are a reading aid: nothing in the brief changes.
 
 For **Partially supported**, the whole sentence is amber. Its card explains which detail the cited material does not establish and shows the source wording behind the supported part.
 

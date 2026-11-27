@@ -297,6 +297,11 @@ class BriefCitationCheckPassageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    claim_number: Optional[int] = None
+    section_id: Optional[str] = None
+    outcome: Optional[str] = None
+    score: Optional[float] = None
+    passed: Optional[bool] = None
     passage_id: int
     brief_section: str
     passage: str
@@ -344,6 +349,7 @@ class BriefFactCheckMark(BaseModel):
     the rendered section."""
 
     passage_id: int
+    claim_id: Optional[uuid.UUID] = None
     section_id: Optional[str] = None
     section_title: str
     passage: str

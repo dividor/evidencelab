@@ -221,7 +221,7 @@ async def test_cannot_award_credit_to_an_uncited_fact_but_accepts_a_transition(
     monkeypatch.setattr(test_runner, "_judge_call", call)
     o = {
         **output(),
-        "summary": "The instrument failed [99]. We now turn to the next question.",
+        "summary": "The instrument failed. We now turn to the next question.",
     }
     check = {"type": "brief_factual", "rubric": "Check factual support."}
     verdict = await judge_brief(o, [check], "model")
@@ -296,9 +296,15 @@ async def test_completed_grade_without_evidence_fails_even_at_zero_threshold(
     check = {"type": "brief_factual", "rubric": RUBRIC, "threshold": 0}
     grade = await judge_brief(o, [check], "model")
     result = evaluate_assertion(check, o, grade)
-    assert result["passed"] is False and result["score"] == 0
-    assert result["claim_grades"][0]["passed"] is False
-    assert call.await_count == 2
+    if not sources:
+        assert (
+            result["error"] and result["claim_grades"][0]["outcome"] == "missing_source"
+        )
+        assert call.await_count == 1
+    else:
+        assert result["passed"] is False and result["score"] == 0
+        assert result["claim_grades"][0]["passed"] is False
+        assert call.await_count == 2
 
 
 async def test_partial_score_without_a_named_gap_retries_and_retains_the_corrected_grade(
@@ -322,3 +328,54 @@ async def test_partial_score_without_a_named_gap_retries_and_retains_the_correct
     assert partial["verdict"] == "partially_supported"
     assert partial["unmet"] and partial["supporting_quotes"]
     assert call.await_count == 2
+
+
+@pytest.mark.parametrize("failing", [True, False])
+async def test_inconsistent_transition_is_retried_without_changing_the_score_silently(
+    monkeypatch, failing
+):
+    draft = {**output(), "summary": "Evidence was unavailable."}
+    grade = dict(claim=1, score=0, factual=False, reason="No evidence.", unmet=[])
+    fixed = {**grade, "factual": True}
+    call = AsyncMock(
+        side_effect=[
+            (json.dumps({"claims": [g]}), {})
+            for g in (grade, grade if failing else fixed)
+        ]
+    )
+    monkeypatch.setattr(test_runner, "_judge_call", call)
+    check = dict(type="brief_factual", rubric=RUBRIC)
+    result = evaluate_assertion(
+        check, draft, await judge_brief(draft, [check], "model")
+    )
+    [claim] = result["claim_grades"]
+    assert call.await_count == 2 and "nonfactual transition" in call.await_args.args[0]
+    if failing:
+        assert claim["error"] and claim["outcome"] == "grading_error"
+        assert claim["verdict"] == "cannot_assess"
+    else:
+        assert claim["outcome"] == "uncited" and claim["score"] == 0
+
+
+async def test_repair_prompt_shows_the_required_quote_fields_for_a_keyed_quote(
+    monkeypatch,
+):
+    draft = {**output(), "summary": "Costs fell [4]."}
+    correct, usage = reply([(1, 1, "Costs fell.")])
+    invalid = json.loads(correct)
+    quote = invalid["claims"][0]["supporting_quotes"][0]
+    invalid["claims"][0]["supporting_quotes"] = [
+        {str(quote["citation"]): quote["quote"]}
+    ]
+    judge = AsyncMock(side_effect=[(json.dumps(invalid), usage), (correct, usage)])
+    monkeypatch.setattr(test_runner, "_judge_call", judge)
+    check = dict(type="brief_factual", rubric=RUBRIC)
+    result = evaluate_assertion(
+        check, draft, await judge_brief(draft, [check], "model")
+    )
+    assert result["passed"]
+    assert (
+        "Each supporting quote must contain a citation number"
+        in judge.await_args.args[0]
+    )
+    assert '{"citation":4,"quote":' in judge.await_args.args[0]

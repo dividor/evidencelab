@@ -22,6 +22,12 @@ class ClaimGrade(BaseModel):
 
     @model_validator(mode="after")
     def check_score(self):
+        if not self.factual and (
+            self.score != 1 or self.unmet or self.supporting_quotes
+        ):
+            raise ValueError(
+                "A nonfactual transition must have full credit and no evidence findings."
+            )
         if 0 < self.score < 1 and not any(gap.strip() for gap in self.unmet):
             raise ValueError(
                 "Partial credit requires a specific unsupported part of the claim."
@@ -89,13 +95,40 @@ def _read_claim(rows, claim, sources):
         return None, "The judge must return one grade for this claim."
     try:
         grade = ClaimGrade.model_validate(matched[0])
-    except ValidationError:
+    except ValidationError as exc:
+        problem = exc.errors(include_input=False, include_url=False)[0]
+        if problem["type"] == "value_error":
+            return None, str(problem["ctx"]["error"])
+        if problem["loc"][:1] == ("supporting_quotes",):
+            return (
+                None,
+                "Each supporting quote must contain a citation number and a nonempty quote.",
+            )
         return None, "The judge returned an incomplete or inconsistent grade."
-    cited = any(sources.get(label, {}).get("text") for label in claim["citations"])
+    cited = any(
+        (sources.get(label, {}).get("text") or "").strip()
+        for label in claim["citations"]
+    )
+    if grade.factual and claim["citations"] and not cited:
+        return (
+            dict(
+                claim=number,
+                error=True,
+                outcome="missing_source",
+                reason="The cited excerpt is missing or empty.",
+            ),
+            "",
+        )
     if grade.factual and not cited and grade.score > 0:
         return grade.model_dump(), "An uncited factual claim cannot receive credit."
     issue = _evidence_issue(grade, claim, sources)
-    return grade.model_dump(), issue
+    return {**grade.model_dump(), "outcome": _outcome(grade, cited)}, issue
+
+
+def _outcome(grade, cited):
+    if not grade.factual:
+        return "nonfactual"
+    return "assessed" if cited else "uncited"
 
 
 def _read_batch(raw, pending, sources):
@@ -108,9 +141,10 @@ def _read_batch(raw, pending, sources):
 
 def _unresolved_grade(number, grade, issue):
     if grade is None:
-        return dict(claim=number, error=True, reason=issue)
+        return dict(claim=number, error=True, outcome="grading_error", reason=issue)
     return {
         **grade,
+        "outcome": "unverified_evidence",
         "evidence_failed": True,
         "score": 0.0,
         "reason": issue,

@@ -1,6 +1,5 @@
 import type { BriefSectionReview } from '../../../types/testing';
-import AssertionResultRow from './AssertionResultRow';
-import GeneratedSection from './GeneratedSection';
+import { ResultRow, ResultTable } from './ResultTable';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../../config';
@@ -73,7 +72,7 @@ const isActive = (status?: string): boolean => status === 'pending' || status ==
 /*  Summary header                                                    */
 /* ------------------------------------------------------------------ */
 
-function SectionReviews({ sections, counts }: { sections: BriefSectionReview[]; counts?: NonNullable<CheckDetailType['summary_stats']>['section_counts'] }) {
+function SectionReviews({ sections, counts, title }: { title: string; sections: BriefSectionReview[]; counts?: NonNullable<CheckDetailType['summary_stats']>['section_counts'] }) {
   const [showAll, setShowAll] = useState(true);
   const attention = sections.filter(section => section.status !== 'pass');
   const shown = showAll || !attention.length ? sections : attention;
@@ -84,13 +83,12 @@ function SectionReviews({ sections, counts }: { sections: BriefSectionReview[]; 
         {showAll ? 'Show sections needing attention' : 'Show all sections'}
       </button>}
     </p>
-    {shown.map(section => <details key={section.section_id} className="testing-case-block">
-      <summary><strong>{section.number} {section.heading}</strong>{' '}
-        <span className={`testing-badge testing-badge-${section.status}`}>{section.status}</span></summary>
-      <GeneratedSection result={section} />
-      {section.assertion_results?.map(check =>
-        <AssertionResultRow key={check.type} result={check} testResult={section} />)}
-    </details>)}
+    <div className="testing-run"><div className="testing-run-body">
+    <ResultTable heading="Section and brief" timeLabel="Check time">
+      {shown.map(section => <ResultRow key={section.section_id} result={section}
+        savedSection={{ template: title, number: section.number, heading: section.heading }} />)}
+    </ResultTable>
+    </div></div>
   </div>;
 }
 
@@ -144,7 +142,7 @@ function CheckResults({ detail, children }: React.PropsWithChildren<{ detail: Ch
     return <><Summary detail={detail} />{children}</>;
   }
   return <>
-    <SectionReviews sections={detail.section_results} counts={detail.summary_stats?.section_counts} />
+    <SectionReviews title={detail.brief_title} sections={detail.section_results} counts={detail.summary_stats?.section_counts} />
     <details className="testing-case-block">
       <summary>Passage evidence and run statistics</summary>
       <Summary detail={detail} />

@@ -150,12 +150,12 @@ const BriefCheckList: React.FC<BriefCheckListProps> = ({ modelCombo, onOpenCheck
       {visible.length === 0 ? (
         <p className="text-muted">No briefs match.</p>
       ) : (
-        <table className="admin-table">
+        <table className="admin-table" aria-label="Saved briefs">
           <thead>
             <tr>
-              <th>Brief</th>
+              <th>Brief and data source</th>
               <th>Owner</th>
-              <th>Data source</th>
+              <th>Status</th>
               <th>Updated</th>
               <th>Sections</th>
               <th>Cited passages</th>
@@ -172,21 +172,17 @@ const BriefCheckList: React.FC<BriefCheckListProps> = ({ modelCombo, onOpenCheck
                   className={last ? 'testing-clickable-row' : ''}
                   onClick={() => last && onOpenCheck(last)}
                 >
-                  <td>
-                    {b.title}
+                  <td className="testing-brief-section-title" title={b.title}>
+                    <strong>{b.title}</strong>
+                    <small>{b.data_source}</small>
                     {b.access === 'shared' && <span className="testing-config-badge">shared</span>}
                   </td>
                   <td>{b.owner_name}</td>
-                  <td>{b.data_source || '—'}</td>
+                  <td>{last ? <span className={`testing-status testing-status-${last.status}`}>{last.status}</span> : '—'}</td>
                   <td>{formatTimestamp(b.updated_at)}</td>
                   <td>{b.researched_sections}</td>
                   <td>{b.cited_passages}</td>
                   <td>
-                    {last && (
-                      <span className={`testing-status testing-status-${last.status}`}>
-                        {last.status}
-                      </span>
-                    )}{' '}
                     <span className="text-muted">{lastCheckSummary(last)}</span>
                     {last?.brief_version_number != null && (
                       <span

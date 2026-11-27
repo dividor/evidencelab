@@ -1,4 +1,4 @@
-"""Persist the grades of a full check and the passage rows used by the Fact Checker."""
+"""Grade a pinned Brief version and store one assessment for each claim."""
 
 import time
 from datetime import datetime, timezone
@@ -7,8 +7,9 @@ from sqlalchemy import select
 from starlette.concurrency import run_in_threadpool
 
 from ui.backend.auth.models import Brief, BriefVersion
-from ui.backend.auth.testing_models import BriefCitationCheck, BriefCitationCheckPassage
+from ui.backend.auth.testing_models import BriefCitationCheck
 from ui.backend.services import brief_versions
+from ui.backend.services.brief_claim_records import bind_claims, claim_passages
 from ui.backend.services.saved_brief_evaluation import (
     grade_saved_section,
     section_inputs,
@@ -17,14 +18,14 @@ from ui.backend.services.saved_brief_evaluation import (
 )
 
 
-async def _active(session, check):
+async def _has_status(session, check, expected):
     # Read the latest committed status and lock it until this section is saved.
     status = await session.scalar(
         select(BriefCitationCheck.status)
         .where(BriefCitationCheck.id == check.id)
         .with_for_update()
     )
-    return status in {"pending", "running"}
+    return status == expected
 
 
 async def run_full_check(session, check):
@@ -42,40 +43,51 @@ async def run_full_check(session, check):
     inputs = await run_in_threadpool(lambda: list(section_inputs(content, voices)))
     if not inputs:
         raise ValueError("The Brief version has no sections.")
-    if not await _active(session, check):
+    if not await _has_status(session, check, "pending"):
         return
     total = len(inputs)
     check.status = "running"
     check.started_at = datetime.now(timezone.utc)
     check.summary_stats = {"progress": {"completed": 0, "total": total}}
     await session.commit()
-    rows, sections, usage = [], [], []
+    sections, usage = [], []
+    offset = 0
     for position, (output, section_id, missing_voice) in enumerate(inputs):
-        checks, passages = await grade_saved_section(
-            output, position, missing_voice, check.judge_model, len(rows)
+        section_started = time.monotonic()
+        checks = await grade_saved_section(
+            output, position, missing_voice, check.judge_model
         )
-        if not await _active(session, check):
+        if not await _has_status(session, check, "running"):
             return
         sections.append(
             await run_in_threadpool(
                 section_result, output, checks, section_id, missing_voice
             )
         )
-        rows.extend(passages)
+        section = sections[-1]
+        section["latency_ms"] = int((time.monotonic() - section_started) * 1000)
+        bind_claims(section, version.id, offset)
+        if section["brief_evidence"]:
+            offset += sum(len(p) for p in section["brief_evidence"]["paragraphs"])
         usage.extend(output.get("judge_usage", []))
-        session.add_all(
-            BriefCitationCheckPassage(check_id=check.id, **p) for p in passages
-        )
         check.summary_stats = {"progress": {"completed": len(sections), "total": total}}
         if len(sections) == total:
             check.section_results = sections
-            check.summary_stats = full_summary(
-                rows, sections, usage, started, check.judge_model
+            check.summary_stats = await run_in_threadpool(
+                claim_summary, sections, usage, started, check.judge_model
             )
             check.status = "completed"
             check.finished_at = datetime.now(timezone.utc)
         await session.commit()
     await _record_check_usage(check)
+
+
+def claim_summary(sections, usage, started, model):
+    rows = [row for _, _, row in claim_passages(sections)]
+    return {
+        **full_summary(rows, sections, usage, started, model),
+        "claim_record_version": 1,
+    }
 
 
 def full_summary(rows, sections, usage, started, model):

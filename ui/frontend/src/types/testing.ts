@@ -69,7 +69,7 @@ export interface AssertionResult {
   quoted_claims?: number[];
   factual_support?: boolean;
   threshold?: number;
-  claim_grades?: { claim: number; verdict?: CitationVerdict; unmet?: string[];
+  claim_grades?: { claim: number; outcome?: string; verdict?: CitationVerdict; unmet?: string[];
     supporting_quotes?: { citation: number; quote: string }[]; reason: string; score?: number; passed?: boolean; error?: boolean }[];
   error?: boolean;
   not_run?: boolean;
@@ -288,7 +288,7 @@ export interface BriefCitationCheckPassage {
   error_message?: string | null;
 }
 
-export type BriefSectionReview = Pick<TestResult, 'actual_output' | 'brief_evidence' | 'assertion_results' | 'status'> & {
+export type BriefSectionReview = Pick<TestResult, 'actual_output' | 'brief_evidence' | 'assertion_results' | 'status' | 'score' | 'latency_ms' | 'error_message'> & {
   section_id: string; heading: string; number: string;
 };
 

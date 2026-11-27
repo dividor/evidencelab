@@ -97,7 +97,16 @@ def with_claim_verdicts(assessment, evidence):
     return {
         **assessment,
         "claim_grades": [
-            {**g, "verdict": factual_verdict(g.get("score"), g["claim"] in unavailable)}
+            (
+                g
+                if "verdict" in g
+                else {
+                    **g,
+                    "verdict": factual_verdict(
+                        g.get("score"), g["claim"] in unavailable
+                    ),
+                }
+            )
             for g in grades
         ],
     }

@@ -12758,6 +12758,9 @@ a.admin-citation-clickable:hover {
   white-space: normal;
   overflow-wrap: anywhere;
 }
+.testing-result-table .testing-brief-section-title {
+  width: 36%;
+}
 .testing-brief-section-title small {
   display: block;
   color: var(--color-text-muted);

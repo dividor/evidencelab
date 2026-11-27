@@ -4,14 +4,14 @@ import type { AssertionResult, BriefEvalClaim, BriefEvalReference, TestResult } 
 import { VERDICT_LABEL, VERDICT_TONE } from './citationCheckFormat';
 import { formatScore } from './testingFormat';
 
-type SavedSource = { title?: string; page?: number | null; text?: string };
+type SavedSource = { title?: string; page?: number | null; text?: string; headings?: string[] };
 type ReferenceProps = { reference: BriefEvalReference; sources: SavedSource[] };
 
 function Reference({ reference, sources, expanded }: ReferenceProps & { expanded?: boolean }) {
   const source = reference.source_position === null ? undefined : sources[reference.source_position];
   const heading = `[${reference.label}] ${source?.title || (source ? 'Untitled source' : 'Source unavailable')}`;
   const label = source?.page == null ? heading : `${heading} · p. ${source.page}`;
-  const excerpt = <div className="testing-cited-excerpt">{source?.text || 'No passage text was saved for this citation.'}</div>;
+  const excerpt = <div className="testing-cited-excerpt">{source?.headings?.length ? <p>{source.headings.join(' › ')}</p> : null}{source?.text || 'No passage text was saved for this citation.'}</div>;
   return expanded ? (
     <div className="testing-claim-source"><strong>{label}</strong>{excerpt}</div>
   ) : (
@@ -47,7 +47,7 @@ function Claim({ claim, references, sources }: {
 type ClaimGrade = NonNullable<AssertionResult['claim_grades']>[number];
 
 function ClaimScore({ grade, threshold }: { grade: ClaimGrade; threshold?: number }) {
-  if (grade.error) return <span>Grading error</span>;
+  if (grade.error) return <span>{grade.outcome === 'missing_source' ? 'Cited excerpt unavailable' : 'Grading error'}</span>;
   return <>
     {grade.verdict && <span className={`testing-status testing-status-${VERDICT_TONE[grade.verdict]}`}>{VERDICT_LABEL[grade.verdict]}</span>}
     <span>Score {formatScore(grade.score)}</span>

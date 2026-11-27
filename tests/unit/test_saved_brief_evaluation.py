@@ -18,6 +18,14 @@ from ui.backend.services.test_evaluators import evaluate_assertion
 pytestmark = pytest.mark.unit
 
 
+def claim_rows(draft, checks, section_id):
+    from ui.backend.services.brief_claim_records import bind_claims, claim_passages
+
+    section = saved.section_result(draft, deepcopy(checks), section_id, False)
+    bind_claims(section, uuid4(), 0)
+    return [row for _, _, row in claim_passages([section])]
+
+
 def brief_content():
     source = dict(
         index=3, title="Meter log", text="The reading doubled.", chunkId="c", docId="d"
@@ -103,7 +111,8 @@ async def test_factual_prompt_and_grade_match_experiment_and_marks_include_uncit
     experiment = evaluate_assertion(
         factual, draft, await judge_brief(deepcopy(draft), [factual], "model")
     )
-    checks, rows = await saved.grade_saved_section(draft, 1, False, "model", 0)
+    checks = await saved.grade_saved_section(draft, 1, False, "model")
+    rows = claim_rows(draft, checks, sid)
     assert [experiment] == checks
     assert call.await_args_list[0] == call.await_args_list[1]
     assert len(rows) == 2 and rows[0]["quotes_verified"] == "1/1"
@@ -146,7 +155,8 @@ async def test_saved_and_experiment_distinguish_failed_evidence_from_a_judge_tim
         return await judge_brief(output, assertions, "model")
 
     [experiment] = await grade_template_checks(draft, [factual], judge)
-    checks, [passage] = await saved.grade_saved_section(draft, 0, False, "model", 0)
+    checks = await saved.grade_saved_section(draft, 0, False, "model")
+    [passage] = claim_rows(draft, checks, sid)
     assert checks == [experiment]
     section = saved.section_result(draft, checks, sid, False)
     if timeout:
@@ -162,7 +172,8 @@ async def test_saved_and_experiment_distinguish_failed_evidence_from_a_judge_tim
 @pytest.mark.asyncio
 async def test_missing_draft_has_nine_ungraded_results_and_no_passages():
     empty, sid, _ = list(saved.section_inputs(brief_content(), {}))[2]
-    checks, rows = await saved.grade_saved_section(empty, 2, False, None, 0)
+    checks = await saved.grade_saved_section(empty, 2, False, None)
+    rows = claim_rows(empty, checks, sid)
     assert not rows and len(checks) == 9 and all(c["not_run"] for c in checks)
     assert saved.section_result(empty, checks, sid, False)["status"] == "error"
 
@@ -175,3 +186,59 @@ def test_changed_evidence_cannot_keep_a_saved_quality_verdict_for_unchanged_word
     changed = deepcopy(original)
     changed["sources"][0]["text"] = "A different excerpt."
     assert not coverage(changed, judged, include_uncited=True).covered
+
+
+def test_same_words_and_shuffled_grades_keep_their_own_reference_and_identity():
+    from ui.backend.services.brief_claim_records import bind_claims, claim_passages
+
+    draft, sid, _ = next(saved.section_inputs(brief_content(), {}))
+    draft.update(
+        summary="Output rose [1]. Output rose [2].",
+        sources=[
+            dict(index=n, text=f"Recorded in log {n}.", docId=f"d{n}") for n in [1, 2]
+        ],
+    )
+    grades = [
+        dict(
+            claim=n,
+            score=1,
+            passed=True,
+            reason=f"Log {n}.",
+            supporting_quotes=[dict(citation=n, quote=f"log {n}")],
+        )
+        for n in [2, 1]
+    ]
+    section = saved.section_result(
+        draft, [dict(type="brief_factual", claim_grades=grades)], sid, False
+    )
+    version = uuid4()
+    bind_claims(section, version, 7)
+    first, second = [r for _, _, r in claim_passages([section])]
+    assert [first["passage"], second["passage"]] == ["Output rose."] * 2
+    assert first["id"] != second["id"]
+    assert [first["sources"][0]["doc_id"], second["sources"][0]["doc_id"]] == [
+        "d1",
+        "d2",
+    ]
+    assert first["explanation"] == "Log 1." and second["explanation"] == "Log 2."
+    assert first["passage_id"] == 8 and second["passage_id"] == 9
+    assert [r for _, _, r in claim_passages([section], 9)] == [second]
+    bind_claims(section, version, 7)
+    assert next(claim_passages([section]))[2]["id"] == first["id"]
+
+
+def test_section_metrics_use_graded_scores_and_explain_an_unavailable_grade():
+    checks = [
+        dict(type="brief_overlap", applicable=False),
+        dict(type="brief_factual", score=0.8),
+    ]
+    assert (
+        saved.section_metrics(dict(status="fail", assertion_results=checks))["score"]
+        == 0.8
+    )
+    checks.append(
+        dict(type="brief_length", not_run=True, message="No section text was saved.")
+    )
+    assert saved.section_metrics(
+        dict(status="error", assertion_results=checks)
+    ) == dict(score=None, error_message="No section text was saved.")

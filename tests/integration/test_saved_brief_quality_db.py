@@ -1,18 +1,21 @@
 """The saved check grades its pinned version and preserves historical citation checks."""
 
 import json
+from io import BytesIO
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
+from openpyxl import load_workbook
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from ui.backend.auth.db import DATABASE_URL
 from ui.backend.auth.models import Brief, User
-from ui.backend.auth.testing_models import BriefCitationCheck
+from ui.backend.auth.testing_models import BriefCitationCheck, BriefCitationCheckPassage
 from ui.backend.services import brief_fact_check, citation_check_runner, test_runner
 from ui.backend.services.brief_citations_convert import convert_legacy
+from ui.backend.services.brief_claim_records import check_rows
 from ui.backend.services.brief_version_store import ensure_version
 from ui.backend.services.saved_brief_check_runner import run_full_check
 
@@ -83,7 +86,30 @@ async def test_saved_and_historical_check_remain_distinct_after_an_edit(
         brief_version_number=v.number,
     )
     historical = BriefCitationCheck(
-        **values, status="completed", summary_stats={"total": 1}
+        **values,
+        status="completed",
+        summary_stats={"total": 1},
+        passages=[
+            BriefCitationCheckPassage(
+                passage_id=1,
+                brief_section="Readings",
+                passage="Output rose.",
+                citations="1",
+                documents="Log",
+                sources=[
+                    dict(index=1, title="Original log", excerpt="Historical entry.")
+                ],
+                dangling_citations="",
+                verdict="partially_supported",
+                flagged=True,
+                confidence=0.75,
+                problems=["Older finding."],
+                explanation="Original assessment.",
+                supporting_quotes=[],
+                quotes_verified="0/0",
+                quote_not_in_source=False,
+            )
+        ],
     )
     check = BriefCitationCheck(**values, check_kind="full", status="pending")
     session.add_all([historical, check])
@@ -134,11 +160,42 @@ async def test_saved_and_historical_check_remain_distinct_after_an_edit(
     [result] = check.section_results
     assert result["actual_output"]["summary"] == "Output rose [1]. Losses tripled."
     assert len(result["assertion_results"]) == 9
-    assert [p.verdict for p in check.passages] == ["supported", "unsupported"]
-    assert check.passages[0].quotes_verified == "1/1"
+    assert not check.passages
+    claims = check_rows(check)
+    assert [r["verdict"] for r in claims] == ["supported", "unsupported"]
+    assert claims[0]["quotes_verified"] == "1/1"
     assert not (await brief_fact_check.fact_check(session, brief))["marks"]
     await session.refresh(
-        historical, ["section_results", "summary_stats", "check_kind"]
+        historical, ["section_results", "summary_stats", "check_kind", "passages"]
     )
     assert historical.check_kind == "citation" and historical.section_results is None
     assert historical.summary_stats == {"total": 1}
+    [old] = check_rows(historical)
+    assert old["confidence"] == 0.75 and old["explanation"] == "Original assessment."
+    original_book = load_workbook(
+        BytesIO(citation_check_runner.build_review_workbook([old], []))
+    )
+    assert original_book.sheetnames == ["Flagged", "All judgements", "Summary"]
+    assert "claim_id" not in next(original_book["All judgements"].values)
+    evidence = await brief_fact_check.fact_check_evidence(
+        session, brief, historical.id, 1
+    )
+    assert evidence["evidence"][0]["segments"][0]["text"] == "Historical entry."
+
+    brief.content = content("Output rose [1]. Losses tripled.")
+    marks = (await brief_fact_check.fact_check(session, brief))["marks"]
+    book = load_workbook(
+        BytesIO(
+            citation_check_runner.build_review_workbook(
+                claims, check.summary_stats["by_section"], check.section_results
+            )
+        )
+    )
+    columns, *rows = book["All judgements"].values
+    for mark, claim, values in zip(marks, claims, rows, strict=True):
+        row = dict(zip(columns, values))
+        assert row["claim_id"] == claim["id"] == mark["claim_id"]
+        assert row["verdict"] == claim["verdict"] == mark["verdict"]
+        assert row["explanation"] == claim["explanation"] == mark["explanation"]
+    assert len(marks) == 2
+    assert len(list(book["Flagged"].values)) == 2
