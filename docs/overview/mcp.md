@@ -18,12 +18,19 @@ Evidence Lab supports the [Model Context Protocol (MCP)](https://modelcontextpro
 
 ### Connecting Claude
 
-In the Claude desktop or web app:
+In Claude on the web or desktop, open **Plugins** (called **Customize** in
+some versions) and find **Connectors**.
 
-1. Click **+** → **Connectors** → **Manage Connectors**
-2. Click **+** → **Add custom connector**
-3. Enter a name (e.g. *Evidence Lab*) and the URL: `{{SITE_URL}}/mcp`
-4. You will be prompted to log in with your Evidence Lab account
+1. Choose **Add** and add a custom web connector.
+2. Name it **Evidence Lab** and enter `{{SITE_URL}}/mcp`. If your administrator
+   gives you a different connector URL, use it exactly as written.
+3. For OAuth sign-in, choose **Register automatically** if Claude asks how
+   to register its OAuth client. Then sign in with your Evidence Lab account
+   and approve the connection.
+4. Enable the connector from the **+** menu in the conversation.
+
+See [Claude's custom connector guide](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)
+for organization permissions and connection settings.
 
 ### Connecting ChatGPT
 
