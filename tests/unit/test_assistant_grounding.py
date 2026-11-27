@@ -3,11 +3,41 @@ import pytest
 from ui.backend.services.assistant_grounding import (
     CitationCheck,
     EvidenceQuote,
+    citation_check_batches,
     citation_issues,
     numbered_sentences,
 )
 
 pytestmark = pytest.mark.unit
+
+
+def test_citation_batches_limit_the_work_per_verdict_without_dropping_claims():
+    sentences = numbered_sentences(
+        "A finding [1, 2, 3, 4]. A second finding [5, 6, 7]. "
+        "A third finding [8]. A fourth finding [9]. A fifth finding [10]. "
+        "A sixth finding [11]."
+    )
+
+    batches = list(citation_check_batches(sentences))
+
+    assert [[row["id"] for row in batch] for batch in batches] == [
+        [1],
+        [2, 3, 4, 5],
+        [6],
+    ]
+    assert [row for batch in batches for row in batch] == sentences
+
+
+def test_check_batch_keeps_the_comparison_from_the_previous_paragraph_or_draft():
+    previous = "The first site ran more slowly after the upgrade [14]."
+    draft = (
+        "The other sites recovered at different rates [1, 2, 3, 4, 5, 6].\n\n"
+        "The report attributed this difference to staffing [7]."
+    )
+    first, second = citation_check_batches(numbered_sentences(draft, previous))
+    assert first[0]["preceding_sentence"] == previous
+    assert second[0]["preceding_sentence"] == first[0]["text"]
+    assert second[0]["citations"] == [7]
 
 
 @pytest.mark.parametrize("label", [7, "[7]", [7]])

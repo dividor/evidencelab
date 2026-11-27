@@ -22,6 +22,7 @@ const datasets = [
 ];
 
 beforeEach(() => {
+    window.history.replaceState(null, '', '/admin');
   jest.clearAllMocks();
   mockedAxios.get.mockImplementation((url: string) => {
     if (url.includes('/cases')) return Promise.resolve({ data: [] });
@@ -64,4 +65,54 @@ describe('TestingManager', () => {
     // The experiment editor (where per-row assertions + config live) renders.
     await waitFor(() => expect(screen.getByText(/Run as group/i)).toBeInTheDocument());
   });
+});
+
+test('the CSV example is available with its matching import action', async () => {
+  render(<TestingManager />);
+  await screen.findByText('Search Smoke');
+  expect(screen.queryByText(/example CSV/i)).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'New dataset' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Import from CSV' }));
+  const download = screen.getByRole('link', { name: 'Download example CSV' });
+  expect(download).toHaveAttribute('download', 'qa-experiment-sample.csv');
+  expect(decodeURIComponent(download.getAttribute('href') || '')).toContain('expectation');
+});
+
+test('restores a dataset from the API and keeps its filter when opening experiments', async () => {
+  window.history.replaceState(null, '', '/admin?admin_page=testing&admin_dataset=d1');
+  mockedAxios.get.mockImplementation(async url => {
+    if (url.endsWith('/datasets/d1')) return { data: {...datasets[0], capability:'brief'} };
+    if (url.endsWith('/datasets')) return { data: datasets };
+    return { data: [] };
+  });
+  render(<TestingManager />);
+  expect(await screen.findByRole('heading', {name:'Brief templates'})).toBeVisible();
+  fireEvent.click(screen.getByRole('button', {name:'View experiments'}));
+  expect(await screen.findByText(/Experiments for "Search Smoke"/)).toBeVisible();
+  expect(new URLSearchParams(window.location.search).get('admin_dataset')).toBe('d1');
+});
+
+test('a deleted dataset link explains the failure and can return to the list', async () => {
+  window.history.replaceState(null, '', '/admin?admin_page=testing&admin_dataset=deleted');
+  mockedAxios.get.mockImplementation(async url => {
+    if (url.endsWith('/deleted')) throw new Error('Not found');
+    return { data: datasets };
+  });
+  render(<TestingManager />);
+  expect(await screen.findByRole('alert')).toHaveTextContent('Could not open this dataset');
+  fireEvent.click(screen.getByRole('button', {name:'Back to datasets'}));
+  expect(await screen.findByText('Search Smoke')).toBeVisible();
+});
+
+test('reload of an experiment edit URL loads the saved configuration', async () => {
+  window.history.replaceState(null, '', '/admin?admin_page=testing&admin_testing=experiments&admin_experiment=e1&admin_mode=edit');
+  mockedAxios.get.mockImplementation(async url => {
+    if (url.endsWith('/experiments/e1')) return { data: {
+      id: 'e1', dataset_id: 'd1', name: 'Search review', config: {}, case_expectations: {},
+    } };
+    if (url.endsWith('/datasets')) return { data: datasets };
+    return { data: [] };
+  });
+  render(<TestingManager />);
+  expect(await screen.findByDisplayValue('Search review')).toBeVisible();
 });

@@ -44,6 +44,7 @@ const URL_API_GROUPS_G2 = '/api/groups/g2';
 
 describe('GroupSettingsManager', () => {
   beforeEach(() => {
+    window.history.replaceState(null, '', '/admin');
     jest.clearAllMocks();
     mockedAxios.get.mockResolvedValue({ data: mockGroups });
   });
@@ -426,4 +427,14 @@ describe('GroupSettingsManager', () => {
       expect(section.getByRole('button', { name: 'Reset to default' })).toBeDisabled();
     });
   });
+});
+
+test('reopens the selected group and settings tab, including after the group list loads', async () => {
+  window.history.replaceState(null, '', '/admin?admin_page=group-settings&admin_group=g1&admin_settings=features');
+  mockedAxios.get.mockResolvedValue({ data: mockGroups });
+  render(<GroupSettingsManager />);
+  expect(await screen.findByRole('tab', { name: 'Features & Tabs' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByText('Analysts', { selector: 'label', exact: true }).querySelector('input')).toBeChecked();
+  fireEvent.click(screen.getByRole('tab', { name: 'Appearance' }));
+  expect(new URLSearchParams(window.location.search).get('admin_settings')).toBe('appearance');
 });

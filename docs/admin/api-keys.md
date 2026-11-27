@@ -94,6 +94,17 @@ curl -H "X-API-Key: your-key-here" \
 
 ---
 
+### Errors
+
+When a request fails on the server, the response gives a fixed message. The details go only to the API's log, because they can name database tables, file paths or servers.
+
+| Status | `detail` | What it means |
+|--------|----------|---------------|
+| `500` | `Internal server error` | The request failed on the server. The API log has the cause. |
+| `503` | `The service is busy. Please try again in a moment.` | The request waited too long for a database connection. Try again after a short pause. [Performance & Scaling](performance-and-scaling.md#connection-pools) explains the wait and how to size the pool. |
+
+---
+
 ### Security Details
 
 | Aspect | Implementation |

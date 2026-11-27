@@ -415,7 +415,7 @@ def save_config(config):
 
 
 def make_combo_default(config, combo):
-    """Use the chosen provider's default combo and reranker for the demo.
+    """Use the selected provider for the demo's reranker and citation checker.
 
     The UI, MCP and A2A use the default combo. Set its reranker to the one
     declared by the demo provider so it works with the credentials that the
@@ -441,12 +441,21 @@ def make_combo_default(config, combo):
 
     selected_combo = combos[provider_name]
     reranker = combo["reranker"]
-    if selected_combo.get("reranker_model") == reranker:
-        return changed
+    if selected_combo.get("reranker_model") != reranker:
+        selected_combo["reranker_model"] = reranker
+        print(f"  Demo reranker set to '{reranker}'")
+        changed = True
 
-    selected_combo["reranker_model"] = reranker
-    print(f"  Demo reranker set to '{reranker}'")
-    return True
+    assistant = config.setdefault("application", {}).setdefault("assistant", {})
+    brief_model = (
+        selected_combo.get("assistant_model") or selected_combo["summarization_model"]
+    )
+    citation_checker = brief_model["model"]
+    if assistant.get("citation_check_model") != citation_checker:
+        assistant["citation_check_model"] = citation_checker
+        print(f"  Demo citation checker set to '{citation_checker}'")
+        changed = True
+    return changed
 
 
 def ensure_demo_datasource(config, combo):

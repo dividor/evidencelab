@@ -60,6 +60,7 @@ import { generateUUID } from './utils/uuid';
 import { mergeFacetField } from './utils/facetMerge';
 import AdminPanel from './components/admin/AdminPanel';
 import { AssistantTab } from './components/assistant/AssistantTab';
+import { WanderingSpinner } from './components/WanderingSpinner';
 import { BriefTab } from './components/brief/BriefTab';
 import { AuthGate } from './components/auth/AuthGate';
 import { DEFAULT_SECTION_TYPES, DEFAULT_FIELD_BOOST_FIELDS, buildSearchURL, getSearchStateFromURL } from './utils/searchUrl';
@@ -3083,6 +3084,7 @@ function App() {
         searchTab={searchTab}
         assistantTab={
           <AssistantTab
+            modelsReady={searchModelsReady}
             defaultDeepResearch={groupDefaults?.assistantDeepResearchByDefault}
             dataSource={dataSource}
             assistantModelConfig={assistantModelConfig}
@@ -3107,8 +3109,9 @@ function App() {
             onResultClick={handleResultClick}
           />
         }
-        briefTab={
+        briefTab={searchModelsReady ? (
           <BriefTab
+            isActive={activeTab === 'brief'}
             dataSource={dataSource}
             assistantModelConfig={assistantModelConfig}
             semanticModelConfig={semanticHighlightModelConfig}
@@ -3132,7 +3135,7 @@ function App() {
             }}
             onResultClick={handleResultClick}
           />
-        }
+        ) : activeTab === 'brief' && <WanderingSpinner />}
         heatmapTab={heatmapTab}
         documentsTab={documentsTab}
         statsTab={statsTab}

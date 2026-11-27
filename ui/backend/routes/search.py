@@ -30,6 +30,7 @@ from ui.backend.utils.document_utils import (
     map_core_field_to_storage,
     normalize_document_payload,
 )
+from ui.backend.utils.errors import server_error, value_error_detail
 from ui.backend.utils.facet_helpers import (
     build_facets_from_db,
     doc_ids_from_pg_field,
@@ -590,8 +591,7 @@ def perform_title_search(
         return response_data
 
     except Exception as e:
-        logger.error(f"Title Search failed: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "Title Search failed", logger) from e
 
 
 def _resolve_title_doc_ids(pg, title_filter: Any) -> List[str]:
@@ -933,8 +933,7 @@ async def search(
         )
 
     except Exception as e:
-        logger.exception("Search error", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "Search error", logger) from e
 
 
 def _get_indexed_doc_ids(pg, source: str) -> List[str]:
@@ -1128,8 +1127,7 @@ async def docsearch(
         )
 
     except Exception as e:
-        logger.exception("Document search error", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "Document search error", logger) from e
 
 
 @router.get("/search/facet-values")
@@ -1161,8 +1159,7 @@ async def search_facet_values_endpoint(
         )
         return results
     except Exception as e:
-        logger.error(f"Facet search error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "Facet search error", logger) from e
 
 
 @router.get("/facets", response_model=Facets)
@@ -1273,7 +1270,6 @@ async def get_facets(
 
     except ValueError as e:
         logger.error(f"Facets validation error: {e}")
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=value_error_detail(e)) from e
     except Exception as e:
-        logger.error(f"Facets error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "Facets error", logger) from e

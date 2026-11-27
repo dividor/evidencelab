@@ -28,7 +28,7 @@ def test_planner_explains_when_to_continue_or_stop(prompts):
     planner = prompts.get_template("assistant_research_planner.j2")
     normal = planner.render()
     assert '"queries"' in normal
-    assert "give an empty list when the evidence addresses the inquiry" in normal
+    assert "Stop when the evidence directly answers the inquiry" in normal
     assert "concrete gap, contradiction or limitation" in normal
 
 
@@ -39,14 +39,27 @@ def test_grounding_uses_report_title_to_verify_location_and_passage_to_verify_cl
         brief_section=True
     )
     assert "verify that detail against the\nsource title or passage" in reviewer
-    assert "different setting or stage cannot verify the detail" in reviewer
+    assert "does not establish the named setting or another" in reviewer
+    assert (
+        "establishes those qualifiers even when the sentence leaves them implicit"
+        in reviewer
+    )
     assert "Use the passage itself to verify the finding" in reviewer
 
 
-def test_brief_prose_review_accepts_evidence_gap_after_cited_opening(prompts):
-    reviewer = prompts.get_template("brief_prose_check.j2").render(system=True)
-    assert "Do not request the missing data again" in reviewer
-    assert "or require that sentence in the opening" in reviewer
+def test_brief_defaults_and_reviewer_only_discuss_evidence_gaps_when_assigned(prompts):
+    from ui.backend.services.brief_section_prompt import brief_section_prompt_default
+
+    default = brief_section_prompt_default()
+    assert (
+        "only when the heading or the author's instructions explicitly ask" in default
+    )
+    assert "cite the source describing what was measured" in default
+    for final in (False, True):
+        review = prompts.get_template("brief_prose_check.j2").render(
+            system=True, final=final
+        )
+        assert "Flag unsolicited commentary" in review
 
 
 @pytest.mark.parametrize("stage", [{}, {"organize": True}, {"contextualize": True}])
@@ -111,7 +124,7 @@ def test_deep_research_instructs_both_stages_to_check_conflicts(prompts):
 def test_opening_asks_for_each_named_outcome_as_a_stream(prompts):
     planner = prompts.get_template("assistant_research_planner.j2")
     opening = planner.render(organize=True)
-    assert "Keep named outcomes separate" in opening
+    assert "separate when there are four or fewer" in opening
     assert '"streams"' in opening
     assert "main part, up to four" in opening
 
@@ -121,7 +134,7 @@ def test_custom_instructions_replace_editable_defaults_and_keep_workflow_rules(p
         organize=True, instructions="Look for implementation barriers first."
     )
     assert "Look for implementation barriers first." in planner
-    assert "Keep named outcomes separate" in planner
+    assert "separate when there are four or fewer" in planner
     assert 'return a JSON object with "queries"' in planner
     assert "concrete gap" not in planner
     writer = prompts.get_template("assistant_system.j2").render(

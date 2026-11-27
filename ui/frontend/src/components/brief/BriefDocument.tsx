@@ -3,6 +3,7 @@ import { SearchResult, SourceReference } from '../../types/api';
 import { CitedMarkdown, CitedReferences, RequestCitationHighlight } from '../citations/CitedContent';
 import { IconClock, IconCopy, IconDownload, IconEdit, IconFactCheck, IconRefresh, IconShare, IconSparkle } from './BriefIcons';
 import { BriefAskAi } from './BriefAskAi';
+import { BriefSectionFrame } from './BriefSectionFrame';
 import { BriefFactCheckTooltip } from './BriefFactCheckTooltip';
 import { useFactMarkPainter, UseBriefFactCheckReturn } from './useBriefFactCheck';
 import type { BriefFactCheckEvidence, BriefFactCheckMark } from '../../types/testing';
@@ -226,7 +227,10 @@ const GuidancePanel: React.FC<{
       <div className="brief-regen-actions">
         <button
           className="brief-btn brief-btn-primary"
-          onClick={() => brief.regenerate(section.id, (section.guidance || '').trim() || null)}
+          onClick={(event) => {
+            event.currentTarget.closest('section')?.querySelector<HTMLInputElement>('.brief-doc-section-title')?.focus({ preventScroll: true });
+            brief.regenerate(section.id, (section.guidance || '').trim() || null);
+          }}
         >
           {isPending ? 'Research section' : 'Re-research section'}
         </button>
@@ -666,7 +670,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   };
 
   return (
-    <section
+    <BriefSectionFrame researching={section.status === 'researching'}
       id={`brief-section-${section.id}`}
       data-brief-section-id={section.id}
       className={`brief-doc-section${section.level === 2 ? ' brief-doc-section-sub' : ''}`}
@@ -808,7 +812,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
           onFactPointerLeave={onFactPointerLeave}
         />
       )}
-    </section>
+    </BriefSectionFrame>
   );
 };
 

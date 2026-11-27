@@ -5,21 +5,7 @@ import type { TestCapability, TestDataset } from '../../../types/testing';
 import ConfirmModal from '../ConfirmModal';
 import CreateDatasetWithExperimentModal from './CreateDatasetWithExperimentModal';
 import { formatTimestamp } from './testingFormat';
-import { SAMPLE_DATASET_CSV, SAMPLE_QA_CSV } from './csv';
-
-const CAPABILITIES: TestCapability[] = ['search', 'ai_summary'];
-
-const downloadCsv = (content: string, filename: string) => {
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-};
+const CAPABILITIES: TestCapability[] = ['search', 'ai_summary', 'brief'];
 
 /* ------------------------------------------------------------------ */
 /*  Create-dataset modal                                              */
@@ -199,44 +185,12 @@ const DatasetList: React.FC<DatasetListProps> = ({ onOpen }) => {
           className="testing-dataset-actions"
           style={{ marginLeft: 'auto' }}
         >
-          <div
-            style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
-          >
-            <button
-              className="btn-sm btn-primary"
-              onClick={() => setShowCreate(true)}
-            >
-              + Create Dataset
-            </button>
-            <button
-              type="button"
-              className="testing-raw-toggle"
-              onClick={() =>
-                downloadCsv(SAMPLE_DATASET_CSV, 'test-cases-sample.csv')
-              }
-            >
-              sample format
-            </button>
-          </div>
-          <div
-            style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
-          >
-            <button
-              className="btn-sm btn-primary"
-              onClick={() => setShowImport(true)}
-            >
-              + Create Dataset and Experiment
-            </button>
-            <button
-              type="button"
-              className="testing-raw-toggle"
-              onClick={() =>
-                downloadCsv(SAMPLE_QA_CSV, 'qa-experiment-sample.csv')
-              }
-            >
-              sample format
-            </button>
-          </div>
+          <button className="btn-sm btn-primary" onClick={() => setShowCreate(true)}>
+            New dataset
+          </button>
+          <button className="btn-sm" onClick={() => setShowImport(true)}>
+            Import from CSV
+          </button>
         </div>
       </div>
 
@@ -246,7 +200,7 @@ const DatasetList: React.FC<DatasetListProps> = ({ onOpen }) => {
             <th>Name</th>
             <th>Capability</th>
             <th>Data source</th>
-            <th># Cases</th>
+            <th>Records</th>
             <th>Created</th>
             <th></th>
           </tr>
@@ -257,7 +211,7 @@ const DatasetList: React.FC<DatasetListProps> = ({ onOpen }) => {
               <td>{ds.name}</td>
               <td>{ds.capability}</td>
               <td>{ds.data_source}</td>
-              <td>{ds.num_cases ?? 0}</td>
+              <td>{ds.num_cases ?? 0} {ds.capability === 'brief' ? 'templates' : 'cases'}</td>
               <td>{formatTimestamp(ds.created_at)}</td>
               <td onClick={(e) => e.stopPropagation()}>
                 <button
@@ -280,7 +234,9 @@ const DatasetList: React.FC<DatasetListProps> = ({ onOpen }) => {
       {deleteTarget && (
         <ConfirmModal
           title="Delete Dataset"
-          message={`Permanently delete "${deleteTarget.name}" and all its test cases and experiments? This cannot be undone.`}
+          message={deleteTarget.capability === 'brief'
+            ? `Delete “${deleteTarget.name}” and its experiments and run history? Its Brief Central templates stay in the library.`
+            : `Permanently delete "${deleteTarget.name}" and all its test cases and experiments? This cannot be undone.`}
           confirmLabel="Delete Dataset"
           onConfirm={confirmDelete}
           onCancel={() => setDeleteTarget(null)}

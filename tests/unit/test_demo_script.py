@@ -234,18 +234,21 @@ class TestMakeComboDefault:
     @pytest.fixture()
     def config(self):
         return {
+            "application": {"assistant": {"citation_check_model": "gpt-4.1-mini"}},
             "ui_model_combos": {
                 "Azure Foundry": {
                     "default": True,
+                    "assistant_model": {"model": "gpt-4.1-mini"},
                     "embedding_model": "azure_small",
                     "reranker_model": "Cohere-rerank-v4.0-fast",
                 },
                 "Huggingface": {
+                    "assistant_model": {"model": "qwen3-next-80b-instruct"},
                     "embedding_model": "e5_large",
                     "reranker_model": "Cohere-rerank-v4.0-fast",
                 },
                 "Google Vertex": {"embedding_model": "google_gemini_1536"},
-            }
+            },
         }
 
     def test_make_combo_default_when_other_combo_flagged_then_flag_moves(self, config):
@@ -261,6 +264,10 @@ class TestMakeComboDefault:
         assert combos["Azure Foundry"]["reranker_model"] == "Cohere-rerank-v4.0-fast"
         assert "default" not in combos["Azure Foundry"]
         assert "default" not in combos["Google Vertex"]
+        assert (
+            config["application"]["assistant"]["citation_check_model"]
+            == "qwen3-next-80b-instruct"
+        )
 
     def test_make_combo_default_when_already_default_then_unchanged(self, config):
         changed = demo.make_combo_default(config, demo.PROVIDER_COMBOS[0])  # Azure
@@ -274,11 +281,38 @@ class TestMakeComboDefault:
         combos = config["ui_model_combos"]
         del combos["Azure Foundry"]["default"]
         combos["Huggingface"]["default"] = True
+        config["application"]["assistant"][
+            "citation_check_model"
+        ] = "qwen3-next-80b-instruct"
         provider = demo.PROVIDER_COMBOS[1]
 
         assert demo.make_combo_default(config, provider) is True
         assert combos["Huggingface"]["reranker_model"] == provider["reranker"]
         assert demo.make_combo_default(config, provider) is False
+
+    def test_make_combo_default_when_citation_checker_uses_another_provider(
+        self, config
+    ):
+        settings = config["application"]["assistant"]
+        settings["citation_check_model"] = "qwen3-next-80b-instruct"
+        settings["enabled"] = True
+
+        assert demo.make_combo_default(config, demo.PROVIDER_COMBOS[0]) is True
+        assert settings == {"citation_check_model": "gpt-4.1-mini", "enabled": True}
+        assert demo.make_combo_default(config, demo.PROVIDER_COMBOS[0]) is False
+
+    def test_make_combo_default_uses_the_brief_model_when_combo_has_no_assistant(
+        self, config
+    ):
+        selected = config["ui_model_combos"]["Azure Foundry"]
+        selected["summarization_model"] = selected.pop("assistant_model")
+        settings = config["application"]["assistant"]
+        settings["citation_check_model"] = "qwen3-next-80b-instruct"
+
+        assert demo.make_combo_default(config, demo.PROVIDER_COMBOS[0]) is True
+        assert (
+            settings["citation_check_model"] == selected["summarization_model"]["model"]
+        )
 
     def test_make_combo_default_when_combo_missing_then_exits(self, config):
         del config["ui_model_combos"]["Huggingface"]

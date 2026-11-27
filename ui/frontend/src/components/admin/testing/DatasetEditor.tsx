@@ -259,7 +259,7 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({ dataset, onBack }) => {
                   className="testing-raw-toggle"
                   onClick={downloadSampleCsv}
                 >
-                  sample format
+                  Download case CSV example
                 </button>
               </div>
               <button
@@ -347,7 +347,7 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({ dataset, onBack }) => {
                       </div>
                     </td>
                     <td className="testing-cases-notes">{testCase.notes || ''}</td>
-                    <td className="testing-row-actions">
+                    <td><div className="testing-row-actions">
                       <button className="btn-sm" onClick={() => setEditingId(testCase.id)}>
                         Edit
                       </button>
@@ -357,7 +357,7 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({ dataset, onBack }) => {
                       >
                         Delete
                       </button>
-                    </td>
+                    </div></td>
                   </tr>
                 );
               })}

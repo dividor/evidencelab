@@ -34,12 +34,6 @@ _BRIEF_PROMPT_MAX_LENGTH = 12000
 _NUMBERED_GUIDANCE = re.compile(r"(?m)^[ \t]*(?=\d{1,3}[.)][ \t]+)")
 _LETTERED_GUIDANCE = re.compile(r"(?m)^[ \t]*(?=[a-z][.)][ \t]+)")
 
-_FINAL_ANSWER_RULE = (
-    "Your final answer must be the finished section text itself — never a "
-    "description of what you are about to do, a promise to research, or "
-    "narration of your process."
-)
-
 
 class BriefSectionScope(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -49,7 +43,7 @@ class BriefSectionScope(BaseModel):
 BRIEF_SECTION_SCOPE: TypeAdapter[BriefSectionScope] = TypeAdapter(BriefSectionScope)
 
 
-def _child_headings(section: BriefSectionPrompt) -> list[str]:
+def brief_child_headings(section: BriefSectionPrompt) -> list[str]:
     if section.outline[section.current].level != 1:
         return []
     following = section.outline[section.current + 1 :]
@@ -85,7 +79,7 @@ def brief_section_scope_request(
     request = template.render(
         heading=section.outline[section.current].title,
         headings=[item.title for item in section.outline],
-        introduces=_child_headings(section),
+        introduces=brief_child_headings(section),
         choices=[
             {"number": index, "text": text} for index, text in enumerate(choices, 1)
         ],
@@ -103,7 +97,7 @@ def apply_brief_section_scope(
     if any(index < 1 or index > len(choices) for index in indices):
         raise ValueError("The Brief planner selected instructions outside the list")
     selected = [text for index, text in enumerate(choices, 1) if index in indices]
-    if _child_headings(section):
+    if brief_child_headings(section):
         selected = [text.splitlines()[0] for text in selected]
     guidance = "\n\n".join(filter(None, (common, *selected)))
     return section.model_copy(update={"instructions": guidance})
@@ -313,7 +307,6 @@ def _generate_prompt(scope: str, parent: str, guidance: str, focus: str) -> str:
         "Search the document library for evidence relevant to this specific "
         "section and cite a source for every claim."
     )
-    parts.append(_FINAL_ANSWER_RULE)
     if guidance:
         parts.append(f"Overall brief guidance: {guidance}")
     if focus:
@@ -357,7 +350,7 @@ def build_section_prompt(section: BriefSectionPrompt) -> str:
         )
     assignment = assistant_prompt_templates.get_template("brief_section_assignment.j2")
     scope_rules = assignment.render(
-        heading=heading, introduces=_child_headings(section)
+        heading=heading, introduces=brief_child_headings(section)
     )
     return f"{prompt}\n\n{scope_rules.strip()}"
 

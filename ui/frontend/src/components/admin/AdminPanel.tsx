@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { openAdminLocation, useAdminLocation } from '../../utils/adminLocation';
 import { USER_MODULE } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import ActivityManager from './ActivityManager';
@@ -26,34 +27,19 @@ interface AdminPanelProps {
   onResultClick?: (result: SearchResult) => void;
 }
 
-type AdminTab =
-  | 'users'
-  | 'groups'
-  | 'group-settings'
-  | 'ratings'
-  | 'activity'
-  | 'llm-usage'
-  | 'mcp-audit'
-  | 'api-keys'
-  | 'testing'
-  | 'testing-brief'
-  | 'toc-validator';
-
-const TAB_USERS: AdminTab = 'users';
-const TAB_GROUPS: AdminTab = 'groups';
-const TAB_GROUP_SETTINGS: AdminTab = 'group-settings';
-const TAB_RATINGS: AdminTab = 'ratings';
-const TAB_ACTIVITY: AdminTab = 'activity';
-const TAB_LLM_USAGE: AdminTab = 'llm-usage';
-const TAB_MCP_AUDIT: AdminTab = 'mcp-audit';
-const TAB_API_KEYS: AdminTab = 'api-keys';
-const TAB_TESTING: AdminTab = 'testing';
-const TAB_TESTING_BRIEF: AdminTab = 'testing-brief';
-const TAB_TOC_VALIDATOR: AdminTab = 'toc-validator';
-const ACTIVE_CLASS = 'admin-tab-active';
-
-const tabClass = (tab: AdminTab, current: AdminTab) =>
-  `admin-tab ${tab === current ? ACTIVE_CLASS : ''}`;
+const adminTabs = [
+  ['users', 'Users'],
+  ['groups', 'Groups'],
+  ['group-settings', 'Group Settings'],
+  ['ratings', 'Ratings'],
+  ['activity', 'Activity'],
+  ['llm-usage', 'LLM Usage'],
+  ['mcp-audit', 'MCP / A2A'],
+  ['api-keys', 'API Keys'],
+  ['testing', 'Testing (Experiments)'],
+  ['testing-brief', 'Testing (Saved Briefs)'],
+  ['toc-validator', 'TOC Validator'],
+] as const;
 
 const AdminPanel: React.FC<AdminPanelProps> = ({
   isActive,
@@ -64,7 +50,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   onResultClick,
 }) => {
   const { user } = useAuth();
-  const [tab, setTab] = useState<AdminTab>(TAB_USERS);
+  const { page } = useAdminLocation();
+  const tab = adminTabs.find(([key]) => key === page)?.[0] ?? 'users';
 
   if (!USER_MODULE || !isActive || !user?.is_superuser) return null;
 
@@ -73,92 +60,32 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       <div className="admin-header">
         <h2>Administration</h2>
         <div className="admin-tabs">
-          <button
-            className={tabClass(tab, TAB_USERS)}
-            onClick={() => setTab(TAB_USERS)}
-          >
-            Users
-          </button>
-          <button
-            className={tabClass(tab, TAB_GROUPS)}
-            onClick={() => setTab(TAB_GROUPS)}
-          >
-            Groups
-          </button>
-          <button
-            className={tabClass(tab, TAB_GROUP_SETTINGS)}
-            onClick={() => setTab(TAB_GROUP_SETTINGS)}
-          >
-            Group Settings
-          </button>
-          <button
-            className={tabClass(tab, TAB_RATINGS)}
-            onClick={() => setTab(TAB_RATINGS)}
-          >
-            Ratings
-          </button>
-          <button
-            className={tabClass(tab, TAB_ACTIVITY)}
-            onClick={() => setTab(TAB_ACTIVITY)}
-          >
-            Activity
-          </button>
-          <button
-            className={tabClass(tab, TAB_LLM_USAGE)}
-            onClick={() => setTab(TAB_LLM_USAGE)}
-          >
-            LLM Usage
-          </button>
-          <button
-            className={tabClass(tab, TAB_MCP_AUDIT)}
-            onClick={() => setTab(TAB_MCP_AUDIT)}
-          >
-            MCP / A2A
-          </button>
-          <button
-            className={tabClass(tab, TAB_API_KEYS)}
-            onClick={() => setTab(TAB_API_KEYS)}
-          >
-            API Keys
-          </button>
-          <button
-            className={tabClass(tab, TAB_TESTING)}
-            onClick={() => setTab(TAB_TESTING)}
-          >
-            Testing (Search + AI Summary)
-          </button>
-          <button
-            className={tabClass(tab, TAB_TESTING_BRIEF)}
-            onClick={() => setTab(TAB_TESTING_BRIEF)}
-          >
-            Testing (Brief)
-          </button>
-          <button
-            className={tabClass(tab, TAB_TOC_VALIDATOR)}
-            onClick={() => setTab(TAB_TOC_VALIDATOR)}
-          >
-            TOC Validator
-          </button>
+          {adminTabs.map(([key, label]) => (
+            <button key={key} className={`admin-tab ${tab === key ? 'admin-tab-active' : ''}`}
+              onClick={() => { if (key !== tab) openAdminLocation({ page: key }); }}>
+              {label}
+            </button>
+          ))}
         </div>
       </div>
       <div className="admin-tab-content">
-        {tab === TAB_USERS && <UserManager />}
-        {tab === TAB_GROUPS && <GroupManager />}
-        {tab === TAB_GROUP_SETTINGS && <GroupSettingsManager assistantModelConfig={assistantModelConfig} />}
-        {tab === TAB_RATINGS && <RatingsManager />}
-        {tab === TAB_ACTIVITY && <ActivityManager />}
-        {tab === TAB_LLM_USAGE && <LlmUsageManager />}
-        {tab === TAB_MCP_AUDIT && <McpAuditLog />}
-        {tab === TAB_API_KEYS && <ApiKeyManager />}
-        {tab === TAB_TESTING && <TestingManager />}
-        {tab === TAB_TESTING_BRIEF && (
+        {tab === 'users' && <UserManager />}
+        {tab === 'groups' && <GroupManager />}
+        {tab === 'group-settings' && <GroupSettingsManager assistantModelConfig={assistantModelConfig} />}
+        {tab === 'ratings' && <RatingsManager />}
+        {tab === 'activity' && <ActivityManager />}
+        {tab === 'llm-usage' && <LlmUsageManager />}
+        {tab === 'mcp-audit' && <McpAuditLog />}
+        {tab === 'api-keys' && <ApiKeyManager />}
+        {tab === 'testing' && <TestingManager />}
+        {tab === 'testing-brief' && (
           <BriefTestingManager
             dataSource={dataSource}
             modelCombo={modelCombo}
             onResultClick={onResultClick}
           />
         )}
-        {tab === TAB_TOC_VALIDATOR && (
+        {tab === 'toc-validator' && (
           <TocValidatorManager
             dataSource={dataSource}
             dataSourceConfig={dataSourceConfig}

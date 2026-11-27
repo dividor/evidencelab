@@ -12,7 +12,7 @@
 # Upload the files first; their keys are their names in the bucket:
 #   bucket="$(terraform -chdir=deploy/aws output -raw transfer_bucket)"
 #   aws s3 cp postgres-evidencelab-2026-11-20.sql.gz "s3://$bucket/"
-#   aws s3 cp wfp-data-2026-11-20.tar.gz "s3://$bucket/"
+#   aws s3 cp reports-data-2026-11-20.tar.gz "s3://$bucket/"
 # A dump keeps the keys it was written under, such as
 #   dumps/20261121T043910Z/manifest.json and the files it lists.
 #

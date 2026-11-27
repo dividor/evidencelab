@@ -33,6 +33,7 @@ from ui.backend.utils.app_state import (
 )
 from ui.backend.utils.document_utils import normalize_document_payload
 from ui.backend.utils.documents_sys_merge import merge_sys_data_for_doc
+from ui.backend.utils.errors import server_error
 from ui.backend.utils.filter_helpers import parse_filter_values
 
 RATE_LIMIT_SEARCH, RATE_LIMIT_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
@@ -368,8 +369,7 @@ async def get_documents(
     except AiDailyLimitReached:
         raise
     except Exception as e:
-        logger.error(f"Error getting documents: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "Error getting documents", logger) from e
 
 
 @router.get("/document/{doc_id}")
@@ -408,8 +408,7 @@ def get_document(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Document fetch error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "Document fetch error", logger) from e
 
 
 @router.get("/document/{doc_id}/thumbnail")
@@ -429,8 +428,7 @@ async def get_document_thumbnail(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting document thumbnail: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "Error getting document thumbnail", logger) from e
 
 
 def _thumbnail_path_sync(doc_id: str, data_source: Optional[str]) -> Path:
@@ -544,8 +542,7 @@ def update_document_toc(
         logger.info(f"Updated TOC for document {doc_id} (user edited)")
         return {"success": True, "message": "TOC updated successfully"}
     except Exception as e:
-        logger.error(f"TOC update error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "TOC update error", logger) from e
 
 
 @router.patch("/documents/{doc_id}", dependencies=_ADMIN_ONLY)
@@ -597,8 +594,7 @@ def update_document_metadata(
             return {"success": True, "message": "No changes requested"}
 
     except Exception as e:
-        logger.error(f"Document update error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "Document update error", logger) from e
 
 
 @router.get("/documents/{doc_id}/chunks")
@@ -645,8 +641,7 @@ async def get_document_chunks(
     except AiDailyLimitReached:
         raise
     except Exception as e:
-        logger.error(f"Chunks fetch error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "Chunks fetch error", logger) from e
 
 
 def _document_chunks_sync(
@@ -737,8 +732,7 @@ async def reprocess_document_toc(
         }
 
     except Exception as e:
-        logger.error(f"TOC reprocess error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "TOC reprocess error", logger) from e
 
 
 @router.get("/queue/status", dependencies=_ADMIN_ONLY)
@@ -843,8 +837,7 @@ async def serve_pdf(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"PDF serve error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "PDF serve error", logger) from e
 
 
 def _pdf_path_sync(doc_id: str, data_source: Optional[str]) -> Path:
@@ -973,5 +966,4 @@ async def serve_file(file_path: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"File serve error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "File serve error", logger) from e

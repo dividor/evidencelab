@@ -57,3 +57,11 @@ describe('runConfigHeadline', () => {
     expect(runConfigHeadline(null)).toBe('');
   });
 });
+
+test('shows the Brief writer and the automatic citation setting recorded for a run', () => {
+  const cfg = { brief_model: 'writer', brief_citation_check: false, summary_model: 'summary' };
+  expect(runConfigHeadline(cfg)).toContain('Brief writer writer');
+  expect(runConfigRows(cfg, null)).toContainEqual(expect.objectContaining({
+    key: 'brief_citation_check', section: 'Brief', value: 'off',
+  }));
+});
