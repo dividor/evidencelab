@@ -94,7 +94,7 @@ const RunStats: React.FC<{ run: TestRun }> = ({ run }) => {
 /* ------------------------------------------------------------------ */
 
 const briefCheckLabels: Record<string, string> = {
-  brief_paragraphs: 'One-sentence paragraphs',
+  brief_writing: 'Writing quality', brief_paragraphs: 'One-sentence paragraphs',
   brief_intro_scope: 'Introduction scope', brief_length: 'Word count', brief_structure: 'Format and citations', brief_overlap: 'Cross-section repetition',
 };
 
@@ -102,7 +102,7 @@ const AssertionResultRow: React.FC<{ result: AssertionResult }> = ({ result }) =
   const [showPrompt, setShowPrompt] = useState(false);
   return (
     <div className="testing-assertion-result">
-      {(result.type === 'llm_judge' || result.type === 'brief_overlap' || result.type === 'brief_intro_scope') && (
+      {(Boolean(result.rubric || result.judge_prompt)) && (
         <div className="testing-judge-rubric">
           <div className="testing-judge-rubric-text">
             {result.rubric || '(prompt not recorded for this run)'}

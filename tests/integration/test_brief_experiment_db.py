@@ -80,7 +80,9 @@ async def test_brief_experiment_persists_generation_context_and_repetition_verdi
                         "_judge_call",
                         return_value=(
                             '{"reason":"Both report the same duration.",'
-                            '"unmet":["Repeated finding"],"score":0}',
+                            '"repeats":[{"new_clause":"Repairs took two days",'
+                            '"other_heading":"Earlier finding",'
+                            '"existing_clause":"Repairs lasted 48 hours"}]}',
                             {},
                         ),
                     ),

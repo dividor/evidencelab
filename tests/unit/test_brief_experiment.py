@@ -146,18 +146,23 @@ async def test_overlap_judge_sees_both_sections_but_no_reference_answer(monkeypa
     call = AsyncMock(
         return_value=(
             '{"reason":"Both sections report the same wait.",'
-            '"unmet":["Repeated finding"],"score":0}',
+            '"repeats":[{"new_clause":"Processing time fell by half",'
+            '"other_heading":"Earlier findings","existing_clause":"halved processing time"}]}',
             {},
         )
     )
     monkeypatch.setattr(runner, "_judge_call", call)
     o = draft()
+    o["siblings"] = [
+        {"title": "Earlier findings", "content": "The team halved processing time."}
+    ]
     assertion = {"type": "brief_overlap"}
     verdict = await runner.make_judge_factory({"judge_model": "grader"})(
         o, [assertion, assertion]
     )
     result = evaluate_assertion(assertion, o, verdict)
     assert not result["passed"] and "same wait" in result["message"]
+    assert "halved processing time" in result["message"]
     prompt, model, _system = call.await_args.args
     assert o["siblings"][0]["content"] in prompt and o["summary"] in prompt
     assert "editor only" not in prompt and model == "grader"
@@ -181,6 +186,64 @@ def test_editorial_judge_preserves_paragraphs_and_ends_with_requested_criterion(
     assert "section contains 4 words" in prompt
     assert prompt.count("Queues cleared [7].") == 1
     assert prompt.strip().endswith(rubric)
+
+
+def test_each_case_can_override_the_writing_rubric():
+    column = {"type": "brief_writing", "rubric": "Check flow.", "threshold": 0.9}
+    matrix = {
+        "columns": [column],
+        "cases": {
+            "case": {"active": True, "cols": [True], "ovr": ["Check the opening."]}
+        },
+    }
+    active, assertions = runner._resolve_case_plan(matrix, "case")
+    assert active and assertions == [{**column, "rubric": "Check the opening."}]
+    assert column["rubric"] == "Check flow."
+
+
+@pytest.mark.asyncio
+async def test_writing_and_grounding_with_same_rubric_get_independent_inputs(
+    monkeypatch,
+):
+    output = draft()
+    rubric = "Is the text suitable?"
+    criteria = [
+        {"type": kind, "rubric": rubric} for kind in ("llm_judge", "brief_writing")
+    ]
+    replies = AsyncMock(
+        side_effect=[
+            ('{"reason":"Missing context.","unmet":["scope"],"score":0.4}', {}),
+            ('{"reason":"Suitable for the reader.","unmet":[],"score":1}', {}),
+        ]
+    )
+    monkeypatch.setattr(runner, "_judge_call", replies)
+    cb = await brief.judge_brief(output, criteria, "grader")
+    results = [evaluate_assertion(a, output, cb) for a in criteria]
+    assert [r["score"] for r in results] == [0.4, 1]
+    assert "editor only" in results[0]["judge_prompt"]
+    assert "editor only" not in results[1]["judge_prompt"]
+    assert "Productivity" not in results[1]["judge_prompt"]
+    assert all(r["rubric"] == rubric for r in results)
+
+
+@pytest.mark.asyncio
+async def test_overlap_judge_retries_a_comparison_with_an_invented_quote(monkeypatch):
+    replies = AsyncMock(
+        side_effect=[
+            (
+                '{"reason":"Shared result.","repeats":[{"new_clause":"invented result",'
+                '"other_heading":"Productivity","existing_clause":"more requests"}]}',
+                {},
+            ),
+            ('{"reason":"Different findings.","repeats":[]}', {}),
+        ]
+    )
+    monkeypatch.setattr(runner, "_judge_call", replies)
+    out = draft()
+    a = {"type": "brief_overlap"}
+    cb = await brief.judge_brief(out, [a], "grader")
+    assert evaluate_assertion(a, out, cb)["passed"]
+    assert len(out["judge_usage"]) == 2
 
 
 @pytest.mark.asyncio

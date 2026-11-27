@@ -116,15 +116,15 @@ def _seed(source, name, cases):
             ),
         },
         {
-            "type": "llm_judge",
+            "type": "brief_writing",
             "threshold": 1,
             "rubric": (
-                "Check the requested voice, tone, and word target. Accept a shorter "
-                "answer only when the available evidence justifies the shortfall."
+                "Check whether the voice, tone and language suit the requested reader. "
+                "Quote wording from the section to explain the decision."
             ),
         },
         {
-            "type": "llm_judge",
+            "type": "brief_writing",
             "threshold": 1,
             "rubric": (
                 "Does the section read as developed, connected prose? Look for an opening "

@@ -17,6 +17,7 @@ A case passes only when every assertion passes; the case score is the minimum
 assertion score (boolean assertions score 1.0/0.0, ``llm_judge`` scores 0–1).
 """
 
+import json
 import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -257,6 +258,13 @@ def eval_brief_paragraphs(a: Dict[str, Any], output: Dict[str, Any]) -> Assertio
     )
 
 
+def judge_rubric_key(assertion: Dict[str, Any]) -> str:
+    rubric = str(assertion.get("rubric", ""))
+    if assertion.get("type") == "brief_writing":
+        return json.dumps(["brief_writing", rubric])
+    return rubric
+
+
 def eval_llm_judge(
     a: Dict[str, Any], output: Dict[str, Any], judge_fn: Optional[JudgeFn] = None
 ) -> AssertionResult:
@@ -264,7 +272,7 @@ def eval_llm_judge(
         return _result("llm_judge", False, "llm_judge is disabled", score=0.0)
     rubric = str(a.get("rubric", ""))
     threshold = float(a.get("threshold", 1.0))
-    verdict = judge_fn(_summary_text(output), rubric)
+    verdict = judge_fn(_summary_text(output), judge_rubric_key(a))
     prompt = ""
     if isinstance(verdict, tuple):
         score = verdict[0]
@@ -277,7 +285,7 @@ def eval_llm_judge(
     # Message is just the judge's reason — the score/pass are shown separately,
     # so don't duplicate them here.
     message = reason or "(no reason provided)"
-    result = _result("llm_judge", passed, message, score=score)
+    result = _result(str(a.get("type", "llm_judge")), passed, message, score=score)
     # Surface the rubric + the exact prompt the judge was given (shown per run).
     result["rubric"] = rubric
     if prompt:
@@ -310,6 +318,7 @@ VALID_ASSERTION_TYPES = set(_EVALUATORS) | {
     "llm_judge",
     "brief_overlap",
     "brief_intro_scope",
+    "brief_writing",
     "brief_structure",
 }
 
@@ -336,7 +345,7 @@ def evaluate_assertion(
                 else "Does this section repeat a finding from another section?"
             ),
         }
-    if atype == "llm_judge":
+    if atype in ("llm_judge", "brief_writing"):
         return eval_llm_judge(assertion, output, judge_fn=judge_fn)
     fn = _EVALUATORS.get(str(atype))
     if fn is None:

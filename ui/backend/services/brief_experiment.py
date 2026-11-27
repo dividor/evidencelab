@@ -2,7 +2,7 @@
 
 import re
 
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, Field, ValidationError, ValidationInfo, model_validator
 
 from ui.backend.auth.schemas import (
     AssistantSearchSettings,
@@ -28,6 +28,7 @@ from ui.backend.services.llm_choice import (
     combo_default,
     default_combo,
 )
+from ui.backend.services.test_evaluators import judge_rubric_key
 
 
 def configure_brief(config, combo):
@@ -176,6 +177,41 @@ class IntroductionVerdict(BaseModel):
         return float(not self.unmet)
 
 
+class RepeatedFinding(BaseModel):
+    new_clause: str = Field(min_length=1)
+    existing_clause: str = Field(min_length=1)
+    other_heading: str = Field(min_length=1)
+
+
+class OverlapVerdict(BaseModel):
+    reason: str = Field(min_length=1)
+    repeats: list[RepeatedFinding]
+
+    @model_validator(mode="after")
+    def verify_quotes(self, info: ValidationInfo):
+        document = info.context
+        for match in self.repeats:
+            if match.new_clause not in document["summary"] or not any(
+                match.other_heading == s["title"]
+                and match.existing_clause in (s.get("content") or "")
+                for s in document["siblings"]
+            ):
+                raise ValueError(
+                    "Quote verbatim from the new draft and the named other section."
+                )
+        if self.repeats:
+            pairs = [
+                f"“{pair.new_clause}” repeats “{pair.existing_clause}” in {pair.other_heading}."
+                for pair in self.repeats
+            ]
+            self.reason = " ".join([self.reason, *pairs])
+        return self
+
+    @property
+    def score(self) -> float:
+        return float(not self.repeats)
+
+
 async def _grade(output, prompt, model, system, schema=BriefVerdict):
     from ui.backend.services.test_runner import _judge_call
 
@@ -183,7 +219,7 @@ async def _grade(output, prompt, model, system, schema=BriefVerdict):
         raw, usage = await _judge_call(prompt, model, system, max_tokens=900)
         output.setdefault("judge_usage", []).append(usage)
         try:
-            return schema.model_validate_json(raw), prompt
+            return schema.model_validate_json(raw, context=output), prompt
         except ValidationError:
             if attempt:
                 raise
@@ -209,11 +245,12 @@ def _brief_grade_request(template, output, kind, rubric):
         (s.get("content") or "").strip() for s in output["siblings"]
     ):
         return "Provide another section with written text to test repetition.", "", ""
+    writing = kind == "brief_writing"
     return (
         "",
-        template.render(system=True),
+        template.render(system=True, writing=writing, overlap=overlap),
         template.render(
-            rubric=template.render(overlap=True) if overlap else rubric,
+            rubric=rubric,
             assignment=assignment,
             paragraphs=re.split(r"\n\s*\n", output["summary"].strip()),
             words=len(strip_citation_markers(output["summary"]).split()),
@@ -221,6 +258,7 @@ def _brief_grade_request(template, output, kind, rubric):
             sources=output["sources"],
             standard=output["reference_standard"],
             overlap_only=overlap,
+            writing_only=writing,
         ),
     )
 
@@ -228,17 +266,29 @@ def _brief_grade_request(template, output, kind, rubric):
 async def judge_brief(output, assertions, model):
     template = assistant_prompt_templates.get_template("brief_experiment_judge.j2")
     decisions = {}
+    schemas = {
+        "brief_intro_scope": IntroductionVerdict,
+        "brief_overlap": OverlapVerdict,
+        "brief_writing": BriefVerdict,
+        "llm_judge": BriefVerdict,
+    }
     for assertion in assertions:
         kind = assertion["type"]
-        if kind not in ("llm_judge", "brief_overlap", "brief_intro_scope"):
+        if kind not in schemas:
             continue
-        key = assertion.get("rubric", "") if kind == "llm_judge" else kind
+        key = (
+            judge_rubric_key(assertion)
+            if kind in ("llm_judge", "brief_writing")
+            else kind
+        )
         if key in decisions:
             continue
         if not output["written"]:
             decisions[key] = (0.0, "No section was written.", "")
             continue
-        issue, system, prompt = _brief_grade_request(template, output, kind, key)
+        issue, system, prompt = _brief_grade_request(
+            template, output, kind, assertion.get("rubric", "")
+        )
         if issue:
             decisions[key] = (0.0, issue, "")
             continue
@@ -247,7 +297,7 @@ async def judge_brief(output, assertions, model):
             prompt,
             model,
             system,
-            IntroductionVerdict if kind == "brief_intro_scope" else BriefVerdict,
+            schemas[kind],
         )
         decisions[key] = (verdict.score, verdict.reason, system + "\n\n" + prompt)
     return lambda _draft, rubric: decisions[rubric]

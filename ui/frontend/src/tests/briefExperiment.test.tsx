@@ -23,5 +23,5 @@ test('saves section scope, target and existing sections while retaining editoria
     siblings: testCase.input.siblings,
     children: [{ title: 'Personnel', content: 'Five people took part.', level: 2 }],
   });
-  expect(getAssertionSpecs('brief').map(x => x.type)).toEqual(expect.arrayContaining(['brief_structure','brief_length','brief_paragraphs','brief_overlap','brief_intro_scope','llm_judge']));
+  expect(getAssertionSpecs('brief').map(x => x.type)).toEqual(expect.arrayContaining(['brief_structure','brief_length','brief_paragraphs','brief_writing','brief_overlap','brief_intro_scope','llm_judge']));
 });
