@@ -501,7 +501,7 @@ async def get_experiment(
     experiment = (await session.execute(stmt)).scalar_one_or_none()
     if experiment is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
-    detail = TestExperimentDetail.model_validate(experiment)
+    detail = await run_in_threadpool(TestExperimentDetail.model_validate, experiment)
     detail.runs.sort(key=lambda r: r.run_number, reverse=True)
     for run in detail.runs:
         run.results.sort(key=lambda r: r.created_at)

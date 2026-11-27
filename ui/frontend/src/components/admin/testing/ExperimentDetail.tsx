@@ -22,6 +22,7 @@ import RunPassRateChart from './RunPassRateChart';
 import { resultWarnings } from './resultWarnings';
 import { runConfigHeadline, runConfigRows } from './runConfig';
 import { judgeCriterionName } from './assertionSpecs';
+import GeneratedSection from './GeneratedSection';
 
 interface ExperimentDetailProps {
   experimentId: string;
@@ -281,23 +282,6 @@ const ResultOutput: React.FC<{ output: OutputBlob }> = ({ output }) => {
 /*  Expandable result row                                             */
 /* ------------------------------------------------------------------ */
 
-const GeneratedSection: React.FC<{ output: OutputBlob }> = ({ output }) => {
-  if (output?.capability !== 'brief') return null;
-  const assignment = output.assignment as Record<string, unknown> | undefined;
-  const text = str(output.summary);
-  return (
-    <details className="testing-case-block testing-generated-section">
-      <summary className="testing-case-label">Generated section</summary>
-      {text && output.written !== false ? (
-        <>
-          <p>{String(output.words)} words{assignment?.target_words ? ` of ${assignment.target_words} requested` : ''}</p>
-          <div className="testing-brief-prose">{text}</div>
-        </>
-      ) : <p>No section was written.</p>}
-    </details>
-  );
-};
-
 const ResultQuery: React.FC<{
   topic: string; heading: string; input?: Record<string, unknown>;
 }> = ({ topic, heading, input }) => {
@@ -354,7 +338,7 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
           <td colSpan={6}>
             <div className="testing-result-detail">
               <ResultQuery topic={topic} heading={heading} input={input} />
-              <GeneratedSection output={result.actual_output} />
+              <GeneratedSection result={result} />
               {warnings.length > 0 && (
                 <div className="testing-case-block">
                   <span className="testing-case-label">Warnings</span>

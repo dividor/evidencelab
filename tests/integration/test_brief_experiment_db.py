@@ -13,6 +13,7 @@ from ui.backend.auth.testing_models import (
     TestExperiment,
     TestResult,
 )
+from ui.backend.schemas.testing import TestResultRead
 from ui.backend.services import test_runner
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -100,6 +101,13 @@ async def test_brief_experiment_persists_generation_context_and_repetition_verdi
                     )
                 ).scalar_one()
                 assert saved.status == "fail"
+                evidence = TestResultRead.model_validate(saved).brief_evidence
+                assert evidence["paragraphs"][0][0]["references"] == [0]
+                assert evidence["references"] == [{"label": "3", "source_position": 0}]
+                assert (
+                    saved.actual_output["sources"][0]["text"]
+                    == "Repairs took two days."
+                )
                 assert (
                     saved.actual_output["siblings"][0]["content"]
                     == "Repairs lasted 48 hours."

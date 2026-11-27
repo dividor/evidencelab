@@ -102,6 +102,21 @@ export interface TestExperiment {
   created_at: string;
 }
 
+export interface BriefEvalClaim {
+  parts: Array<{ text: string; marker?: boolean }>;
+  references: number[];
+}
+
+export interface BriefEvalReference {
+  label: string;
+  source_position: number | null;
+}
+
+export interface BriefEvalEvidence {
+  paragraphs: BriefEvalClaim[][];
+  references: BriefEvalReference[];
+}
+
 export interface TestResult {
   id: string;
   experiment_id: string;
@@ -110,6 +125,7 @@ export interface TestResult {
   status: ResultStatus;
   score?: number | null;
   actual_output?: Record<string, unknown> | null;
+  brief_evidence?: BriefEvalEvidence | null;
   assertion_results?: AssertionResult[] | null;
   latency_ms?: number | null;
   error_message?: string | null;

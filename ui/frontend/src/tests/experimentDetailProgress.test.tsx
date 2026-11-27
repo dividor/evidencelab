@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import axios from 'axios';
 import ExperimentDetail from '../components/admin/testing/ExperimentDetail';
+import GeneratedSection from '../components/admin/testing/GeneratedSection';
 
 jest.mock('../config', () => ({ __esModule: true, default: '/api' }));
 jest.mock('axios');
@@ -73,12 +74,45 @@ beforeEach(() => {
 const noop = () => undefined;
 
 describe('ExperimentDetail run progress', () => {
+  test('explains why an editorial rejection has no generated section', () => {
+    const reason = 'The opening does not identify the equipment being discussed.';
+    render(<GeneratedSection result={{
+      id: 'r', experiment_id: 'e', test_case_id: 'c', created_at: TS, status: 'fail',
+      actual_output: { capability: 'brief', written: false, summary: '', editorial_issues: [reason] },
+    }} />);
+    fireEvent.click(screen.getByText('Generated section'));
+    expect(screen.getByText('No section was written.')).toBeVisible();
+    expect(screen.getByText(reason)).toBeVisible();
+  });
+
+  test('shows an already loaded saved draft even before claim details are available', async () => {
+    const text = 'The inspection confirmed the equipment was operational [4].';
+    const result = { id: 'saved', status: 'fail', actual_output: {
+      capability: 'brief', written: true, summary: text, words: 8, assignment: { heading: 'Equipment status' },
+    } };
+    mockGet({ ...completedDetail, runs: [{ ...completedDetail.runs[0], results: [result] }] });
+    render(<ExperimentDetail experimentId="e1" onBack={noop} onEdit={noop} />);
+    fireEvent.click(await screen.findByText('Equipment status'));
+    fireEvent.click(screen.getByText('Generated section'));
+    expect(screen.getByText(text)).toBeVisible();
+    expect(screen.queryByText('No section was written.')).toBeNull();
+  });
+
   test('shows the saved brief below its query and names each grading criterion', async () => {
-    const text = 'Technicians identified a pressure loss [4].\n\nThe replacement held pressure [8].';
+    const text = 'Technicians identified a pressure loss [4, 8].\n\nThe replacement held pressure [8].';
     const result = {
       id: 'res', status: 'pass', actual_output: {
         capability: 'brief', summary: text, written: true, words: 10,
         assignment: { topic: 'Equipment maintenance', heading: 'Inspection', target_words: 12 },
+        sources: [{ index: 8, title: 'Service log', page: 37, text: 'Second inspection.' },
+          { index: 4, title: 'First inspection', page: 2, text: 'Pressure reading.' }],
+      },
+      brief_evidence: {
+        references: [{ label: '4', source_position: 1 }, { label: '8', source_position: 0 }],
+        paragraphs: [
+          [{ parts: [{ text: 'Technicians identified a pressure loss ' }, { text: '[4, 8]', marker: true }, { text: '.' }], references: [0, 1] }],
+          [{ parts: [{ text: 'The replacement held pressure ' }, { text: '[8]', marker: true }, { text: '.' }], references: [1] }],
+        ],
       },
       assertion_results: [
         { type: 'llm_judge', passed: true, rubric: 'Check factual grounding against the cited excerpts. Check the numbers.' },
@@ -96,7 +130,27 @@ describe('ExperimentDetail run progress', () => {
     expect(panel.nextElementSibling).toContainElement(screen.getByText('Expectations'));
     fireEvent.click(within(panel).getByText('Generated section'));
     expect(panel).toHaveAttribute('open');
-    expect(panel.querySelector('.testing-brief-prose')?.textContent).toBe(text);
+    const paragraphs = panel.querySelectorAll('.testing-claim-paragraph');
+    expect(Array.from(paragraphs, node => node.textContent).join('\n\n')).toBe(text);
+    const firstClaim = within(panel).getByRole('button', { name: 'Show cited passages [4, 8]' });
+    expect(firstClaim).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(firstClaim);
+    const passages = within(panel).getByRole('group', { name: 'Cited passages for this claim' });
+    expect(within(passages).getByText('Pressure reading.')).toBeVisible();
+    expect(within(passages).getByText('Second inspection.')).toBeVisible();
+    fireEvent.click(firstClaim);
+    expect(passages).not.toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Show cited passages [8]' }));
+    const secondPassage = within(panel).getByRole('group', { name: 'Cited passages for this claim' });
+    expect(within(secondPassage).queryByText('Pressure reading.')).toBeNull();
+    expect(within(secondPassage).getByText('Second inspection.')).toBeVisible();
+    const references = panel.querySelectorAll('details');
+    expect(references).toHaveLength(2);
+    expect(references[0]).not.toHaveAttribute('open');
+    expect(references[1]).not.toHaveAttribute('open');
+    fireEvent.click(within(references[0]).getByText('[4] First inspection · p. 2'));
+    expect(within(references[0]).getByText('Pressure reading.')).toBeVisible();
+    expect(references[1]).not.toHaveAttribute('open');
     expect(screen.getByText('Factual support from citations')).toBeInTheDocument();
     expect(screen.getByText('Relevance to the assigned topic and heading')).toBeInTheDocument();
     expect(screen.getByText('Test conditions')).toBeInTheDocument();

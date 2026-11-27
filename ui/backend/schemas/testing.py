@@ -21,6 +21,7 @@ from ui.backend.auth.schemas import (
     VOICE_INSTRUCTIONS_MAX_CHARS,
     BriefOutlineSection,
 )
+from ui.backend.services.brief_experiment_claims import brief_claim_evidence
 
 # ---------------------------------------------------------------------------
 # Datasets
@@ -146,6 +147,7 @@ class TestResultRead(BaseModel):
     status: str
     score: Optional[float] = None
     actual_output: Optional[Dict[str, Any]] = None
+    brief_evidence: Optional[Dict[str, Any]] = None
     assertion_results: Optional[List[Dict[str, Any]]] = None
     latency_ms: Optional[int] = None
     error_message: Optional[str] = None
@@ -154,6 +156,11 @@ class TestResultRead(BaseModel):
     completion_tokens: Optional[int] = None
     cost_usd: Optional[float] = None
     created_at: datetime
+
+    @model_validator(mode="after")
+    def attach_saved_brief_evidence(self):
+        self.brief_evidence = brief_claim_evidence(self.actual_output)
+        return self
 
 
 class TestRunRead(BaseModel):

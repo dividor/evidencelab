@@ -13705,3 +13705,31 @@ fieldset.group-assistant-options {
   display: list-item;
   cursor: pointer;
 }
+
+.testing-claim-paragraph + .testing-claim-paragraph,
+.testing-section-references {
+  margin-top: 0.85rem;
+}
+
+.testing-claim-citation {
+  display: inline;
+  padding: 0 0.12em;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary, #315e7b);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.testing-claim-evidence {
+  margin: 0.55rem 0;
+  padding: 0.65rem 0.85rem;
+  background: var(--color-bg-secondary, #f5f7f8);
+  border-radius: 4px;
+}
+
+.testing-claim-source + .testing-claim-source { margin-top: 0.7rem; }
+.testing-section-reference { margin-top: 0.35rem; }
+.testing-section-reference > summary { cursor: pointer; }
+.testing-cited-excerpt { margin-top: 0.3rem; white-space: pre-wrap; overflow-wrap: anywhere; }

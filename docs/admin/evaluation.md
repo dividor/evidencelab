@@ -231,6 +231,8 @@ A case can finish research without producing a publishable section. For example,
 
 Expand a case, then open **Generated section** below the query to read its paragraphs and see the word count. Each expectation shows what it tested. When adding a custom judge criterion, use **Check name** to give it a short title. **Show full prompt sent to the LLM** shows the actual grading input for that run. The Brief judge receives the numbered passages with their text, titles, pages and headings. The document viewer uses the bounding boxes to highlight those passages on a page.
 
+Click a citation in a sentence to read all the passages that sentence cites. Click it again to close them. **References** at the end lists each cited passage once. Expand an entry to read the full excerpt saved with that run. You can review earlier runs this way, even if the library has since changed.
+
 | Check | What to look for |
 | --- | --- |
 | Section format and citations | The section opens with a cited paragraph, uses prose without extra headings or lists, and its numbered citations resolve to the returned sources. |
