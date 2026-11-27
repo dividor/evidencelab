@@ -74,6 +74,7 @@ async def select_brief_evidence(
     config: RunnableConfig,
     request_json: ReviewRequest,
     target_words: int | None,
+    earlier_text: str = "",
 ) -> tuple[dict[int, Passage], tuple[str, dict[int, tuple[int, str]]], str]:
     """Use validated extracts for drafting and keep the full passages for verification."""
     template = assistant_prompt_templates.get_template("brief_evidence_selection.j2")
@@ -94,6 +95,7 @@ async def select_brief_evidence(
             issues=issues,
             subject=subject,
             target_words=target_words,
+            earlier_text=earlier_text,
         )
         response: BriefEvidenceSelection = await request_json(
             system, request, [], config, _EVIDENCE_SELECTION

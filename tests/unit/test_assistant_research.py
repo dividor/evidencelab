@@ -1851,6 +1851,45 @@ async def test_brief_retries_the_supported_part_of_a_finding_reserved_for_two_he
 
 
 @pytest.mark.asyncio
+async def test_brief_scope_reviewer_knows_which_headings_belong_under_an_introduction():
+    finding = "The inspection covered how the components age in storage"
+
+    def scope(prompt, rows):
+        assert 'Subheadings introduced here: ["Packaging", "Temperature"]' in prompt
+        assert 'Other headings: ["Packaging", "Temperature", "Delivery"]' in prompt
+        return [
+            {
+                "id": rows[0]["id"],
+                "subject": "Storage",
+                "reason": "Frames both topics.",
+                "keep": True,
+            }
+        ]
+
+    events, _, llm = await run_research(
+        ['{"queries":[]}', _brief_draft((finding, 1, finding))],
+        [[point(1, finding + ".")]],
+        brief_section=BriefSectionPrompt(
+            outline=[
+                {"title": "Storage"},
+                {"title": "Packaging", "level": 2},
+                {"title": "Temperature", "level": 2},
+                {"title": "Delivery"},
+            ],
+            current=0,
+        ),
+        scope_check=scope,
+    )
+    draft = next(
+        call.args[0][-1].content
+        for call in llm.ainvoke.await_args_list
+        if call.args[0][0].content.startswith("Write the prose of one section")
+    )
+    assert 'This section opens these subheadings: ["Packaging", "Temperature"]' in draft
+    assert next(e["token"] for e in events if e["type"] == "token") == f"{finding} [1]."
+
+
+@pytest.mark.asyncio
 async def test_brief_checks_a_scope_revision_against_its_original_citation():
     observation = "One pump lost pressure during the overnight test"
     action = "The team replaced the inlet valve"
@@ -2152,6 +2191,46 @@ async def test_short_section_checks_unused_search_hits_for_additional_supported_
     assert {
         s["chunkId"] for e in events if e["type"] == "sources" for s in e["sources"]
     } == {"chunk-1", "chunk-13"}
+
+
+@pytest.mark.asyncio
+async def test_brief_revision_only_uses_notes_with_sources_in_the_new_selection():
+    old = "The first audit recorded 29 interruptions"
+    new = "The second audit identified a sticking valve in the backup pump"
+    passages = [point(1, old + ".")]
+    passages.extend(point(i, "An unrelated inspection.") for i in range(2, 13))
+    passages.append(point(13, new + "."))
+
+    def select(prompt, labels):
+        if 13 in labels:
+            assert "Previous draft:" in prompt and old + " [1]." in prompt
+        label = 13 if 13 in labels else 1
+        return [{"citation": label, "subject_line": 1, "finding_lines": [1]}]
+
+    events, _, llm = await run_research(
+        [
+            '{"queries":[]}',
+            _brief_draft((old, 1, old)),
+            _brief_draft((old, 1, old)),
+            _brief_draft((new, 13, new)),
+            _brief_draft((new, 13, new)),
+        ],
+        [passages],
+        target_words=100,
+        select_evidence=select,
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": "Pump reliability"}], current=0
+        ),
+    )
+    drafts = [
+        call.args[0][-1].content
+        for call in llm.ainvoke.await_args_list
+        if call.args[0][0].content.startswith("Write the prose of one section")
+    ]
+    assert len(drafts) == 4
+    assert old in drafts[1]
+    assert all(old not in draft and new in draft for draft in drafts[2:])
+    assert next(e["token"] for e in events if e["type"] == "token") == f"{new} [1]."
 
 
 @pytest.mark.asyncio

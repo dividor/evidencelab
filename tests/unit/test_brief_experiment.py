@@ -584,3 +584,16 @@ def test_word_target_preserves_the_order_of_the_explanation():
     paragraph = f"{opening} {cause} {consequence}"
     assert _fit_section_to_target(paragraph, 13) == (opening, 9)
     assert _fit_section_to_target(paragraph, 20) == (f"{opening} {cause}", 22)
+
+
+def test_revision_notes_require_every_cited_source_and_preserve_paragraphs():
+    from ui.backend.services.assistant_brief_writer import _revision_notes
+
+    draft = (
+        "Both detectors recorded the change [2, 4]. The other sample broke [2, 8]."
+        "\n\nThe later reading was stable [4]."
+        "\n\nThe sources leave the cause open."
+    )
+    assert _revision_notes(draft, {2, 4}) == (
+        "Both detectors recorded the change.\n\nThe later reading was stable."
+    )

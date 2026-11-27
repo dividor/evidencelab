@@ -25,6 +25,7 @@ from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.brief_citation_model import cited_numbers_in_order
 from ui.backend.services.brief_evidence_selection import select_brief_evidence
 from ui.backend.services.brief_repetition import remove_repeated_brief_findings
+from ui.backend.services.brief_section_prompt import brief_child_headings
 from ui.backend.services.citation_fidelity import (
     match_key,
     split_sentences,
@@ -254,6 +255,7 @@ async def _review_finding_scope(
         guidance=section.focus,
         instructions=section.instructions,
         voice=section.voice_instructions,
+        introduces=brief_child_headings(section),
         other_headings=[
             s.title for i, s in enumerate(section.outline) if i != section.current
         ],
@@ -401,6 +403,20 @@ def _written_sibling_findings(section: BriefSectionPrompt) -> list[tuple[str, st
     ]
 
 
+def _revision_notes(text: str, sources: set[int]) -> str:
+    """Only bring a previous finding into a revision with its own source available."""
+    paragraphs = []
+    for paragraph in text.split("\n\n"):
+        notes = []
+        for sentence in split_sentences(paragraph):
+            cited = cited_numbers_in_order(sentence)
+            if cited and sources.issuperset(cited):
+                notes.append(strip_citation_markers(sentence))
+        if notes:
+            paragraphs.append(" ".join(notes))
+    return "\n\n".join(paragraphs)
+
+
 async def write_grounded_brief(
     assignment: str,
     search_focus: str,
@@ -419,7 +435,7 @@ async def write_grounded_brief(
     if not evidence:
         return earlier_text
     evidence, (passages, quotes), subject = await select_brief_evidence(
-        assignment, evidence, config, review_scope, target_words
+        assignment, evidence, config, review_scope, target_words, earlier_text
     )
     if not evidence:
         return earlier_text
@@ -432,6 +448,7 @@ async def write_grounded_brief(
         if existing
         else {}
     )
+    selected_sources = {source for source, _ in quotes.values()}
     other_claims = {match_key(finding) for _, finding in existing}
     issues: list[str] = []
     accepted = earlier_text
@@ -447,10 +464,11 @@ async def write_grounded_brief(
                     subject=subject,
                     writing_guide=writing_guide,
                     voice=section.voice_instructions,
+                    introduces=brief_child_headings(section),
                     evidence=passages,
                     issues=issues,
                     repair_draft=repair_draft,
-                    accepted=strip_citation_markers(accepted),
+                    accepted=_revision_notes(accepted, selected_sources),
                     target_words=target_words,
                     written_words=written_words,
                     sibling_matches=sibling_matches,

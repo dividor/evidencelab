@@ -33,5 +33,8 @@ If the cited source supports a narrower, relevant finding, state that finding in
 Edit this draft in place. Find the supporting excerpt for each sentence with a missing or incorrect citation. Keep the supported explanation together in its original paragraph. If no excerpt supports part of the draft, revise the paragraph around the findings that are supported. Return the complete corrected paragraphs.
 Draft to correct: {{ repair_draft | tojson }}
 {% endif %}
+{% if introduces %}
+This section opens these subheadings: {{ introduces | tojson }}. Introduce what the sources cover and the question that connects these headings. Cite the sources establishing that scope. A result, example, measured benefit or specific limitation that answers a child heading goes in that child. Before returning the draft, read each sentence as the opening of a report: the reader should understand what is being examined and why the following questions belong together. Leave those questions open for the child sections. Keep the introduction concise when the available detail belongs to them.
+{% endif %}
 Write the finished section in paragraphs. Use the excerpt labels in square brackets. Check that a reader can follow the explanation from the opening finding through its supporting detail.
 {%- endif %}
