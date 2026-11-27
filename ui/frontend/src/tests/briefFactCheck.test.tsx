@@ -173,6 +173,24 @@ describe('Fact Checker on an open brief', () => {
     expect(window.location.pathname + window.location.search).toBe('/brief/b1?tab=brief');
   });
 
+  test('a partially supported sentence stays amber and opens the gap and quoted evidence', async () => {
+    const partial = { ...withCheck.marks[0], verdict: 'partially_supported' as const,
+      verdict_label: 'Partially supported', problems: ['The comparison period is missing.'] };
+    mockGet.mockImplementation(answer({ ...withCheck, marks: [partial] }));
+    await openBrief();
+    fireEvent.click(await screen.findByRole('button', { name: FACT_CHECKER }));
+    const mark = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>('.brief-fact-mark.brief-fact-mark-partially_supported');
+      if (!found) throw Error('Waiting for the sentence highlight');
+      return found;
+    });
+    fireEvent.mouseOver(mark);
+    const card = await screen.findByRole('note', { name: 'Citation check verdict' });
+    expect(card).toHaveTextContent('What the evidence does not establish');
+    expect(card).toHaveTextContent('The comparison period is missing.');
+    await waitFor(() => expect(card.querySelector('.brief-fact-quote')).toHaveTextContent(QUOTED));
+  });
+
   test('a completed check for the current brief shows the button; pressing it highlights every judged passage in its verdict\'s colour, with the verdict, reason and evidence on hover', async () => {
     mockGet.mockImplementation(answer(withCheck));
     await openBrief();

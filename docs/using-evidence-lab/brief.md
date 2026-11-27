@@ -289,4 +289,6 @@ When an administrator has run a [citation check](../admin/evaluation.md#brief-ci
 
 Click **Fact Checker** to highlight, in place, every cited passage the check judged, each in the colour of its verdict: green for **Supported**, amber for **Partially supported**, red for **Unsupported** and grey for **Cannot assess**. A legend under the brief's title explains the colours and counts the passages carrying each verdict; click the button again to hide the highlights. The highlights are a reading aid: nothing in the brief changes.
 
+For **Partially supported**, the whole sentence is amber. Its card explains which detail the cited material does not establish and shows the source wording behind the supported part.
+
 Hover a highlighted passage for its card: the verdict as a badge with the judge's confidence and the citation numbers it judged the passage against, the judge's reason, and then the evidence: each cited excerpt as the judge read it, with the parts the judge quoted highlighted. The card stays while the pointer is on it, so a long excerpt can be scrolled and **Open source** opens the excerpt in the document preview. The judge reads only the stored excerpts, not the whole document, so treat a highlight as a prompt to re-read the source, not as a final verdict.

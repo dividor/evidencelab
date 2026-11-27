@@ -22,6 +22,10 @@ class ClaimGrade(BaseModel):
 
     @model_validator(mode="after")
     def check_score(self):
+        if 0 < self.score < 1 and not any(gap.strip() for gap in self.unmet):
+            raise ValueError(
+                "Partial credit requires a specific unsupported part of the claim."
+            )
         if self.unmet and self.score == 1:
             raise ValueError(
                 "A claim with an unsupported element cannot receive full credit."

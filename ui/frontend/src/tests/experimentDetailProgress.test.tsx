@@ -125,7 +125,7 @@ describe('ExperimentDetail run progress', () => {
       },
       assertion_results: [
         { type: 'brief_factual', passed: false, score: 0.25, message: '', judge_prompt: 'Exact factual prompt',
-          claim_grades: [{ claim: 1, passed: false, score: 0.25, reason: 'The reading lacks a baseline.' },
+          threshold: 1, claim_grades: [{ claim: 1, passed: false, score: 0.25, verdict: 'partially_supported', unmet: ['Original pressure is missing.'], supporting_quotes: [{citation: 4, quote: 'Pressure reading.'}], reason: 'The reading lacks a baseline.' },
             { claim: 2, passed: true, score: 1, reason: 'The log confirms the replacement held.' }],
           rubric: 'Check factual grounding against the cited excerpts. Check the numbers.' },
         { type: 'llm_judge', passed: true, factual_support: true, label: 'Historical factual grade', message: 'Original reasoning.', rubric: 'Check factual grounding against the cited excerpts.' },
@@ -176,6 +176,10 @@ describe('ExperimentDetail run progress', () => {
     const first = assessment.querySelectorAll('.testing-evidence-claim')[0] as HTMLElement;
     expect(within(first).getByText('Fail')).toBeVisible();
     expect(within(first).getByText('Score 0.25')).toBeVisible();
+    expect(within(first).getByText('Partially supported')).toBeVisible();
+    expect(within(first).getByText('Required 1.00')).toBeVisible();
+    expect(within(first).getByText('Original pressure is missing.')).toBeVisible();
+    expect(within(first).getByText('[4] “Pressure reading.”')).toBeVisible();
     expect(first).toHaveTextContent('The reading lacks a baseline.');
     expect(within(assessment).getByText('Grading criterion').closest('details')).not.toHaveAttribute('open');
     const body = assessment.querySelector('.testing-assertion-body')!;

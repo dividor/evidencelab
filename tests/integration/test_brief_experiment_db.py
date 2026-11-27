@@ -172,6 +172,7 @@ async def test_brief_experiment_persists_generation_context_and_repetition_verdi
                         "supporting_quotes": [{"citation": 3, "quote": "two days"}],
                         "score": 1,
                         "passed": True,
+                        "verdict": "supported",
                     }
                 ]
                 assert "Repairs took two days." in factual["judge_prompt"]

@@ -24,6 +24,7 @@ from ui.backend.auth.schemas import (
 from ui.backend.services.brief_experiment_claims import (
     brief_claim_evidence,
     link_assessment_claims,
+    with_claim_verdicts,
 )
 from ui.backend.services.brief_experiment_overlap import link_saved_repetitions
 from ui.backend.services.brief_grading_errors import brief_grading_error
@@ -319,6 +320,21 @@ class BriefCitationCheckPassageRead(BaseModel):
 class BriefCitationCheckDetail(BriefCitationCheckRead):
     section_results: Optional[List[Dict[str, Any]]] = None
     passages: List[BriefCitationCheckPassageRead] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def attach_claim_verdicts(self):
+        if self.section_results:
+            self.section_results = [
+                {
+                    **section,
+                    "assertion_results": [
+                        with_claim_verdicts(a, section.get("brief_evidence"))
+                        for a in section["assertion_results"]
+                    ],
+                }
+                for section in self.section_results
+            ]
+        return self
 
 
 class BriefFactCheckMark(BaseModel):

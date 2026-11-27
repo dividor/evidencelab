@@ -10,6 +10,7 @@ from ui.backend.auth.models import VoiceProfile
 from ui.backend.services.brief_experiment import judge_brief
 from ui.backend.services.brief_experiment_claims import (
     brief_claim_evidence,
+    factual_verdict,
     link_assessment_claims,
 )
 from ui.backend.services.brief_outline_numbers import outline_numbers
@@ -140,11 +141,9 @@ def _passage_records(output, factual, offset):
 
 def _passage_decision(grade, passage):
     score = grade["score"]
-    verdict = "partially_supported" if score else "unsupported"
-    if score == 1:
-        verdict = "supported"
-    if passage.missing_indices and not passage.sources:
-        verdict = "cannot_assess"
+    verdict = factual_verdict(
+        score, bool(passage.missing_indices and not passage.sources)
+    )
     return dict(
         verdict=verdict,
         supporting_quotes=grade["supporting_quotes"],

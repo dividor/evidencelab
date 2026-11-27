@@ -375,6 +375,7 @@ def _factual_result(assertion, output, judge_fn):
         }
     grades, prompt = judge_fn(_summary_text(output), judge_rubric_key(info))
     threshold = float(assertion.get("threshold", 1.0))
+    info["threshold"] = threshold
     errors = [f"Claim {g['claim']}: {g['reason']}" for g in grades if g.get("error")]
     assessed = [
         (
@@ -413,10 +414,16 @@ def evaluate_assertion(
 ) -> AssertionResult:
     """Evaluate a single assertion against ``output``."""
     atype = brief_assertion_type(assertion) if assertion.get("type") else None
-    from ui.backend.services.brief_experiment_claims import is_factual_criterion
+    from ui.backend.services.brief_experiment_claims import (
+        brief_claim_evidence,
+        is_factual_criterion,
+        with_claim_verdicts,
+    )
 
     if output.get("capability") == "brief" and is_factual_criterion(assertion):
-        return _factual_result(assertion, output, judge_fn)
+        return with_claim_verdicts(
+            _factual_result(assertion, output, judge_fn), brief_claim_evidence(output)
+        )
     if atype == "brief_voice":
         if not (output.get("assignment") or {}).get("voice_profile"):
             return _result(

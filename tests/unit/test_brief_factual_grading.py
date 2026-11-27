@@ -86,7 +86,10 @@ async def test_scores_match_each_claim_and_its_configured_threshold(monkeypatch)
         "Unused excerpt." not in result["judge_prompt"]
         and "bbox" not in result["judge_prompt"]
     )
-    assert evaluate_assertion({**check, "threshold": 0.4}, o, grade)["passed"]
+    assert result["claim_grades"][1]["verdict"] == "partially_supported"
+    relaxed = evaluate_assertion({**check, "threshold": 0.4}, o, grade)
+    assert relaxed["passed"] and relaxed["threshold"] == 0.4
+    assert relaxed["claim_grades"][1]["verdict"] == "partially_supported"
     call.assert_awaited_once()
 
 
@@ -295,4 +298,27 @@ async def test_completed_grade_without_evidence_fails_even_at_zero_threshold(
     result = evaluate_assertion(check, o, grade)
     assert result["passed"] is False and result["score"] == 0
     assert result["claim_grades"][0]["passed"] is False
+    assert call.await_count == 2
+
+
+async def test_partial_score_without_a_named_gap_retries_and_retains_the_corrected_grade(
+    monkeypatch,
+):
+    raw, usage = reply(
+        [(2, 0.4, "The source gives a currency amount, not a percentage.")]
+    )
+    records = json.loads(raw)
+    records["claims"][0]["unmet"] = []
+    first, _ = reply([(1, 1, "Costs fell.")])
+    records["claims"].extend(json.loads(first)["claims"])
+    call = AsyncMock(side_effect=[(json.dumps(records), usage), (raw, usage)])
+    monkeypatch.setattr(test_runner, "_judge_call", call)
+    draft = output()
+    check = {"type": "brief_factual", "rubric": RUBRIC}
+    result = evaluate_assertion(
+        check, draft, await judge_brief(draft, [check], "model")
+    )
+    partial = result["claim_grades"][1]
+    assert partial["verdict"] == "partially_supported"
+    assert partial["unmet"] and partial["supporting_quotes"]
     assert call.await_count == 2

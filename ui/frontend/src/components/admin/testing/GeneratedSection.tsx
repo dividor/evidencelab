@@ -1,6 +1,7 @@
 import React, { useId, useState } from 'react';
 import type { AssertionResult, BriefEvalClaim, BriefEvalReference, TestResult } from '../../../types/testing';
 
+import { VERDICT_LABEL, VERDICT_TONE } from './citationCheckFormat';
 import { formatScore } from './testingFormat';
 
 type SavedSource = { title?: string; page?: number | null; text?: string };
@@ -43,6 +44,30 @@ function Claim({ claim, references, sources }: {
   );
 }
 
+type ClaimGrade = NonNullable<AssertionResult['claim_grades']>[number];
+
+function ClaimScore({ grade, threshold }: { grade: ClaimGrade; threshold?: number }) {
+  if (grade.error) return <span>Grading error</span>;
+  return <>
+    {grade.verdict && <span className={`testing-status testing-status-${VERDICT_TONE[grade.verdict]}`}>{VERDICT_LABEL[grade.verdict]}</span>}
+    <span>Score {formatScore(grade.score)}</span>
+    <span>{grade.passed ? 'Pass' : 'Fail'}</span>
+    {threshold !== undefined && <span>Required {formatScore(threshold)}</span>}
+  </>;
+}
+
+function PartialSupport({ grade }: { grade: ClaimGrade }) {
+  if (grade.verdict !== 'partially_supported') return null;
+  return <>
+    {!!grade.unmet?.length && <div><strong>What the evidence does not establish</strong>
+      <ul>{grade.unmet.map((gap, i) => <li key={i}>{gap}</li>)}</ul>
+    </div>}
+    {!!grade.supporting_quotes?.length && <div><strong>Supporting evidence</strong>
+      <ul>{grade.supporting_quotes.map((q, i) => <li key={i}>[{q.citation}] “{q.quote}”</li>)}</ul>
+    </div>}
+  </>;
+}
+
 export function AssertionEvidence({ assessment, result }: { assessment: AssertionResult; result: Pick<TestResult, "actual_output" | "brief_evidence"> }) {
   const evidence = result.brief_evidence;
   if (!evidence) return null;
@@ -56,14 +81,11 @@ export function AssertionEvidence({ assessment, result }: { assessment: Assertio
       <div className="testing-evidence-claim" key={index}>
         <div className="testing-claim-heading">
           <strong>Claim {index + 1}</strong>
-          {grade?.error && <span>Grading error</span>}
-          {grade && !grade.error && <>
-            <span className={`testing-badge testing-badge-${grade.passed ? 'pass' : 'fail'}`}>{grade.passed ? 'Pass' : 'Fail'}</span>
-            <span>Score {formatScore(grade.score)}</span>
-          </>}
+          {grade && <ClaimScore grade={grade} threshold={assessment.threshold} />}
         </div>
         <div>{claim.parts.map(part => part.text).join('')}</div>
         {grade && <p className="testing-claim-reason"><strong>Judge assessment</strong> {grade.reason}</p>}
+        {grade && <PartialSupport grade={grade} />}
         {claim.references.length ? claim.references.map(ref => (
           <Reference key={ref} reference={evidence.references[ref]} sources={sources} />
         )) : <small>No citation on this sentence.</small>}

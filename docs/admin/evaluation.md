@@ -252,6 +252,8 @@ If a check returns an error, the section row names the check and gives its reaso
 
 Open **Factual support from citations** to read the claims in order. Each claim shows its own assessment, score and pass or fail. Expand a reference below the claim to read the excerpt. The section receives the lowest claim score. The configured threshold applies to each claim and to the section. The grading criterion and full prompt are at the bottom. Earlier runs retain their original section-level assessment.
 
+A factual grade between zero and one is **Partially supported**. Its assessment identifies which part of the sentence the cited material supports and which detail remains unsubstantiated. Open the reference to read the surrounding passage. The experiment uses its configured threshold for pass or fail. For example, a score of 0.80 meets a threshold of 0.75 and falls short of 1.00. Both results have the same evidence verdict.
+
 Open **Relevance to the template and section** to see each reason for a deduction under **Negatives**. Expand **Positives** to see what matched the assignment. Expand **Section text and references** to read the draft and open individual cited excerpts. A qualitative finding can earn full relevance credit. Missing numbers count against relevance when the assignment asks for them. Earlier runs retain the assessment originally recorded.
 
 Open **Cross-section repetition** to compare each match. **Source** shows the passage from the other section. **Target** shows the passage from the draft being graded. Expand either side to see the matching words highlighted in the full section saved with the run. The judge explains what finding the passages share. Older runs keep the original section-level assessment.
