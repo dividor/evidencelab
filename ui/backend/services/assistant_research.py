@@ -124,6 +124,7 @@ class ResearchState(TypedDict, total=False):
     verified_draft: str
     answer_evidence: dict[int, Passage]
     brief_focus: str | None
+    brief_section_instructions: str | None
 
 
 _Plan = TypeVar("_Plan")
@@ -251,6 +252,7 @@ class ResearchWorkflow:
             section = await self._scope_brief(self.brief_section, config)
             started["query"] = build_section_prompt(section)
             started["brief_focus"] = brief_section_research_focus(section)
+            started["brief_section_instructions"] = section.instructions
         return started
 
     async def _scope_brief(
@@ -513,7 +515,12 @@ class ResearchWorkflow:
                 for p in reversed(f["leading_passages"])
             }
             section = await self._write_brief_section(
-                state, config, {**leading, **evidence}, self.brief_section
+                state,
+                config,
+                {**leading, **evidence},
+                self.brief_section.model_copy(
+                    update={"instructions": state["brief_section_instructions"]}
+                ),
             )
             return {"draft": section or _NO_EVIDENCE, "structured_brief": True}
         draft = (

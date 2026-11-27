@@ -1,4 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { listVoiceProfiles } from '../../brief/briefCentralApi';
+import { voiceOptionLabel } from '../../brief/BriefVoiceSelect';
+import type { VoiceProfile } from '../../brief/briefTypes';
 import type { CaseEditorProps } from './CaseEditor';
 
 interface Sibling {
@@ -14,6 +17,17 @@ const BriefCaseEditor: React.FC<CaseEditorProps> = ({ initialCase, onSubmit, onC
   const [heading, setHeading] = useState(String(input.heading || ''));
   const [guidance, setGuidance] = useState(String(input.guidance || ''));
   const [voice, setVoice] = useState(String(input.voice || ''));
+  const [voices, setVoices] = useState<VoiceProfile[]>([]);
+  const [voiceError, setVoiceError] = useState('');
+  type SavedVoice = Pick<VoiceProfile, 'id' | 'name' | 'instructions'>;
+  const [profile, setProfile] = useState<SavedVoice | null>((input.voice_profile as SavedVoice) || null);
+  useEffect(() => {
+    let mounted = true;
+    listVoiceProfiles().then(items => { if (mounted) setVoices(items); }).catch(() => {
+      if (mounted) setVoiceError('Could not load voice and tone profiles.');
+    });
+    return () => { mounted = false; };
+  }, []);
   const [words, setWords] = useState(String(input.target_words || ''));
   const [siblings, setSiblings] = useState<Sibling[]>([...(input.siblings as Sibling[] || []), ...(input.children as Sibling[] || []).map(s => ({ ...s, child: true }))]);
   const [notes, setNotes] = useState(initialCase?.notes || '');
@@ -30,6 +44,7 @@ const BriefCaseEditor: React.FC<CaseEditorProps> = ({ initialCase, onSubmit, onC
         heading: heading.trim(),
         guidance,
         voice,
+        voice_profile: profile,
         target_words: words ? Number(words) : null,
         siblings: siblings.filter(s => !s.child).map(({ title, content, level }) => ({ title, content, level })),
         children: siblings.filter(s => s.child).map(({ title, content }) => ({ title, content, level: 2 })),
@@ -52,10 +67,21 @@ const BriefCaseEditor: React.FC<CaseEditorProps> = ({ initialCase, onSubmit, onC
       Section instructions
       <textarea value={guidance} onChange={e => setGuidance(e.target.value)} />
     </label>
-    <label>
-      Voice and audience
-      <input value={voice} onChange={e => setVoice(e.target.value)} />
+    <label>Voice and tone profile
+      <select value={profile?.id || ''} onChange={e => {
+        const selected = voices.find(v => v.id === e.target.value);
+        setProfile(selected ? { id: selected.id, name: selected.name, instructions: selected.instructions } : null);
+      }}>
+        <option value="">No profile</option>
+        {profile && !voices.some(v => v.id === profile.id) && <option value={profile.id}>{profile.name} (saved with case)</option>}
+        {voices.map(v => <option key={v.id} value={v.id}>{voiceOptionLabel(v)}</option>)}
+      </select>
     </label>
+    {voiceError && <p role="alert">{voiceError}</p>}
+    {profile ? <p>{profile.instructions}</p> : <label>
+      Audience guidance
+      <input value={voice} onChange={e => setVoice(e.target.value)} />
+    </label>}
     <label>
       Target words
       <input type="number" min="50" max="5000" value={words} onChange={e => setWords(e.target.value)} />

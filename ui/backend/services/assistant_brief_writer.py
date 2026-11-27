@@ -32,7 +32,10 @@ from ui.backend.services.brief_citation_model import cited_numbers_in_order
 from ui.backend.services.brief_evidence_selection import select_brief_evidence
 from ui.backend.services.brief_excerpt_citations import cite_missing_excerpts
 from ui.backend.services.brief_repetition import remove_repeated_brief_findings
-from ui.backend.services.brief_section_prompt import brief_child_headings
+from ui.backend.services.brief_section_prompt import (
+    brief_child_headings,
+    brief_section_research_focus,
+)
 from ui.backend.services.citation_fidelity import (
     match_key,
     split_sentences,
@@ -469,8 +472,18 @@ async def write_grounded_brief(
     """Write independently sourced findings and optionally check their support."""
     if not evidence:
         return earlier_text
+    focus = {
+        "heading": section.outline[section.current].title,
+        "guidance": brief_section_research_focus(section),
+    }
     evidence, (passages, quotes), subject = await select_brief_evidence(
-        assignment, evidence, config, review_scope, target_words, earlier_text
+        assignment,
+        evidence,
+        config,
+        review_scope,
+        target_words,
+        earlier_text,
+        focus=focus,
     )
     if not evidence:
         return earlier_text
@@ -503,6 +516,7 @@ async def write_grounded_brief(
             HumanMessage(
                 content=template.render(
                     assignment=assignment,
+                    focus=focus,
                     subject=subject,
                     writing_guide=writing_guide,
                     voice=section.voice_instructions,

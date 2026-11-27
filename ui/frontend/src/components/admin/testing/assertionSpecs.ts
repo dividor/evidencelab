@@ -139,6 +139,7 @@ export const ASSERTION_SPECS_BY_CAPABILITY: Record<TestCapability, AssertionType
   search: SEARCH_ASSERTIONS,
   ai_summary: AI_SUMMARY_ASSERTIONS,
   brief: [
+    { type: 'brief_voice', label: 'Selected voice and tone profile', fields: [] },
     { type: 'brief_length', label: 'Word count meets target', fields: [] },
     { type: 'brief_structure', label: 'Section format and citations', fields: [] },
     {

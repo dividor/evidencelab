@@ -101,8 +101,10 @@ def test_invalid_case_rejected_during_edit():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("use_profile", [False, True])
 async def test_generation_uses_real_request_contract_without_grading_material(
     monkeypatch,
+    use_profile,
 ):
     captured = {}
 
@@ -130,7 +132,26 @@ async def test_generation_uses_real_request_contract_without_grading_material(
         "siblings": draft()["siblings"],
         "reference_standard": draft()["reference_standard"],
     }
+    if use_profile:
+        case["voice_profile"] = {
+            "id": "4e0c70fc-978e-4332-90af-79e4007ffb4a",
+            "name": "Operator bulletin",
+            "instructions": "Address the operator in the second person.",
+        }
+        assert (
+            _case_input(SimpleNamespace(capability="brief"), case)["voice_profile"]
+            == case["voice_profile"]
+        )
     out = await brief.run_brief_case(case, cfg, "demo")
+    expected_voice = (
+        case["voice_profile"]["instructions"] if use_profile else case["voice"]
+    )
+    assert (
+        captured["brief_section"].voice_instructions
+        == out["assignment"]["voice"]
+        == expected_voice
+    )
+    assert out["assignment"]["voice_profile"] == case.get("voice_profile")
     assert "editor only" not in str(captured)
     assert (
         captured["brief_section"].outline[0].content == case["siblings"][0]["content"]
@@ -199,6 +220,56 @@ def test_each_case_can_override_the_writing_rubric():
     active, assertions = runner._resolve_case_plan(matrix, "case")
     assert active and assertions == [{**column, "rubric": "Check the opening."}]
     assert column["rubric"] == "Check flow."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy", [True, False])
+async def test_voice_check_passes_without_an_applied_profile_and_never_calls_judge(
+    monkeypatch, legacy
+):
+    from ui.backend.services.test_evaluators import _STARTER_VOICE_RUBRIC
+
+    assertion = (
+        {"type": "brief_writing", "rubric": _STARTER_VOICE_RUBRIC}
+        if legacy
+        else {"type": "brief_voice"}
+    )
+    output = draft()
+    output["assignment"]["voice"] = "An audience note alone."
+    call = AsyncMock()
+    monkeypatch.setattr(runner, "_judge_call", call)
+    grade = await brief.judge_brief(output, [assertion], "grader")
+    result = evaluate_assertion(assertion, output, grade)
+    assert result["passed"] and result["score"] == 1 and result["type"] == "brief_voice"
+    assert "No voice and tone profile" in result["message"]
+    call.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_voice_check_grades_against_the_exact_selected_instructions(monkeypatch):
+    output = draft()
+    output["assignment"]["voice_profile"] = {
+        "name": "Service bulletin",
+        "instructions": "Address the operator directly.",
+    }
+    call = AsyncMock(
+        return_value=(
+            '{"reason":"The draft never addresses the operator.",'
+            '"unmet":["direct address"],"score":0.3}',
+            {},
+        )
+    )
+    monkeypatch.setattr(runner, "_judge_call", call)
+    assertion = {"type": "brief_voice"}
+    selected = await brief.judge_brief(output, [assertion], "grader")
+    result = evaluate_assertion(assertion, output, selected)
+    assert not result["passed"] and result["score"] == 0.3
+    assert "Address the operator directly." in result["judge_prompt"]
+    assert (
+        "Service bulletin" in result["judge_prompt"]
+        and output["summary"] in result["judge_prompt"]
+    )
+    assert "editor only" not in result["judge_prompt"]
 
 
 @pytest.mark.asyncio

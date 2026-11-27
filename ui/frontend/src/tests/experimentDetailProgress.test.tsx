@@ -115,7 +115,7 @@ describe('ExperimentDetail run progress', () => {
         ],
       },
       assertion_results: [
-        { type: 'llm_judge', passed: true, rubric: 'Check factual grounding against the cited excerpts. Check the numbers.' },
+        { type: 'llm_judge', passed: true, message: 'The log documents “held pressure”.', quoted_claims: [1], rubric: 'Check factual grounding against the cited excerpts. Check the numbers.' },
         { type: 'llm_judge', passed: true, rubric: 'Read the brief topic together with its section heading. Check the population.' },
         { type: 'llm_judge', passed: true, label: 'Test conditions', rubric: 'Verify the temperature.' },
         { type: 'llm_judge', passed: true, rubric: 'Does the draft specify the units? Check the pressure.' },
@@ -156,6 +156,17 @@ describe('ExperimentDetail run progress', () => {
     expect(screen.getByText('Test conditions')).toBeInTheDocument();
     expect(screen.getByText('Does the draft specify the units?')).toBeInTheDocument();
     expect(screen.queryByText('llm_judge')).not.toBeInTheDocument();
+    const assessment = screen.getByText('Factual support from citations').closest('details')!;
+    expect(assessment).not.toHaveAttribute('open');
+    fireEvent.click(within(assessment).getByText('Factual support from citations'));
+    await within(assessment).findByText('Quoted in this assessment');
+    expect(within(assessment).getByText('Claim 2')).toBeVisible();
+    const quotedClaim = within(assessment).getByText('Claim 2').parentElement!;
+    const passage = within(quotedClaim).getByText('[8] Service log · p. 37').closest('details')!;
+    expect(passage).not.toHaveAttribute('open');
+    fireEvent.click(passage.querySelector('summary')!);
+    expect(within(passage).getByText('Second inspection.')).toBeVisible();
+    expect(within(assessment).getByText('Other section claims (1)').closest('details')).not.toHaveAttribute('open');
   });
 
   test('shows a live "k of N cases" indicator while a run is in progress', async () => {

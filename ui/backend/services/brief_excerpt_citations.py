@@ -39,27 +39,8 @@ async def cite_missing_excerpts(
         paragraphs.append(sentences)
     if not missing:
         return raw
-    template = assistant_prompt_templates.get_template("brief_excerpt_citations.j2")
-    matches: list[ExcerptMatch] = await request(
-        template.render(system=True),
-        template.render(
-            draft=raw,
-            passages=passages,
-            sentences={k: v[2] for k, v in missing.items()},
-        ),
-        [],
-        config,
-        _MATCHES,
-    )
-    if sorted(row.sentence for row in matches) != list(missing):
-        raise InvalidAssistantResponse(
-            "The Brief citation review returned invalid sentence numbers"
-        )
+    matches = await _match_excerpts(raw, passages, labels, missing, config, request)
     for row in matches:
-        if not labels.issuperset(row.excerpts):
-            raise InvalidAssistantResponse(
-                "The Brief citation review returned an unknown excerpt"
-            )
         if row.excerpts:
             paragraph, index, sentence = missing[row.sentence]
             marker = ", ".join(str(label) for label in dict.fromkeys(row.excerpts))
@@ -67,3 +48,30 @@ async def cite_missing_excerpts(
             ending = sentence[len(text) :] or "."
             paragraphs[paragraph][index] = f"{text} [{marker}]{ending}"
     return "\n\n".join(" ".join(sentences) for sentences in paragraphs)
+
+
+async def _match_excerpts(draft, passages, labels, missing, config, request):
+    template = assistant_prompt_templates.get_template("brief_excerpt_citations.j2")
+    sentences = {key: row[2] for key, row in missing.items()}
+    invalid = ""
+    for _ in range(2):
+        matches = await request(
+            template.render(system=True),
+            template.render(
+                draft=draft,
+                passages=passages,
+                sentences=sentences,
+                requested_ids=list(sentences),
+                validation_problem=invalid,
+            ),
+            [],
+            config,
+            _MATCHES,
+        )
+        if sorted(row.sentence for row in matches) != list(sentences):
+            invalid = "The Brief citation review returned invalid sentence numbers"
+        elif any(not labels.issuperset(row.excerpts) for row in matches):
+            invalid = "The Brief citation review returned an unknown excerpt"
+        else:
+            return matches
+    raise InvalidAssistantResponse(invalid)

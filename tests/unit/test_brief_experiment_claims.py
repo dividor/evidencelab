@@ -4,7 +4,10 @@ from uuid import uuid4
 import pytest
 
 from ui.backend.schemas.testing import TestResultRead as ResultRead
-from ui.backend.services.brief_experiment_claims import brief_claim_evidence
+from ui.backend.services.brief_experiment_claims import (
+    brief_claim_evidence,
+    link_assessment_claims,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -58,3 +61,21 @@ def test_saved_result_maps_each_claim_to_its_own_numbered_sources():
 )
 def test_only_generated_brief_sections_have_claim_details(output):
     assert brief_claim_evidence(output) is None
+
+
+def test_only_claims_quoted_in_this_assessment_are_linked():
+    view = brief_claim_evidence(
+        {
+            "capability": "brief",
+            "summary": "Pressure fell [4].\n\nThe new valve held steady [9].",
+        }
+    )
+    assessments = [
+        {
+            "message": "The source supports ‘a different claim’. It documents “held steady”."
+        },
+        {"message": "The section discusses pressure."},
+    ]
+    results = link_assessment_claims(assessments, view)
+    assert [r["quoted_claims"] for r in results] == [[1], []]
+    assert all("quoted_claims" not in a for a in assessments)

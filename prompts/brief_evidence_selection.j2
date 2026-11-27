@@ -12,8 +12,10 @@ establishes they were placed after the ban. A common word in the heading and a p
 In finding_lines give the source line numbers, starting from 1, for distinct relevant observations, specific cases
 or measurements. Include a line with mixed material if it contains an observation that can stand on its own in this
 section. Include a specific example when it provides detail the more general findings lack.
-Look for evidence covering every part the assignment asks about. Keep additional passages when they add a different
-observation or material detail. Do not stop at the first good source if other passages cover parts it leaves out.
+For each finding line, identify what it establishes about this particular heading. A line can describe the right
+population or project while explaining a different result. Leave that line out. When a line describes both an
+observation and an excluded response, keep it if the observation directly answers the heading on its own.
+Look for concrete examples and qualifications in the same passage, as well as distinct findings in other sources.
 Order the selected passages by direct relevance to the assignment. Include only labels printed in the evidence.
 Return a JSON object with section_subject followed by passages. Each passage has citation, subject_line and finding_lines.
 If none directly support the assignment, return the section_subject with "passages":[]. Do not draft the section.
@@ -36,5 +38,9 @@ Fix these problems with the previous selection: {{ issues | tojson }}.
 The subject already identified for this section is {{ subject | tojson }}. Keep it while correcting the excerpts.
 {% endif -%}
 Available labels: {{ allowed_labels | tojson }}
+{% if focus %}Select lines that answer this heading: {{ focus.heading | tojson }}.
+{% if focus.guidance %}Apply the author's boundaries: {{ focus.guidance | tojson }}.
+{% endif %}If an example describes the initial observation and a subsequent action together, select the line when the observation answers the heading. An existing section that reports the action does not already report the observation. Skip lines that establish only an adjacent topic. A word target does not broaden the assignment.
+{% endif -%}
 Return only JSON in this form: {"section_subject":"requested subject","passages":[{"citation":4,"subject_line":0,"finding_lines":[1,3]}]}.
 {%- endif %}

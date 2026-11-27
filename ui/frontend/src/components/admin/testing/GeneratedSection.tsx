@@ -1,5 +1,5 @@
 import React, { useId, useState } from 'react';
-import type { BriefEvalClaim, BriefEvalReference, TestResult } from '../../../types/testing';
+import type { AssertionResult, BriefEvalClaim, BriefEvalReference, TestResult } from '../../../types/testing';
 
 type SavedSource = { title?: string; page?: number | null; text?: string };
 type ReferenceProps = { reference: BriefEvalReference; sources: SavedSource[] };
@@ -38,6 +38,34 @@ function Claim({ claim, references, sources }: {
         </div>
       )}
     </>
+  );
+}
+
+export function AssertionEvidence({ assessment, result }: { assessment: AssertionResult; result: TestResult }) {
+  const evidence = result.brief_evidence;
+  if (!evidence) return null;
+  const sources = (result.actual_output?.sources || []) as SavedSource[];
+  const quoted = new Set(assessment.quoted_claims || []);
+  const claims = evidence.paragraphs.flat().map((claim, index) => (
+    <div className="testing-evidence-claim" key={index}>
+      <strong>Claim {index + 1}</strong>
+      <div>{claim.parts.map(part => part.text).join('')}</div>
+      {claim.references.length ? claim.references.map(ref => (
+        <Reference key={ref} reference={evidence.references[ref]} sources={sources} />
+      )) : <small>No citation on this sentence.</small>}
+    </div>
+  ));
+  if (!quoted.size) return <div className="testing-assessment-claims"><strong>Section claims</strong>{claims}</div>;
+  return (
+    <div className="testing-assessment-claims">
+      <strong>Quoted in this assessment</strong>
+      {claims.filter((_, i) => quoted.has(i))}
+      {quoted.size < claims.length && (
+        <details><summary>Other section claims ({claims.length - quoted.size})</summary>
+          {claims.filter((_, i) => !quoted.has(i))}
+        </details>
+      )}
+    </div>
   );
 }
 

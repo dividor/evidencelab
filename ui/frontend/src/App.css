@@ -13733,3 +13733,11 @@ fieldset.group-assistant-options {
 .testing-section-reference { margin-top: 0.35rem; }
 .testing-section-reference > summary { cursor: pointer; }
 .testing-cited-excerpt { margin-top: 0.3rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.testing-brief-assertion { padding: 0.45rem 0; border-bottom: 1px solid var(--color-border, #d0d7de); }
+.testing-brief-assertion summary { cursor: pointer; }
+.testing-brief-assertion > summary > span { margin-right: 0.5rem; }
+.testing-assertion-body { padding: 0.5rem 0.8rem; }
+.testing-assertion-body > details { margin: 0.35rem 0; }
+.testing-assessment-claims { margin-top: 0.8rem; }
+.testing-evidence-claim { padding: 0.55rem 0; }

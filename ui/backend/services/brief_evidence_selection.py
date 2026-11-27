@@ -79,6 +79,8 @@ async def select_brief_evidence(
     request_json: ReviewRequest,
     target_words: int | None,
     earlier_text: str = "",
+    *,
+    focus: dict | None = None,
 ) -> tuple[dict[int, Passage], tuple[str, dict[int, tuple[int, str]]], str]:
     """Use validated extracts for drafting and keep the full passages for verification."""
     template = assistant_prompt_templates.get_template("brief_evidence_selection.j2")
@@ -98,6 +100,7 @@ async def select_brief_evidence(
                 assignment,
                 target_words,
                 earlier_text,
+                focus,
                 config,
                 request_json,
                 template,
@@ -128,6 +131,7 @@ async def _select_passage_group(
     assignment,
     target_words,
     earlier_text,
+    focus,
     config,
     request_json,
     template,
@@ -146,6 +150,7 @@ async def _select_passage_group(
             subject=subject,
             target_words=target_words,
             earlier_text=earlier_text,
+            focus=focus,
         )
         response: BriefEvidenceSelection = await request_json(
             system, request, [], config, _EVIDENCE_SELECTION

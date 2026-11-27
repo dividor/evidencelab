@@ -101,7 +101,9 @@ def _case_input(dataset, values):
     from pydantic import ValidationError
 
     try:
-        return BriefCase.model_validate(values).model_dump(exclude_none=True)
+        return BriefCase.model_validate(values).model_dump(
+            mode="json", exclude_none=True
+        )
     except ValidationError as exc:
         problem = exc.errors(include_input=False)[0]
         field = ".".join(map(str, problem["loc"]))

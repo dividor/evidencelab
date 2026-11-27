@@ -21,11 +21,23 @@ from ui.backend.auth.schemas import (
     VOICE_INSTRUCTIONS_MAX_CHARS,
     BriefOutlineSection,
 )
-from ui.backend.services.brief_experiment_claims import brief_claim_evidence
+from ui.backend.services.brief_experiment_claims import (
+    brief_claim_evidence,
+    link_assessment_claims,
+)
 
 # ---------------------------------------------------------------------------
 # Datasets
 # ---------------------------------------------------------------------------
+
+
+class BriefCaseVoice(BaseModel):
+    """The selected profile as it was saved in the evaluation case."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+    id: uuid.UUID
+    name: str = Field(min_length=1, max_length=255)
+    instructions: str = Field(min_length=1, max_length=VOICE_INSTRUCTIONS_MAX_CHARS)
 
 
 class BriefCase(BaseModel):
@@ -34,6 +46,7 @@ class BriefCase(BaseModel):
     heading: str = Field(min_length=1, max_length=BRIEF_HEADING_MAX_CHARS)
     guidance: str = Field("", max_length=BRIEF_PROMPT_MAX_CHARS)
     voice: str = Field("", max_length=VOICE_INSTRUCTIONS_MAX_CHARS)
+    voice_profile: BriefCaseVoice | None = None
     target_words: int | None = Field(None, ge=TARGET_WORDS_MIN, le=TARGET_WORDS_MAX)
     siblings: list[BriefOutlineSection] = Field(
         default_factory=list, max_length=BRIEF_MAX_SECTIONS - 1
@@ -160,6 +173,10 @@ class TestResultRead(BaseModel):
     @model_validator(mode="after")
     def attach_saved_brief_evidence(self):
         self.brief_evidence = brief_claim_evidence(self.actual_output)
+        if self.brief_evidence and self.assertion_results:
+            self.assertion_results = link_assessment_claims(
+                self.assertion_results, self.brief_evidence
+            )
         return self
 
 

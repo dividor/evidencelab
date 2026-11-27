@@ -45,3 +45,18 @@ async def test_rejects_invalid_reference_assignments(rows):
         await cite_missing_excerpts(
             "The circuit opened.", "[1] Sensor log", {1}, {}, identify
         )
+
+
+async def test_incorrect_sentence_number_gets_corrected_before_applying_citations():
+    prompts = []
+
+    async def identify(system, prompt, history, config, schema):
+        prompts.append(prompt)
+        number = 8 if len(prompts) == 1 else 1
+        return schema.validate_python([{"sentence": number, "excerpts": [8]}])
+
+    draft = await cite_missing_excerpts(
+        "Pressure fell.", "[8] Pressure fell.", {8}, {}, identify
+    )
+    assert draft == "Pressure fell [8]."
+    assert "invalid sentence numbers" in prompts[1] and "IDs: [1]" in prompts[1]

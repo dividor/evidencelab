@@ -481,6 +481,12 @@ async def test_brief_search_planning_is_scoped_and_only_the_writer_gets_the_full
     assert answer in prose
     assert guidance in writer and excluded_heading in writer
     assert guidance in selection and excluded_heading in selection
+    selection_focus = selection.split("Available labels: ", 1)[1]
+    writing_focus = writer.rsplit("Your reader is asking about ", 1)[1]
+    for focus in (selection_focus, writing_focus):
+        assert heading in focus and guidance in focus
+        assert brief_section.focus in focus
+        assert other_question not in focus and excluded_heading not in focus
     assert heading in scope_verifier and excluded_heading in scope_verifier
     assert (
         "Search AI Summary prompt"

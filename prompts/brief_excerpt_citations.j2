@@ -6,4 +6,6 @@ Draft: {{ draft | tojson }}
 Sentences missing citations: {{ sentences | tojson }}
 Excerpts:
 {{ passages | safe }}
+{% if requested_ids %}{% if validation_problem %}{{ validation_problem }}. Correct the assignments. {% endif %}Return one entry for each of these sentence IDs, using precisely these IDs: {{ requested_ids | tojson }}. Use an empty excerpts list for a sentence with no supporting excerpt.
+{% endif -%}
 {%- endif %}

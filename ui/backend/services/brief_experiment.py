@@ -28,7 +28,7 @@ from ui.backend.services.llm_choice import (
     combo_default,
     default_combo,
 )
-from ui.backend.services.test_evaluators import judge_rubric_key
+from ui.backend.services.test_evaluators import brief_assertion_type, judge_rubric_key
 
 
 def configure_brief(config, combo):
@@ -70,7 +70,9 @@ async def run_brief_case(raw, config, source):
         ],
         current=len(case.siblings),
         focus=case.guidance,
-        voice_instructions=case.voice,
+        voice_instructions=(
+            case.voice_profile.instructions if case.voice_profile else case.voice
+        ),
     )
     target = case.target_words
     events = stream_research_response(
@@ -103,7 +105,12 @@ async def run_brief_case(raw, config, source):
             heading=case.heading,
             child_headings=[child.title for child in case.children],
             guidance=case.guidance,
-            voice=case.voice,
+            voice=section.voice_instructions,
+            voice_profile=(
+                case.voice_profile.model_dump(mode="json")
+                if case.voice_profile
+                else None
+            ),
             target_words=target,
         ),
         "siblings": [s.model_dump() for s in (*case.siblings, *case.children)],
@@ -235,6 +242,14 @@ async def _grade(output, prompt, model, system, schema=BriefVerdict):
 
 def _brief_grade_request(template, output, kind, rubric):
     assignment = output["assignment"]
+    if kind == "brief_voice":
+        return (
+            "",
+            template.render(voice_system=True),
+            template.render(
+                profile=assignment["voice_profile"], draft=output["summary"]
+            ),
+        )
     if kind == "brief_intro_scope":
         if not assignment.get("child_headings"):
             return "Add child headings to evaluate an introduction.", "", ""
@@ -280,11 +295,14 @@ async def judge_brief(output, assertions, model):
         "brief_intro_scope": IntroductionVerdict,
         "brief_overlap": OverlapVerdict,
         "brief_writing": BriefVerdict,
+        "brief_voice": BriefVerdict,
         "llm_judge": BriefVerdict,
     }
     for assertion in assertions:
-        kind = assertion["type"]
+        kind = brief_assertion_type(assertion)
         if kind not in schemas:
+            continue
+        if kind == "brief_voice" and not output["assignment"].get("voice_profile"):
             continue
         key = (
             judge_rubric_key(assertion)

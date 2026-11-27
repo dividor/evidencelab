@@ -22,7 +22,7 @@ import RunPassRateChart from './RunPassRateChart';
 import { resultWarnings } from './resultWarnings';
 import { runConfigHeadline, runConfigRows } from './runConfig';
 import { judgeCriterionName } from './assertionSpecs';
-import GeneratedSection from './GeneratedSection';
+import GeneratedSection, { AssertionEvidence } from './GeneratedSection';
 
 interface ExperimentDetailProps {
   experimentId: string;
@@ -96,51 +96,36 @@ const RunStats: React.FC<{ run: TestRun }> = ({ run }) => {
 /* ------------------------------------------------------------------ */
 
 const briefCheckLabels: Record<string, string> = {
-  brief_writing: 'Writing quality', brief_paragraphs: 'One-sentence paragraphs',
+  brief_voice: 'Selected voice and tone profile', brief_writing: 'Writing quality', brief_paragraphs: 'One-sentence paragraphs',
   brief_intro_scope: 'Introduction scope', brief_length: 'Word count', brief_structure: 'Format and citations', brief_overlap: 'Cross-section repetition',
 };
 
-const AssertionResultRow: React.FC<{ result: AssertionResult }> = ({ result }) => {
-  const [showPrompt, setShowPrompt] = useState(false);
+const AssertionResultRow: React.FC<{ result: AssertionResult; testResult: TestResult }> = ({ result, testResult }) => {
+  const [open, setOpen] = useState(false);
   const label = result.type === 'llm_judge' || result.type === 'brief_writing'
     ? judgeCriterionName(result.type, result.rubric, result.label)
     : briefCheckLabels[result.type] || result.type.replace(/_/g, ' ');
+  const heading = <>
+    <span className={`testing-badge testing-badge-${result.passed ? 'pass' : 'fail'}`}>{result.passed ? 'pass' : 'fail'}</span>
+    <span className="testing-assertion-result-type">{label}</span>
+    {result.score !== undefined && <span className="testing-assertion-result-score">score: {formatScore(result.score)}</span>}
+  </>;
+  const detail = <>
+    <p className="testing-assertion-result-message">{result.message}</p>
+    {result.rubric && <details><summary>Grading criterion</summary><div>{result.rubric}</div></details>}
+    {result.judge_prompt && <details><summary>Full prompt sent to the LLM</summary><pre className="testing-pre testing-pre-scroll">{result.judge_prompt}</pre></details>}
+  </>;
+  if (testResult.actual_output?.capability !== 'brief') return <div className="testing-assertion-result">{heading}{detail}</div>;
+  const profile = (testResult.actual_output.assignment as { voice_profile?: { name: string; instructions: string } } | undefined)?.voice_profile;
   return (
-    <div className="testing-assertion-result">
-      <div className="testing-assertion-result-main">
-        <span className={`testing-badge testing-badge-${result.passed ? 'pass' : 'fail'}`}>
-          {result.passed ? 'pass' : 'fail'}
-        </span>
-        <span className="testing-assertion-result-type">{label}</span>
-        {result.score !== undefined && (
-          <span className="testing-assertion-result-score">score: {formatScore(result.score)}</span>
-        )}
-        <span className="testing-assertion-result-message">{result.message}</span>
-      </div>
-      {(Boolean(result.rubric || result.judge_prompt)) && (
-        <div className="testing-judge-rubric">
-          <div className="testing-judge-rubric-text">
-            {result.rubric || '(prompt not recorded for this run)'}
-          </div>
-          {result.judge_prompt && (
-            <>
-              <button
-                type="button"
-                className="testing-raw-toggle"
-                onClick={() => setShowPrompt((v) => !v)}
-              >
-                {showPrompt
-                  ? 'Hide full prompt sent to the LLM'
-                  : 'Show full prompt sent to the LLM'}
-              </button>
-              {showPrompt && (
-                <pre className="testing-pre testing-pre-scroll">{result.judge_prompt}</pre>
-              )}
-            </>
-          )}
-        </div>
-      )}
-    </div>
+    <details className="testing-assertion-result testing-brief-assertion" onToggle={e => setOpen(e.currentTarget.open)}>
+      <summary>{heading}</summary>
+      {open && <div className="testing-assertion-body">
+        {result.type === 'brief_voice' && profile && <div><strong>{profile.name}</strong><p>{profile.instructions}</p></div>}
+        {detail}
+        <AssertionEvidence assessment={result} result={testResult} />
+      </div>}
+    </details>
   );
 };
 
@@ -352,7 +337,7 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
               <div className="testing-case-block">
                 <span className="testing-case-label">Expectations</span>
                 {(result.assertion_results || []).map((ar, i) => (
-                  <AssertionResultRow key={i} result={ar} />
+                  <AssertionResultRow key={i} result={ar} testResult={result} />
                 ))}
                 {(result.assertion_results || []).length === 0 && (
                   <p className="text-muted" style={{ margin: 0 }}>No expectation results.</p>

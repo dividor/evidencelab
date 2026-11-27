@@ -258,6 +258,21 @@ def eval_brief_paragraphs(a: Dict[str, Any], output: Dict[str, Any]) -> Assertio
     )
 
 
+_STARTER_VOICE_RUBRIC = (
+    "Check whether the voice, tone and language suit the requested reader. "
+    "Quote wording from the section to explain the decision."
+)
+
+
+def brief_assertion_type(assertion):
+    if (
+        assertion["type"] == "brief_writing"
+        and assertion.get("rubric") == _STARTER_VOICE_RUBRIC
+    ):
+        return "brief_voice"
+    return assertion["type"]
+
+
 def judge_rubric_key(assertion: Dict[str, Any]) -> str:
     rubric = str(assertion.get("rubric", ""))
     if assertion.get("type") == "brief_writing":
@@ -317,6 +332,7 @@ _EVALUATORS: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], AssertionResul
 }
 
 VALID_ASSERTION_TYPES = set(_EVALUATORS) | {
+    "brief_voice",
     "llm_judge",
     "brief_overlap",
     "brief_intro_scope",
@@ -331,7 +347,19 @@ def evaluate_assertion(
     judge_fn: Optional[JudgeFn] = None,
 ) -> AssertionResult:
     """Evaluate a single assertion against ``output``."""
-    atype = assertion.get("type")
+    atype = brief_assertion_type(assertion) if assertion.get("type") else None
+    if atype == "brief_voice":
+        if not (output.get("assignment") or {}).get("voice_profile"):
+            return _result(
+                atype, True, "No voice and tone profile was selected.", score=1.0
+            )
+        result = eval_llm_judge(
+            {**assertion, "type": atype, "rubric": atype}, output, judge_fn
+        )
+        return {
+            **result,
+            "rubric": "Does the section follow the selected voice and tone profile?",
+        }
     if atype == "brief_structure":
         from ui.backend.services.brief_experiment import structure_result
 

@@ -7,7 +7,11 @@ from ui.backend.services.brief_citation_model import (
     UNRESOLVED_RE,
     parse_marker_numbers,
 )
-from ui.backend.services.citation_fidelity import split_sentences
+from ui.backend.services.citation_fidelity import (
+    match_key,
+    split_sentences,
+    strip_citation_markers,
+)
 
 _MARKER = re.compile(f"{CITATION_RE.pattern}|{UNRESOLVED_RE.pattern}")
 
@@ -58,3 +62,30 @@ def brief_claim_evidence(output):
         for block in re.split(r"\n\s*\n", output["summary"].strip())
     ]
     return {"paragraphs": paragraphs, "references": references}
+
+
+def link_assessment_claims(assertions, evidence):
+    """Identify literal quotations of the saved draft, without inferring a judge's intent."""
+    claims = [
+        match_key(strip_citation_markers("".join(p["text"] for p in claim["parts"])))
+        for paragraph in evidence["paragraphs"]
+        for claim in paragraph
+    ]
+    linked = []
+    for assertion in assertions:
+        reason = assertion.get("message") or ""
+        quoted = [
+            match_key(strip_citation_markers(phrase))
+            for groups in re.findall(
+                r"""“([^”]+)”|‘([^’]+)’|"([^"]+)"|(?<!\w)'(.+?)'(?!\w)""", reason
+            )
+            for phrase in groups
+            if phrase
+        ]
+        mentioned = [
+            i
+            for i, claim in enumerate(claims)
+            if any(phrase and f" {phrase} " in f" {claim} " for phrase in quoted)
+        ]
+        linked.append({**assertion, "quoted_claims": mentioned})
+    return linked
