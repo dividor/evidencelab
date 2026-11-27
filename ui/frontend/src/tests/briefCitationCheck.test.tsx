@@ -211,3 +211,26 @@ test('a full check opens its section grades and the evidence behind an uncited c
   expect(await screen.findByText('No supporting citation.')).toBeVisible();
   expect(screen.getByText('No citation on this sentence.')).toBeVisible();
 });
+
+test('shows every section before the optional passage report for a completed full check', async () => {
+  const sections = ['Background', 'Costs'].map((heading, index) => ({
+    section_id: String(index), number: String(index + 1), heading, status: index ? 'fail' : 'pass',
+    actual_output: { capability: 'brief' }, assertion_results: [],
+  }));
+  mockedAxios.get.mockResolvedValue({ data: { ...check, check_kind: 'full', passages,
+    summary_stats: { ...check.summary_stats, section_counts: { pass: 1, fail: 1, error: 0 } },
+    section_results: sections } });
+  render(<BriefCheckDetail checkId={check.id} dataSource="uneg" onBack={jest.fn()} />);
+  expect(await screen.findByText('1 Background')).toBeVisible();
+  expect(screen.getByText('2 Costs')).toBeVisible();
+  expect(screen.getByText(/1 passed · 1 failed · 0 with errors/)).toBeVisible();
+  const report = screen.getByText('Passage evidence and run statistics');
+  expect(report.closest('details')).not.toHaveAttribute('open');
+  fireEvent.click(screen.getByRole('button', { name: 'Show sections needing attention' }));
+  expect(screen.queryByText('1 Background')).toBeNull();
+  expect(screen.getByText('2 Costs')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Show all sections' }));
+  expect(screen.getByText('1 Background')).toBeVisible();
+  fireEvent.click(report);
+  expect(screen.getByText('Showing 3 of 3 passages.', {exact:false})).toBeVisible();
+});
