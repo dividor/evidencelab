@@ -172,6 +172,7 @@ class LLMDefaults(BaseModel):
     summary: Optional[str] = None
     brief: Optional[str] = None
     judge: Optional[str] = None
+    citation_check: Optional[str] = None
 
 
 class ModelComboConfig(BaseModel):

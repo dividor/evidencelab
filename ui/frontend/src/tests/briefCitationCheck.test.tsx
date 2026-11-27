@@ -136,7 +136,7 @@ describe('BriefCheckList', () => {
 describe('BriefCheckDetail', () => {
   test('shows the summary, filters the table and expands a passage', async () => {
     const onResultClick = jest.fn();
-    render(<BriefCheckDetail check={check as never} dataSource="wfp" onBack={jest.fn()} onResultClick={onResultClick} />);
+    render(<BriefCheckDetail checkId={check.id} dataSource="wfp" onBack={jest.fn()} onResultClick={onResultClick} />);
     await waitFor(() => expect(screen.getByText('Showing 3 of 3 passages.', { exact: false })).toBeInTheDocument());
     expect(screen.getByText(/brief version 4/)).toBeInTheDocument();
     expect(screen.getByText(/· ran 1\.5 s/)).toBeInTheDocument();
@@ -187,7 +187,7 @@ describe('BriefCheckDetail', () => {
           : [],
       }),
     );
-    render(<BriefCheckDetail check={{ ...check, status: 'running' } as never} dataSource="wfp" onBack={jest.fn()} />);
+    render(<BriefCheckDetail checkId={check.id} dataSource="wfp" onBack={jest.fn()} />);
     await waitFor(() => expect(screen.getByText('1 of 3 passages judged')).toBeInTheDocument());
     expect(within(screen.getByRole('status')).getByText('33%')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: EXPORT })).toBeDisabled();
@@ -236,4 +236,11 @@ describe('BriefCheckDetail', () => {
     expect(tile).toHaveTextContent('30');
     expect(tile).toHaveAttribute('title', expect.stringContaining('not claims'));
   });
+});
+
+test('a saved-check URL opens the check directly and fetches its saved passages', async () => {
+  window.history.replaceState(null, '', '/admin?admin_page=testing-brief&admin_check=chk1');
+  render(<BriefTestingManager dataSource="wfp" modelCombo="Google Vertex" />);
+  expect(await screen.findByText('Showing 3 of 3 passages.', {exact:false})).toBeVisible();
+  expect(mockedAxios.get).toHaveBeenCalledWith('/api/testing/brief-checks/chk1');
 });

@@ -29,7 +29,7 @@ import {
 // passages table (the notebook's "All judgements" / "Flagged" sheets).
 
 interface BriefCheckDetailProps {
-  check: BriefCitationCheck;
+  checkId: string;
   dataSource: string;
   onBack: () => void;
   // Opens a cited passage in the app's document preview (never a new window).
@@ -372,7 +372,7 @@ const runTime = (check: BriefCitationCheck, status: string): string => {
 };
 
 const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
-  check,
+  checkId,
   dataSource,
   onBack,
   onResultClick,
@@ -388,12 +388,12 @@ const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
 
   const fetchDetail = useCallback(async () => {
     try {
-      const resp = await axios.get<CheckDetailType>(`${API_BASE_URL}/testing/brief-checks/${check.id}`);
+      const resp = await axios.get<CheckDetailType>(`${API_BASE_URL}/testing/brief-checks/${checkId}`);
       setDetail(resp.data);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to load the check');
     }
-  }, [check.id]);
+  }, [checkId]);
 
   useEffect(() => {
     fetchDetail();
@@ -432,7 +432,7 @@ const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
   const handleCancel = async () => {
     setBusy(true);
     try {
-      await axios.post(`${API_BASE_URL}/testing/brief-checks/${check.id}/cancel`);
+      await axios.post(`${API_BASE_URL}/testing/brief-checks/${checkId}/cancel`);
       await fetchDetail();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to cancel the check');
@@ -444,13 +444,13 @@ const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
   const handleExport = async () => {
     setBusy(true);
     try {
-      const resp = await axios.get(`${API_BASE_URL}/testing/brief-checks/${check.id}/export.xlsx`, {
+      const resp = await axios.get(`${API_BASE_URL}/testing/brief-checks/${checkId}/export.xlsx`, {
         responseType: 'blob',
       });
       const url = URL.createObjectURL(resp.data as Blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `citation_check_${check.brief_id}.xlsx`;
+      link.download = `citation_check_${detail?.brief_id}.xlsx`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
@@ -460,8 +460,13 @@ const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
     }
   };
 
-  const status = detail?.status || check.status;
-  const ran = runTime(detail || check, status);
+  if (!detail) return <div className="admin-section testing-section">
+    <button className="btn-sm" onClick={onBack}>&larr; Briefs</button>
+    {error ? <p role="alert">{error}</p> : <p role="status">Loading citation check…</p>}
+  </div>;
+  const check = detail;
+  const status = check.status;
+  const ran = runTime(check, status);
   return (
     <div className="admin-section testing-section">
       {error && (

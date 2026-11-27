@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import html2canvas from 'html2canvas';
 import FeedbackModal from './FeedbackModal';
 
@@ -31,6 +31,7 @@ const FeedbackButton: React.FC = () => {
   const [screenshot, setScreenshot] = useState<string | null>(null);
   const [screenshotError, setScreenshotError] = useState<string | null>(null);
   const [url, setUrl] = useState('');
+  const tabRef = useRef<HTMLButtonElement>(null);
 
   const handleOpen = async () => {
     setCapturing(true);
@@ -102,11 +103,13 @@ const FeedbackButton: React.FC = () => {
     setOpen(false);
     setScreenshot(null);
     setScreenshotError(null);
+    tabRef.current?.focus();
   };
 
   return (
     <>
       <button
+        ref={tabRef}
         type="button"
         className="feedback-side-tab"
         onClick={handleOpen}

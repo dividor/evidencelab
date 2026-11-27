@@ -12,6 +12,7 @@ export interface AssistantUsage {
 export interface AssistantDoneData {
   threadId?: string;
   messageId?: string;
+  sectionWritten?: boolean;
   // The agent run behind this turn (the Brief stores it with a section's
   // original output, for tracing).
   runId?: string;
@@ -29,7 +30,7 @@ export interface AssistantStreamHandlers {
   onToken: (fullText: string) => void;
   onSources: (sources: SourceReference[]) => void;
   onDone: (data: AssistantDoneData) => void;
-  onError: (message: string) => void;
+  onError: (message: string, canResend?: boolean) => void;
 }
 
 interface ConversationMessage {
@@ -177,6 +178,8 @@ const handleStreamedData = (
         (q: any) => ({
           query: q.query || '',
           resultCount: q.result_count || 0,
+          ...(typeof q.stream === 'string' && q.stream ? { stream: q.stream } : {}),
+          ...(typeof q.reason === 'string' && q.reason ? { reason: q.reason } : {}),
           results: (q.results || []).map((r: any) => ({
             title: r.title || 'Untitled',
             text: r.text || '',
@@ -203,6 +206,7 @@ const handleStreamedData = (
         threadId: streamedData.threadId,
         messageId: streamedData.messageId,
         runId: streamedData.runId,
+        sectionWritten: streamedData.section_written,
         trace_url: streamedData.trace_url,
         usage: streamedData.usage,
       });
@@ -352,7 +356,7 @@ const buildRequestBody = ({
 };
 
 export const streamAssistantChat = async (options: AssistantStreamOptions): Promise<void> => {
-  const { apiBaseUrl, handlers, signal } = options;
+  const { apiBaseUrl, handlers, signal, usageContext } = options;
   const response = await fetch(`${apiBaseUrl}/assistant/chat/stream`, {
     method: 'POST',
     headers: buildHeaders(),
@@ -362,7 +366,11 @@ export const streamAssistantChat = async (options: AssistantStreamOptions): Prom
   });
 
   if (!response.ok) {
-    handlers.onError(await requestFailureMessage(response));
+    if (usageContext !== 'brief' && [502, 503, 504].includes(response.status)) {
+      handlers.onError('The Assistant server didn’t respond. Try sending your question again.', true);
+    } else {
+      handlers.onError(await requestFailureMessage(response));
+    }
     return;
   }
 

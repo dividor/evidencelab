@@ -3,11 +3,11 @@
 import json
 import sys
 import uuid
-from types import ModuleType
-from unittest.mock import MagicMock, patch
+from types import ModuleType, SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from starlette.requests import Request
 
 pytestmark = pytest.mark.usefixtures("one_data_source")
@@ -63,6 +63,21 @@ except AttributeError:
 limiter.enabled = False
 
 _test_app = FastAPI()
+
+
+@pytest.fixture(autouse=True)
+def route_citation_model(monkeypatch):
+    from pipeline.db import config as db_config
+    from ui.backend.routes import assistant
+
+    monkeypatch.setattr(
+        assistant,
+        "config_defaults",
+        lambda: {
+            job: next(iter(db_config.SUPPORTED_LLMS), None)
+            for job in (assistant.CITATION_CHECK, assistant.BRIEF)
+        },
+    )
 
 
 def _make_request(method: str = "POST", path: str = "/") -> Request:
@@ -591,7 +606,13 @@ class TestSearchSettingsPassthrough:
         request = _make_request(path="/assistant/chat/stream")
         history = [
             {"role": "user", "content": "What is food security?"},
-            {"role": "assistant", "content": "Food security is..."},
+            {
+                "role": "assistant",
+                "content": "Food security is...",
+                "sources": [
+                    {"index": 1, "dataSource": "uneg", "text": "Untrusted text"}
+                ],
+            },
         ]
         body = AssistantChatRequest(
             query="Tell me more",
@@ -614,6 +635,7 @@ class TestSearchSettingsPassthrough:
         assert len(conv) == 2
         assert conv[0]["role"] == "user"
         assert conv[1]["content"] == "Food security is..."
+        assert "sources" not in conv[1]
 
     @pytest.mark.asyncio
     @patch("ui.backend.routes.assistant.stream_research_response")
@@ -736,8 +758,50 @@ class TestMessageToHistoryEntry:
         assert entry == {"role": "assistant", "content": "answer"}
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owned", [True, False])
+async def test_conversation_history_requires_thread_ownership(owned):
+    from ui.backend.auth.models import ConversationThread
+    from ui.backend.routes import assistant
+
+    user = SimpleNamespace(id=uuid.uuid4())
+    thread_id = uuid.uuid4()
+    message = SimpleNamespace(role="user", content="School meals in Cambodia")
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = (
+        SimpleNamespace(messages=[message]) if owned else None
+    )
+    session = SimpleNamespace(execute=AsyncMock(return_value=result))
+    request = AssistantChatRequest(query="Tell me more", thread_id=str(thread_id))
+    with (
+        patch.object(assistant, "_USER_MODULE", True),
+        patch.object(assistant, "ConversationThread", ConversationThread, create=True),
+    ):
+        if owned:
+            assert await assistant._load_conversation_history(
+                request, user, session
+            ) == [{"role": "user", "content": message.content}]
+        else:
+            with pytest.raises(HTTPException) as exc:
+                await assistant._load_conversation_history(request, user, session)
+            assert exc.value.status_code == 404
+    clause = session.execute.await_args.args[0].whereclause
+    assert "conversation_threads.user_id" in str(clause)
+    assert set(clause.compile().params.values()) == {thread_id, user.id}
+
+
 class TestStreamAssistantChatBriefSection:
     """A Brief section sends its prompt parts; the API writes the prompt."""
+
+    @pytest.mark.parametrize("written, persists", [(True, True), (False, False)])
+    def test_only_written_sections_are_saved_as_conversation_turns(
+        self, monkeypatch, written, persists
+    ):
+        from ui.backend.routes import assistant
+
+        monkeypatch.setattr(assistant, "_USER_MODULE", True)
+        event = {"type": "done", "section_written": written}
+        assert assistant._should_persist(event, object(), object()) is persists
 
     _SECTION = {
         "outline": [
@@ -766,7 +830,7 @@ class TestStreamAssistantChatBriefSection:
     @pytest.mark.asyncio
     @patch("ui.backend.routes.assistant.schedule_llm_usage_recording")
     @patch("ui.backend.routes.assistant.stream_research_response")
-    async def test_stream_when_brief_section_then_research_gets_written_prompt(
+    async def test_stream_when_brief_section_then_research_gets_the_structured_section(
         self, mock_stream, mock_usage
     ):
         async def mock_gen(*args, **kwargs):
@@ -784,12 +848,16 @@ class TestStreamAssistantChatBriefSection:
 
         await self._run(body)
 
-        from ui.backend.services.brief_section_prompt import build_section_prompt
-
-        query = mock_stream.call_args[1]["query"]
-        assert query == build_section_prompt(body.brief_section)
-        assert 'You are revising the "Findings" section' in query
-        assert "Voice & tone profile" in query
+        assert mock_stream.call_args.kwargs["query"] == "Findings"
+        assert mock_stream.call_args.kwargs["brief_section"] == body.brief_section
+        assert (
+            "finished section in clear prose"
+            in mock_stream.call_args.kwargs["brief_section_prompt"]
+        )
+        assert (
+            mock_stream.call_args.kwargs["initial_search_query"]
+            == "Findings school meals"
+        )
         # The Activity row is labelled with the heading, not the prompt.
         assert mock_usage.call_args[1]["query"] == "Findings"
 
@@ -817,6 +885,11 @@ class TestStreamAssistantChatBriefSection:
         query = mock_stream.call_args[1]["query"]
         assert query.startswith("Research the document library")
         assert query.endswith(instructions)
+        assert mock_stream.call_args.kwargs["initial_search_query"] == "School meals"
+        assert mock_stream.call_args.kwargs["brief_section_prompt"] is None
+        assert mock_stream.call_args.kwargs["survey_only"] is True
+        assert mock_stream.call_args.kwargs["check_citations"] is False
+        assert mock_stream.call_args.kwargs["citation_model_key"] is None
         # The Activity row is labelled with the topic, not the prompt.
         assert mock_usage.call_args[1]["query"] == "School meals"
 

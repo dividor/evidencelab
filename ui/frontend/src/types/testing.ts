@@ -1,6 +1,6 @@
 // Types for the admin Search & AI-Summary evaluation harness (superuser-only).
 
-export type TestCapability = 'search' | 'ai_summary';
+export type TestCapability = 'search' | 'ai_summary' | 'brief';
 export type ExperimentStatus = 'draft' | 'pending' | 'running' | 'completed' | 'failed';
 export type ResultStatus = 'pass' | 'fail' | 'error';
 
@@ -53,9 +53,25 @@ export interface TestCase {
   updated_at: string;
 }
 
+export interface RepeatedPassage {
+  source_index: number;
+  source_quote: string;
+  target_quote: string;
+  assessment?: string;
+}
+
 export interface AssertionResult {
+  repetitions?: RepeatedPassage[];
+  section_assessment?: string;
   type: string;
-  passed: boolean;
+  label?: string;
+  quoted_claims?: number[];
+  factual_support?: boolean;
+  claim_grades?: { claim: number; reason: string; score: number; passed: boolean }[];
+  error?: boolean;
+  not_run?: boolean;
+  applicable?: boolean;
+  passed?: boolean;
   message: string;
   score?: number;
   // For llm_judge: the rubric and the exact prompt sent to the judge LLM.
@@ -66,6 +82,7 @@ export interface AssertionResult {
 // Emitted only while a run is in flight, so the UI can show how far it has
 // progressed. Replaced by the aggregate fields below once the run completes.
 export interface RunProgress {
+  remaining_sections?: { template: string; heading: string; number?: string }[];
   completed: number;
   total: number;
   // When the runner last reported progress (its heartbeat).
@@ -103,14 +120,30 @@ export interface TestExperiment {
   created_at: string;
 }
 
+export interface BriefEvalClaim {
+  parts: Array<{ text: string; marker?: boolean }>;
+  references: number[];
+}
+
+export interface BriefEvalReference {
+  label: string;
+  source_position: number | null;
+}
+
+export interface BriefEvalEvidence {
+  paragraphs: BriefEvalClaim[][];
+  references: BriefEvalReference[];
+}
+
 export interface TestResult {
   id: string;
   experiment_id: string;
   run_id?: string | null;
-  test_case_id: string;
+  test_case_id: string | null;
   status: ResultStatus;
   score?: number | null;
   actual_output?: Record<string, unknown> | null;
+  brief_evidence?: BriefEvalEvidence | null;
   assertion_results?: AssertionResult[] | null;
   latency_ms?: number | null;
   error_message?: string | null;

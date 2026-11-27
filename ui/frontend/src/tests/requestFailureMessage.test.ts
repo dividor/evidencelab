@@ -1,4 +1,4 @@
-import { requestFailureMessage } from '../utils/assistantStream';
+import { requestFailureMessage, streamAssistantChat } from '../utils/assistantStream';
 
 const response = (status: number, statusText: string, body: unknown) =>
   ({ status, statusText, json: async () => body }) as unknown as Response;
@@ -47,4 +47,24 @@ describe('requestFailureMessage', () => {
     } as unknown as Response;
     expect(await requestFailureMessage(r)).toBe('Request failed: 502 Bad Gateway');
   });
+});
+
+test.each([
+  { usageContext: null, expected: ['The Assistant server didn’t respond. Try sending your question again.', true] },
+  { usageContext: 'brief' as const, expected: ['Request failed: 504 Gateway Timeout'] },
+])('reports an Assistant gateway error as ready to resend ($usageContext)', async ({ usageContext, expected }) => {
+  const originalFetch = global.fetch;
+  const fetch = jest.fn().mockResolvedValue(response(504, 'Gateway Timeout', {}));
+  global.fetch = fetch;
+  const handlers = {
+    onPhase: jest.fn(), onPlan: jest.fn(), onSearchStatus: jest.fn(), onToken: jest.fn(),
+    onSources: jest.fn(), onDone: jest.fn(), onError: jest.fn(),
+  };
+  try {
+    await streamAssistantChat({ apiBaseUrl: '/api', query: 'Cash transfers', usageContext, handlers });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(handlers.onError).toHaveBeenCalledWith(...expected);
+  } finally {
+    global.fetch = originalFetch;
+  }
 });

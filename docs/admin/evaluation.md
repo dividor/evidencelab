@@ -2,7 +2,7 @@
 
 The **Evaluation Harness** is a superuser-only admin tool for testing the quality of Evidence Lab's **Search**, **AI‑Summary** and **Brief** capabilities. You define reusable **datasets** of test cases, build **experiments** that define what a good result looks like, **run** them against the live system, and **review** per‑case pass/fail with full detail.
 
-It runs the *real* search and AI‑summary code paths — the same retrieval pipeline, model combos, and group settings users experience — so results reflect production behaviour.
+Experiments run the same search, summary and Brief generation services used by the corresponding screens.
 
 > The harness is **internal evaluation/regression tooling** and is only visible to superusers. It is never shown to ordinary users.
 
@@ -10,11 +10,13 @@ It runs the *real* search and AI‑summary code paths — the same retrieval pip
 
 ### Where to find it
 
-Open the **Admin** panel. **Testing (Search + AI Summary)** has two sub‑views, **Datasets** and **Experiments**; **Testing (Brief)** holds the [Brief citation check](#brief-citation-check).
+Open the **Admin** panel. **Testing (Experiments)** has two sub‑views, **Datasets** and **Experiments**; **Testing (Saved Briefs)** holds the [Brief citation check](#brief-citation-check).
 
 ![Admin → Testing tab](../images/admin/eval/testing-datasets.png)
 
-The typical workflow is:
+For Brief, choose Brief templates when you create your experiment. See [Compare generated Brief sections](#compare-generated-brief-sections).
+
+For Search and AI Summary, follow these steps.
 
 1. **Create a dataset** of inputs (queries + optional filters).
 2. **Create an experiment** on that dataset — choose a model combo / group and define the expectations.
@@ -25,7 +27,7 @@ The typical workflow is:
 
 ### Quickstart: Load dataset and experiment in one file
 
-If you already have your questions **and** the expected answers in a spreadsheet, use **+ Create Dataset and Experiment** (in the **Datasets** sub‑view) to do everything in one upload: it creates a dataset of the questions **and** a draft experiment with one **LLM‑judge** expectation per row, where each row is judged against its own expected answer.
+If you already have your questions **and** the expected answers in a spreadsheet, use **Import from CSV** (in the **Datasets** sub‑view) to do everything in one upload: it creates a dataset of the questions **and** a draft experiment with one **LLM‑judge** expectation per row, where each row is judged against its own expected answer.
 
 The CSV is the **same format as the dataset upload** (see [Add test cases](#add-test-cases)) plus one extra column:
 
@@ -42,7 +44,7 @@ In the **Create Dataset and Experiment** dialog you provide:
 - **Name** — saved as `<name>_dataset` and `<name>_experiment`.
 - **What to test** — `search` or `ai_summary`. The expectation column drives an **LLM‑judge** expectation, which evaluates the AI summary, so choose **`ai_summary`** for it to apply.
 - **Data source**, **Model combo**, **Run as group**, and the **judge threshold** (default `0.7`) — the same run configuration as a normal experiment (see [Run configuration](#run-configuration)).
-- The **CSV file** (a **sample format** download is provided).
+- The **CSV file** (choose **Download example CSV** for a template).
 
 Each row's question and expectation stay paired at the row level. The import is atomic — if anything fails part‑way, the partially‑created dataset is removed so you can retry cleanly. Once created, run it from the **Experiments** table like any other experiment ([Run an experiment](#3-run-an-experiment)).
 
@@ -58,22 +60,22 @@ Create the **dataset** and the **experiment** separately — use this when you w
 
 A **dataset** is a reusable set of **test cases** for one capability. Datasets hold *inputs only* — the expectations live on the experiment, so the same dataset can be evaluated under different expectations.
 
-In **Datasets**, click **New Dataset** and provide:
+In **Datasets**, click **New dataset** and provide:
 
 - **Name** — e.g. `BASE`.
-- **Capability** — `search` or `ai_summary`.
+- **Capability** — choose `search`, `ai_summary`, or `brief`.
 - **Data source** — which indexed collection to query (e.g. `wfp`).
 
 ![Create dataset](../images/admin/eval/create-dataset.png)
 
 #### Add test cases
 
-Open the dataset to manage its cases. Each case is a **query** plus optional **filters/params**, **tags**, and **notes**, shown as a table.
+Open a Search or AI Summary dataset to manage its cases. Each case is a **query** plus optional **filters/params**, **tags**, and **notes**, shown as a table.
 
 You can add cases two ways:
 
 - **+ Add case** — enter a single case by hand.
-- **Upload CSV** — bulk‑import cases. Click **sample format** (directly under the button) to download a template. Uploading **appends** to whatever is already in the dataset.
+- **Upload CSV** — bulk‑import cases. Click **Download case CSV example** to download a template. Uploading **appends** to whatever is already in the dataset.
 
 The CSV columns are:
 
@@ -177,9 +179,9 @@ Below it is the per‑case results table; expand a case to see:
 
 ### Brief citation check
 
-The **Testing (Brief)** tab checks a finished brief against its own sources. Where the experiments above judge an AI summary against a rubric you write, the citation check needs no expectations: for every sentence of the brief that carries a `[n]` citation, an LLM judge is shown that sentence and the **exact source excerpts it cites**, each introduced by its document title and section heading, and nothing else, and decides whether the sentence is supported by them. Context named in a title or heading (the country, programme or period a document is about) counts as the setting of its excerpt, so a sentence that names it is not overstating.
+The **Testing (Saved Briefs)** tab checks a finished brief against its own sources. Where the experiments above judge an AI summary against a rubric you write, the citation check needs no expectations: for every sentence of the brief that carries a `[n]` citation, an LLM judge is shown that sentence and the **exact source excerpts it cites**, each introduced by its document title and section heading, and nothing else, and decides whether the sentence is supported by them. Context named in a title or heading (the country, programme or period a document is about) counts as the setting of its excerpt, so a sentence that names it is not overstating.
 
-![Testing (Brief): briefs you can check](../images/admin/eval/brief-check-overview.png)
+![Testing (Saved Briefs): briefs you can check](../images/admin/eval/brief-check-overview.png)
 
 The list shows every brief in the system, not only your own and the ones shared with you: the harness is an admin tool, so an admin can check any user's brief. The **Mine**, **Shared with me** and **Other users** buttons narrow the list, and each row shows the owner, the number of researched sections and cited passages, and the outcome of the last check. The judge is the model your groups choose in Group Settings > LLMs; without one, it is the `judge_model` of the model combo selected in the **Models** menu at the top of the page (else that combo's summarisation model), so pick the combo first, then click **Run check**. Checks run in the background; the view shows progress per passage and keeps every check as history.
 
@@ -220,3 +222,49 @@ Once a check has completed, everyone who can open the brief sees a **Fact Checke
 - **Re‑run freely:** runs accumulate as history, so you can compare quality across changes.
 - **Grounding rubrics:** because the LLM judge sees the sources, you can check that the summary is supported by (and only cites) the right documents.
 - **Bulk authoring:** use **Upload CSV** to load many queries at once, then define expectations once on the experiment.
+
+### Compare generated Brief sections
+
+A Brief dataset selects the document library to search. Its **Brief templates** table lists the original templates in Brief Central. The experiment selects which templates to run and which expectations to grade. Administrators create these records themselves.
+
+1. Open **Admin → Testing (Experiments) → Datasets → New dataset**, choose **brief**, select the data source, and save. Open the dataset to see the templates. Each Brief dataset shows the same template library, so you can evaluate one outline against different document collections.
+2. Choose an existing template or select **Create template** to add one. **Edit template** opens the Brief Central editor for the original, including templates owned by other users. Expand a heading to change its prompt, voice or length. **Save template** saves and returns to the table. **Back to brief evaluation** returns without saving. Only the owner can delete the template here. If it is deleted, choose another template before running an experiment that used it. Previous results remain available. See [how to create and use Brief templates](../using-evidence-lab/brief.md#7-templates).
+3. Select **View experiments** and create an experiment. Choose the dataset and one or more templates. Expand a template’s section count to preview its full outline. The template name supplies the topic. Nine standard expectations are selected by default. Choose which apply to each template, and use **+ Expectation** for additional checks. Select the model combo and group settings, save, and select **Run**.
+4. Open the run to follow every section, including those still queued. Each row shows the numbered heading and the template name. For example, **2.1** is the first subheading of heading **2**. Hover for the full title or open a completed row to inspect the generated section and its grades. The run records reported model usage for generation and grading.
+
+![Brief evaluation lists the original templates, their owners and section counts, with actions to edit each template.](../images/admin/eval/brief-evaluation-templates.png)
+
+**What the writer uses.** At the start of each run, the experiment reads the selected templates. It generates every heading and subheading in outline order, using the template’s brief-wide instructions and the current heading’s prompt. A heading’s voice profile or word target overrides the template setting. A parent heading gets the shorter introduction target unless it has its own override. If the template includes section text, that text is available as context from the start. As each draft is written, later sections can use it to avoid repeating earlier findings.
+
+**What the judge grades.** The writer can revise a draft during [section generation](../using-evidence-lab/brief.md#how-a-section-is-drafted-and-revised). The experiment grades the resulting text once generation finishes. A failed expectation does not trigger a rewrite. For example, with a 350-word target and the default 15% word-count tolerance, 295 words fails the length check even if every claim passes factual support. To test different instructions, edit the template and start a new run. Earlier runs retain their recorded headings, instructions, voice profile, grades and cited evidence. Older experiments built from individual cases retain their history and can select templates for future runs.
+
+A case can finish research without producing a publishable section. For example, a revised opening might still refer to an action that no sentence explains. A missing section is an **Error**. There is no score, and the expectations show **Not graded**. Expand **Generated section** to see any reason reported by the editor. A **Fail** means a section was written and missed a selected expectation. Its searches and reported token usage are kept with the result. A service or grading exception appears as an error.
+
+Expand a case, then open **Generated section** below the query to read its paragraphs and see the word count. Each expectation shows what it tested. When adding a custom judge criterion, use **Check name** to give it a short title. **Full prompt sent to the LLM** shows the actual grading input for that run. The Brief judge receives the numbered passages with their text, titles, pages and headings. The document viewer uses the bounding boxes to highlight those passages on a page.
+
+Click a citation in a sentence to read all the passages that sentence cites. Click it again to close them. **References** at the end lists each cited passage once. Expand an entry to read the full excerpt saved with that run. You can review earlier runs this way, even if the library has since changed.
+
+If a check returns an error, the section row names the check and gives its reason. A check that returned a failing grade is listed separately, with claim numbers for factual support.
+
+Open **Factual support from citations** to read the claims in order. Each claim shows its own assessment, score and pass or fail. Expand a reference below the claim to read the excerpt. The section receives the lowest claim score. The configured threshold applies to each claim and to the section. The grading criterion and full prompt are at the bottom. Earlier runs retain their original section-level assessment.
+
+Open **Cross-section repetition** to compare each match. **Source** shows the passage from the other section. **Target** shows the passage from the draft being graded. Expand either side to see the matching words highlighted in the full section saved with the run. The judge explains what finding the passages share. Older runs keep the original section-level assessment.
+
+![Two repetitions with quoted source and target passages and a separate judge assessment for each.](../images/admin/eval/brief-cross-section-repetition.png)
+
+Open another expectation to inspect its reasoning and the section’s claims. When the assessment quotes a claim, that claim appears first. Each claim lists its references with the excerpts closed. Expand a reference to compare the claim with the complete saved passage.
+
+The writer and voice check use the same selected profile instructions. With no profile, the voice check passes without calling a model. The word count check applies to sections with a target. Introduction scope applies to parents with subheadings. Repetition applies when another section has written text to compare.
+
+| Check | What to look for |
+| --- | --- |
+| Selected voice and tone profile | The judge compares wording in the draft with the instructions from the selected profile. |
+| Section format and citations | The section opens with a cited paragraph, uses prose without extra headings or lists, and its numbered citations resolve to the returned sources. |
+| Word count meets target | The actual word count falls within 15% of the case target. A short, carefully supported section can pass grounding and fail length. |
+| Findings are distinct across sections | A judge compares the draft with the text of every supplied section. A paraphrase of the same finding fails. Related findings about distinct measures or populations can pass. A repetition verdict must quote matching clauses from the new draft and the named section. |
+| Introduction leaves details to subheadings | The judge reads the introduction and the titles of its children. An introduction may name their subjects. It fails if it supplies their detailed findings or examples, even if those children are still blank. |
+| Limit one-sentence paragraphs | For sections with three or more paragraphs, the default allows up to half to contain one sentence. Change the percentage to match your publication or turn this check off for a case. |
+| Paragraph development | Add a writing criterion to check whether each paragraph develops an idea with related evidence. The writing judge reads the assignment, the section in its original paragraphs, and the measured word count. It can assess voice or flow without the factual reference answers. It considers the middle and end of the section as well as its opening. It can fail a sequence of disconnected observations even when every citation resolves. A short introduction can pass. |
+| Grounding and scope | Editable judge prompts check the draft against the evidence and the assigned subject. Use **Factual support from citations** to grade every claim, or add a separate criterion for adherence to the assigned topic. |
+
+Expand a run and a case to inspect the section, the other sections, the cited passages and the judge's reasons. Read the cited text when a score seems surprising. To compare configurations, keep the case inputs and expectations identical across runs. The separate **Brief citation check** reviews a previously saved brief.

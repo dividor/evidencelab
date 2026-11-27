@@ -25,6 +25,7 @@ from sqlalchemy import func, select, update
 from ui.backend.auth.db import async_session_factory
 from ui.backend.auth.testing_models import (
     CAPABILITY_AI_SUMMARY,
+    CAPABILITY_BRIEF,
     CAPABILITY_SEARCH,
     EXPERIMENT_COMPLETED,
     EXPERIMENT_FAILED,
@@ -39,21 +40,26 @@ from ui.backend.auth.testing_models import (
     TestResult,
     TestRun,
 )
+from ui.backend.services.brief_grading_errors import brief_grading_error
+from ui.backend.services.brief_template_evaluation import (
+    TemplateSection,
+    TemplateSelectionError,
+    grade_template_checks,
+    template_plan,
+)
 from ui.backend.services.citations import render_reference_lines
 from ui.backend.services.evaluation_metrics import compute_summary_stats
-from ui.backend.services.job_liveness import (
-    is_stale,
-    orphan_message,
-    progress_stats,
-    write_while,
-)
+from ui.backend.services.job_liveness import progress_stats, write_while
 from ui.backend.services.llm_choice import JUDGE, group_choice
 from ui.backend.services.search_defaults import (
     SYSTEM_SEARCH_DEFAULTS,
     default_section_types,
 )
 from ui.backend.services.search_models import search_warnings
-from ui.backend.services.test_evaluators import evaluate_assertions
+from ui.backend.services.test_evaluators import (
+    UnverifiedOverlapQuote,
+    evaluate_assertions,
+)
 from ui.backend.utils.filter_helpers import resolve_doc_level_filters
 
 logger = logging.getLogger(__name__)
@@ -474,6 +480,17 @@ async def _apply_group(session, config: Dict[str, Any]) -> Dict[str, Any]:
     if group is None:
         return config
     config.update(_group_settings_to_config(group.search_settings))
+    if config.get("capability") == CAPABILITY_BRIEF:
+        settings = group.search_settings or {}
+        for field, key in {
+            "briefTargetWords": "brief_target_words",
+            "briefModel": "brief_model",
+            "briefCitationCheck": "brief_citation_check",
+            "briefSectionPrompt": "brief_prompt",
+            "citationCheckModel": "citation_model",
+        }.items():
+            if settings.get(field) is not None:
+                config[key] = settings[field]
     config["group_name"] = group.name
     if group.summary_prompt:
         config["summary_prompt"] = group.summary_prompt
@@ -506,7 +523,12 @@ def _unlisted_model_problem(config: Dict[str, Any]) -> Optional[str]:
     experiment, its model combo or a group's choice) isn't in config.json."""
     from utils.llm_factory import supported_llm_key
 
-    for key, role in (("summary_model", "summary"), ("judge_model", "judge")):
+    jobs = [("summary_model", "summary"), ("judge_model", "judge")]
+    if config.get("capability") == CAPABILITY_BRIEF:
+        jobs.append(("brief_model", "Brief"))
+        if config.get("brief_citation_check"):
+            jobs.append(("citation_model", "citation checker"))
+    for key, role in jobs:
         name = config.get(key)
         if name and supported_llm_key(str(name)) is None:
             return (
@@ -562,6 +584,10 @@ def build_case_runner(
         return lambda case_input: _run_search(case_input, config, db, pg, data_source)
     if capability == CAPABILITY_AI_SUMMARY:
         return lambda case_input: _run_summary(case_input, config, db, pg, data_source)
+    if capability == CAPABILITY_BRIEF:
+        from ui.backend.services.brief_experiment import run_brief_case
+
+        return lambda case_input: run_brief_case(case_input, config, data_source)
     raise ValueError(f"Unknown capability: {capability!r}")
 
 
@@ -641,7 +667,10 @@ def _format_judge_context(output: Dict[str, Any]) -> str:
 
 
 async def _judge_call(
-    prompt: str, model_key: Optional[str]
+    prompt: str,
+    model_key: Optional[str],
+    system: str = _JUDGE_SYSTEM_PROMPT,
+    max_tokens: int = 300,
 ) -> Tuple[str, Dict[str, Any]]:
     """Raw LLM completion for judging — deliberately NOT routed through the
     AI-summary templates (which would reframe the rubric as a search query).
@@ -655,11 +684,11 @@ async def _judge_call(
     from ui.backend.services.llm_service import summarize_usage_metadata
     from utils.llm_factory import get_llm, message_text
 
-    llm = get_llm(model=model_key, temperature=0.0, max_tokens=300)
+    llm = get_llm(model=model_key, temperature=0.0, max_tokens=max_tokens)
     usage_handler = UsageMetadataCallbackHandler()
     response = await llm.ainvoke(
         [
-            SystemMessage(content=_JUDGE_SYSTEM_PROMPT),
+            SystemMessage(content=system),
             HumanMessage(content=prompt),
         ],
         config={"callbacks": [usage_handler]},
@@ -680,6 +709,10 @@ def make_judge_factory(config: Dict[str, Any]) -> JudgeFactory:
     )
 
     async def factory(output, expectations):
+        if output.get("capability") == CAPABILITY_BRIEF:
+            from ui.backend.services.brief_experiment import judge_brief
+
+            return await judge_brief(output, expectations, model_key)
         # Judge the raw AI summary; references + search results are context only.
         summary = str(output.get("raw_summary") or output.get("summary") or "")
         refs_text = _format_judge_references(output.get("references") or [])
@@ -744,7 +777,7 @@ def _case_usage_totals(output: Any) -> Dict[str, Any]:
         entries: List[Dict[str, Any]] = []
         if isinstance(output, dict):
             if isinstance(output.get("usage"), dict):
-                entries.append(output["usage"])
+                entries.extend(output["usage"].get("model_usage") or [output["usage"]])
             entries.extend(
                 e for e in output.get("judge_usage") or [] if isinstance(e, dict)
             )
@@ -767,39 +800,80 @@ def _case_usage_totals(output: Any) -> Dict[str, Any]:
         return dict(_NO_CASE_USAGE)
 
 
+def _missing_brief_result(output, expectations, started):
+    message = "No Brief section was generated."
+    return {
+        "status": RESULT_ERROR,
+        "score": None,
+        "error_message": message,
+        "actual_output": output,
+        "assertion_results": [
+            {
+                **check,
+                "not_run": True,
+                "message": "There was no generated section to grade.",
+            }
+            for check in expectations
+        ],
+        "latency_ms": int((time.time() - started) * 1000),
+        **_case_usage_totals(output),
+    }
+
+
 async def evaluate_case(
-    case_input: Dict[str, Any],
+    case_input: Any,
     expectations: List[Dict[str, Any]],
     runner: CaseRunner,
     judge_factory: Optional[JudgeFactory] = None,
 ) -> Dict[str, Any]:
     """Run one case and evaluate its assertions. Errors are isolated, not raised."""
     started = time.time()
+    output = None
     try:
         output = await runner(case_input)
+        if output.get("capability") == CAPABILITY_BRIEF and (
+            not output.get("written") or not (output.get("summary") or "").strip()
+        ):
+            return _missing_brief_result(output, expectations, started)
+        latency_ms = int((time.time() - started) * 1000)
+        if isinstance(case_input, TemplateSection):
+            assertion_results = await grade_template_checks(
+                output, expectations, judge_factory
+            )
+            passed = all(r.get("passed") for r in assertion_results)
+            score = min((r.get("score", 0.0) for r in assertion_results), default=1.0)
+        else:
+            judge_fn = (
+                await judge_factory(output, expectations) if judge_factory else None
+            )
+            assertion_results, passed, score = evaluate_assertions(
+                expectations, output, judge_fn=judge_fn
+            )
     except Exception as exc:
         logger.exception("Evaluation case errored")
         return {
             "status": RESULT_ERROR,
             "score": None,
-            "actual_output": None,
+            "actual_output": output,
             "assertion_results": None,
             "latency_ms": int((time.time() - started) * 1000),
-            "error_message": str(exc)[:500],
-            **_NO_CASE_USAGE,
+            "error_message": (
+                "The evaluator could not grade this output."
+                if output is not None and not isinstance(exc, UnverifiedOverlapQuote)
+                else str(exc)[:500]
+            ),
+            **_case_usage_totals(output),
         }
-    latency_ms = int((time.time() - started) * 1000)
-    judge_fn = await judge_factory(output, expectations) if judge_factory else None
-    assertion_results, passed, score = evaluate_assertions(
-        expectations, output, judge_fn=judge_fn
-    )
+    grading_error = brief_grading_error(assertion_results)
     return {
-        "status": RESULT_PASS if passed else RESULT_FAIL,
-        "score": score,
+        "status": (
+            RESULT_ERROR if grading_error else (RESULT_PASS if passed else RESULT_FAIL)
+        ),
+        "score": None if grading_error else score,
         "actual_output": output,
         "assertion_results": assertion_results,
         "latency_ms": latency_ms,
-        "error_message": None,
+        "error_message": grading_error,
         # Judge usage is stashed on the output by the judge factory, so the
         # totals must be computed after the judge has run.
         **_case_usage_totals(output),
@@ -819,7 +893,7 @@ async def _load_cases(session, dataset_id) -> List[TestCase]:
 
 
 def _resolve_case_plan(
-    case_expectations: Dict[str, Any], case_id: str
+    case_expectations: Dict[str, Any], case_id: str, capability: Optional[str] = None
 ) -> Tuple[bool, List[Dict[str, Any]]]:
     """From the assertion matrix, return ``(is_active, active_assertions)``.
 
@@ -848,10 +922,14 @@ def _resolve_case_plan(
         assertion = columns[i]
         override = overrides[i] if i < len(overrides) else None
         if (
-            assertion.get("type") == "llm_judge"
+            assertion.get("type") in ("llm_judge", "brief_writing", "brief_factual")
             and isinstance(override, str)
             and override.strip()
         ):
+            from ui.backend.services.brief_experiment_claims import is_factual_criterion
+
+            if capability == "brief" and is_factual_criterion(assertion):
+                assertion = {**assertion, "type": "brief_factual"}
             assertion = {**assertion, "rubric": override.strip()}
         assertions.append(assertion)
     return True, assertions
@@ -938,7 +1016,7 @@ async def _mark_failed(session, experiment: TestExperiment, message: str) -> Non
     await session.commit()
 
 
-def _progress_stats(completed: int, total: int) -> Dict[str, Any]:
+def _progress_stats(completed: int, total: int, sections=None) -> Dict[str, Any]:
     """A lightweight progress marker stored in a run's ``summary_stats`` while it
     is in flight, so the polling UI can show "completed of total cases". Its
     ``at`` stamp is the run's heartbeat (``job_liveness``).
@@ -946,10 +1024,15 @@ def _progress_stats(completed: int, total: int) -> Dict[str, Any]:
     It is replaced by the real aggregate stats (``compute_summary_stats``) once
     the run finishes, so a running run never carries pass/score numbers.
     """
-    return progress_stats(completed, total)
+    stats = progress_stats(completed, total)
+    if sections is not None:
+        stats["progress"]["remaining_sections"] = sections[completed:]
+    return stats
 
 
-async def _publish_progress(session, run: TestRun, completed: int, total: int) -> bool:
+async def _publish_progress(
+    session, run: TestRun, completed: int, total: int, sections=None
+) -> bool:
     """Store the run's progress, with whatever rows the session holds. False
     when the run is no longer ours (cancelled, or failed as orphaned by
     another api copy); the pending rows are then dropped."""
@@ -959,7 +1042,7 @@ async def _publish_progress(session, run: TestRun, completed: int, total: int) -
         TestRun,
         run_id,
         (EXPERIMENT_RUNNING,),
-        summary_stats=_progress_stats(completed, total),
+        summary_stats=_progress_stats(completed, total, sections),
     ):
         return True
     logger.info("Test run %s was stopped by another writer", run_id)
@@ -967,7 +1050,7 @@ async def _publish_progress(session, run: TestRun, completed: int, total: int) -
 
 
 def _active_case_plan(
-    matrix: Dict[str, Any], cases: List[TestCase]
+    matrix: Dict[str, Any], cases: List[TestCase], capability: Optional[str] = None
 ) -> List[Tuple[TestCase, List[Dict[str, Any]]]]:
     """Resolve the cases that will actually run and the assertions each needs.
 
@@ -976,7 +1059,7 @@ def _active_case_plan(
     """
     plan: List[Tuple[TestCase, List[Dict[str, Any]]]] = []
     for case in cases:
-        active, assertions = _resolve_case_plan(matrix, str(case.id))
+        active, assertions = _resolve_case_plan(matrix, str(case.id), capability)
         if active:
             plan.append((case, assertions))
     return plan
@@ -996,7 +1079,7 @@ def _build_result_row(
     return TestResult(
         experiment_id=experiment.id,
         run_id=run.id,
-        test_case_id=case.id,
+        test_case_id=None if isinstance(case, TemplateSection) else case.id,
         **stored,
     )
 
@@ -1033,7 +1116,9 @@ async def _record_run_usage(
             # The supported_llms key, as each call's usage is labelled, even
             # when the experiment names the model by its provider id.
             "llm_model": resolve_effective_model_key(
-                cfg.get("summary_model") or cfg.get("judge_model")
+                cfg.get("brief_model")
+                or cfg.get("summary_model")
+                or cfg.get("judge_model")
             ),
             "prompt_tokens": stats.get("prompt_tokens"),
             "completion_tokens": stats.get("completion_tokens"),
@@ -1102,7 +1187,9 @@ async def _execute(
     # Resolve the chosen model combo into concrete embedding/summary/reranker
     # models, then overlay any "run as group" settings, so the run matches the
     # search UI / that group's configuration.
-    config = await _apply_group(session, effective_config(experiment.config))
+    config = await _apply_group(
+        session, effective_config(_requested_config(experiment, dataset))
+    )
     problem = await _apply_judge_choice(session, config, triggered_by_user_id)
     problem = problem or _unlisted_model_problem(config)
     if problem:
@@ -1110,7 +1197,11 @@ async def _execute(
         return
     run.config = run_config_snapshot(config)
     try:
-        runner = build_case_runner(dataset.capability, config, dataset.data_source)
+        runner = build_case_runner(
+            dataset.capability,
+            run.config if dataset.capability == CAPABILITY_BRIEF else config,
+            dataset.data_source,
+        )
     except Exception as exc:
         logger.exception("Failed to build case runner")
         await _fail_run(session, experiment, run, str(exc))
@@ -1122,23 +1213,83 @@ async def _execute(
     # progress (and stream each result) as the run advances. Committing per case
     # — safe because the session is created with expire_on_commit=False — lets
     # the polling UI report how far along the run is instead of a blind "running".
-    plan = _active_case_plan(matrix, await _load_cases(session, dataset.id))
+    try:
+        plan, sections = await _plan_with_sections(session, dataset, config, matrix)
+    except TemplateSelectionError as exc:
+        await _fail_run(session, experiment, run, str(exc))
+        return
     total = len(plan)
-    if not await _publish_progress(session, run, 0, total):
+    if not await _publish_progress(session, run, 0, total, sections):
         return
 
     case_results: List[Dict[str, Any]] = []
     for completed, (case, assertions) in enumerate(plan, start=1):
-        outcome = await evaluate_case(case.input, assertions, runner, judge_factory)
+        outcome = await _evaluate_planned(case, assertions, runner, judge_factory)
         case_results.append(outcome)
         session.add(_build_result_row(experiment, run, case, outcome))
-        if not await _publish_progress(session, run, completed, total):
+        if not await _publish_progress(session, run, completed, total, sections):
             return
 
     stats = compute_summary_stats(case_results, int((time.time() - started) * 1000))
+    if await _complete_run(session, run, experiment_id, stats):
+        await _record_run_usage(experiment, run, dataset, config, stats)
+
+
+def _requested_config(
+    experiment: TestExperiment, dataset: TestDataset
+) -> Dict[str, Any]:
+    """The experiment's stored config, completed for a Brief experiment with
+    the model combo's brief settings."""
+    requested = dict(experiment.config or {})
+    if dataset.capability == CAPABILITY_BRIEF:
+        from pipeline.db.config import UI_MODEL_COMBOS, get_default_model_combo
+        from ui.backend.services.brief_experiment import configure_brief
+
+        requested.pop("brief_topic", None)  # Older experiments stored a separate topic.
+        requested["capability"] = CAPABILITY_BRIEF
+        requested["model_combo"] = (
+            requested.get("model_combo") or get_default_model_combo()
+        )
+        configure_brief(requested, UI_MODEL_COMBOS[requested["model_combo"]])
+    return requested
+
+
+async def _plan_with_sections(
+    session, dataset: TestDataset, config: Dict[str, Any], matrix: Dict[str, Any]
+) -> Tuple[List[Tuple[Any, List[Dict[str, Any]]]], Optional[List[Dict[str, Any]]]]:
+    """The cases to run, in order, and for a Brief experiment the template
+    sections they stand for (shown as the remaining work while it runs).
+    Raises ``TemplateSelectionError`` when no template section matches."""
+    if dataset.capability != CAPABILITY_BRIEF:
+        cases = await _load_cases(session, dataset.id)
+        return _active_case_plan(matrix, cases, dataset.capability), None
+    plan = await template_plan(session, config, matrix)
+    sections = [
+        {
+            "template": case.template.name,
+            "heading": case.headings[case.position].title,
+            "number": case.number,
+        }
+        for case, _ in plan
+    ]
+    return plan, sections
+
+
+async def _evaluate_planned(case, assertions, runner, judge_factory) -> Dict[str, Any]:
+    if isinstance(case, TemplateSection):
+        return await case.evaluate(assertions, runner, judge_factory)
+    return await evaluate_case(case.input, assertions, runner, judge_factory)
+
+
+async def _complete_run(
+    session, run: TestRun, experiment_id, stats: Dict[str, Any]
+) -> bool:
+    """Mark the run completed and mirror it onto its experiment for the
+    list/summary view, while both still say running. False when another
+    writer (Cancel, orphan recovery) took the run meanwhile."""
     now = _utcnow()
     run_id, run_started = run.id, run.started_at
-    finished = await write_while(
+    if not await write_while(
         session,
         TestRun,
         run_id,
@@ -1146,10 +1297,8 @@ async def _execute(
         status=EXPERIMENT_COMPLETED,
         finished_at=now,
         summary_stats=stats,
-    )
-    if not finished:
-        return
-    # The experiment mirrors its latest run for the list/summary view.
+    ):
+        return False
     await write_while(
         session,
         TestExperiment,
@@ -1160,74 +1309,7 @@ async def _execute(
         finished_at=now,
         summary_stats=stats,
     )
-    await _record_run_usage(experiment, run, dataset, config, stats)
-
-
-def _stale(row: Any, now: datetime) -> bool:
-    return row.status in _ACTIVE and is_stale(
-        row.summary_stats, row.started_at, row.created_at, now
-    )
-
-
-def _orphan(row: Any, now: datetime) -> None:
-    row.status = EXPERIMENT_FAILED
-    row.finished_at = now
-    row.summary_stats = {
-        "error": orphan_message(row.summary_stats, row.started_at, row.created_at, now)
-    }
-
-
-async def fail_stale_runs(session, now: Optional[datetime] = None) -> int:
-    """Fail the pending/running runs that have shown no progress for
-    ``job_liveness.STALE_AFTER``, and the pending/running experiments that
-    have no live run and are as old: their background task is gone (the api
-    copy running it stopped). A run with a fresh heartbeat belongs to a live
-    runner, possibly on another api copy, and is left alone, as is its
-    experiment. Returns how many rows were failed."""
-    now = now or _utcnow()
-    active = list(_ACTIVE)
-    runs = (
-        (await session.execute(select(TestRun).where(TestRun.status.in_(active))))
-        .scalars()
-        .all()
-    )
-    stale_runs = [run for run in runs if _stale(run, now)]
-    live = {run.experiment_id for run in runs if run not in stale_runs}
-    experiments = (
-        (
-            await session.execute(
-                select(TestExperiment).where(TestExperiment.status.in_(active))
-            )
-        )
-        .scalars()
-        .all()
-    )
-    stale_experiments = [
-        experiment
-        for experiment in experiments
-        if experiment.id not in live and _stale(experiment, now)
-    ]
-    for row in [*stale_runs, *stale_experiments]:
-        _orphan(row, now)
-    if stale_runs or stale_experiments:
-        await session.commit()
-    return len(stale_runs) + len(stale_experiments)
-
-
-async def recover_orphaned_runs(session_factory=None) -> None:
-    """At api start, fail the runs and experiments whose task is gone
-    (``fail_stale_runs``). Not every running one: another api copy may be
-    running it."""
-    factory = session_factory or async_session_factory
-    try:
-        async with factory() as session:
-            recovered = await fail_stale_runs(session)
-            if recovered:
-                logger.info(
-                    "Recovered %s orphaned test run(s)/experiment(s)", recovered
-                )
-    except Exception:
-        logger.exception("Failed to recover orphaned test runs")
+    return True
 
 
 async def run_experiment(

@@ -44,8 +44,46 @@ const URL_API_GROUPS_G2 = '/api/groups/g2';
 
 describe('GroupSettingsManager', () => {
   beforeEach(() => {
+    window.history.replaceState(null, '', '/admin');
     jest.clearAllMocks();
     mockedAxios.get.mockResolvedValue({ data: mockGroups });
+  });
+
+  test('saves and restores the Brief section prompt while keeping the section length', async () => {
+    const defaultPrompt = 'Write the finished section in clear prose.';
+    const customized = 'Explain why each finding matters.';
+    let briefSettings = { briefTargetWords: 300 };
+    mockedAxios.get.mockImplementation(async url => ({ data: url.endsWith('/brief-defaults')
+      ? { sectionPrompt: defaultPrompt, citationCheck: true }
+      : [mockGroups[0], { ...mockGroups[1], search_settings: briefSettings }] }));
+    mockedAxios.patch.mockImplementation(async (_url, body) => {
+      briefSettings = body.search_settings;
+      return { data: { ...mockGroups[1], search_settings: briefSettings } };
+    });
+
+    render(<GroupSettingsManager />);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Brief', exact: true }));
+    const prompt = await screen.findByLabelText('Section prompt');
+    await waitFor(() => expect(prompt).toHaveValue(defaultPrompt));
+    const briefPanel = within(screen.getByRole('tabpanel', { name: 'Brief' }));
+    expect(briefPanel.getByRole('option', { name: 'On (default)' })).toHaveValue('');
+    const citationControl = briefPanel.getByLabelText('Automatic citation check');
+    fireEvent.change(citationControl, { target: { value: 'false' } });
+    fireEvent.change(prompt, { target: { value: customized } });
+    fireEvent.click(screen.getByRole('button', { name: SAVE_SETTINGS }));
+    await waitFor(() => expect(mockedAxios.patch).toHaveBeenLastCalledWith(URL_API_GROUPS_G2, {
+      search_settings: { briefTargetWords: 300, briefSectionPrompt: customized, briefCitationCheck: false }, summary_prompt: '',
+    }));
+
+    const reset = screen.getByRole('button', { name: 'Reset section prompt to default' });
+    await waitFor(() => expect(screen.getByRole('button', { name: SAVE_SETTINGS })).toBeEnabled());
+    fireEvent.click(reset);
+    expect(prompt).toHaveValue(defaultPrompt);
+    fireEvent.change(citationControl, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: SAVE_SETTINGS }));
+    await waitFor(() => expect(mockedAxios.patch).toHaveBeenLastCalledWith(URL_API_GROUPS_G2, {
+      search_settings: { briefTargetWords: 300 }, summary_prompt: '',
+    }));
   });
 
   test('settings are on tabs, one area at a time, and Save covers every tab', async () => {
@@ -57,6 +95,7 @@ describe('GroupSettingsManager', () => {
       SEARCH_SETTINGS,
       'Content Settings',
       SEARCH_AI_SUMMARY,
+      'Assistant',
       'Brief',
       DOC_SUMMARIES,
       'LLMs',
@@ -388,4 +427,14 @@ describe('GroupSettingsManager', () => {
       expect(section.getByRole('button', { name: 'Reset to default' })).toBeDisabled();
     });
   });
+});
+
+test('reopens the selected group and settings tab, including after the group list loads', async () => {
+  window.history.replaceState(null, '', '/admin?admin_page=group-settings&admin_group=g1&admin_settings=features');
+  mockedAxios.get.mockResolvedValue({ data: mockGroups });
+  render(<GroupSettingsManager />);
+  expect(await screen.findByRole('tab', { name: 'Features & Tabs' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByText('Analysts', { selector: 'label', exact: true }).querySelector('input')).toBeChecked();
+  fireEvent.click(screen.getByRole('tab', { name: 'Appearance' }));
+  expect(new URLSearchParams(window.location.search).get('admin_settings')).toBe('appearance');
 });

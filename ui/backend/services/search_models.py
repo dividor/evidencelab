@@ -819,11 +819,10 @@ def _detect_field_values_in_query(
     return matched
 
 
-def _split_field_value(value: str) -> List[str]:
-    """Split a potentially comma-separated field value into individual values."""
-    if "," in value:
-        return [v.strip() for v in value.split(",") if v.strip()]
-    return [value.strip()] if value.strip() else []
+def _split_field_value(value: str | list[str]) -> List[str]:
+    """Keep array entries intact and split legacy comma-separated strings."""
+    entries = value if isinstance(value, list) else value.split(",")
+    return [entry.strip() for entry in entries if entry.strip()]
 
 
 _FIELD_ACCESSORS = {

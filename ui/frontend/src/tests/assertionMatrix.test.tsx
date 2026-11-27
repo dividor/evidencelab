@@ -114,3 +114,14 @@ describe('AssertionMatrix', () => {
     expect(alpha.closest('tr')).toHaveClass('testing-matrix-row-off');
   });
 });
+
+
+test('template selection is explicit and uses display names for the grading columns', () => {
+  const change = jest.fn();
+  render(<AssertionMatrix capability="brief" cases={cases} value={{columns:[{type:'brief_voice'}],cases:{}}} onChange={change} />);
+  expect(screen.getByText('Selected voice and tone profile')).toBeVisible();
+  expect(screen.getByRole('checkbox',{name:'alpha'})).not.toBeChecked();
+  fireEvent.click(screen.getByRole('checkbox',{name:'beta'}));
+  expect(change.mock.calls[0][0].cases.c2.active).toBe(true);
+  expect(change.mock.calls[0][0].cases.c1.active).toBe(false);
+});

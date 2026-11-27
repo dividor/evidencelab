@@ -20,6 +20,7 @@ from ui.backend.auth.testing_models import (
     TestExperiment,
     TestRun,
 )
+from ui.backend.services import experiment_liveness
 from ui.backend.services.test_runner import (
     _active_case_plan,
     _build_references,
@@ -974,7 +975,7 @@ async def test_fail_stale_runs_when_no_heartbeat_then_run_and_experiment_failed(
         experiments=[orphaned_exp, live_exp, fresh_pending, dead_pending],
     )
 
-    assert await test_runner.fail_stale_runs(session, now=now) == 3
+    assert await experiment_liveness.fail_stale_runs(session, now=now) == 3
     assert orphaned_run.status == "failed"
     assert orphaned_run.summary_stats["error"].startswith("no progress for 60 min")
     assert orphaned_exp.status == "failed" and orphaned_exp.finished_at == now
@@ -995,7 +996,7 @@ async def test_fail_stale_runs_when_all_fresh_then_nothing_written():
         summary_stats=_stamp(now),
     )
     session = _FakeSession(None, runs=[run], experiments=[])
-    assert await test_runner.fail_stale_runs(session, now=now) == 0
+    assert await experiment_liveness.fail_stale_runs(session, now=now) == 0
     assert session.commits == [] and run.status == "running"
 
 
@@ -1021,7 +1022,7 @@ async def test_recover_orphaned_runs_when_called_then_sweeps_through_factory():
         async def __aexit__(self, *exc):
             return False
 
-    await test_runner.recover_orphaned_runs(session_factory=Factory())
+    await experiment_liveness.recover_orphaned_runs(session_factory=Factory())
     assert run.status == "failed"
 
 

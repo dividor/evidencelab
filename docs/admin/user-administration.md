@@ -224,9 +224,11 @@ The panel has two sections:
 
 The **Group Settings** tab lets you configure default search behavior for each group. Users inherit these defaults when they log in, and can still override most of them in the UI; the models chosen on the **LLMs** tab they can't.
 
+You can refresh or bookmark an Admin page. In **Group Settings**, the address includes the selected group and settings tab. In **Testing (Experiments)**, it can reopen the saved dataset or experiment. Back and Forward move between the pages you visited. Save any form changes before refreshing.
+
 ![Admin Group Settings](../images/admin/group-settings.png)
 
-Select a group using the buttons at the top. The settings are grouped into tabs (Search Settings, Content Settings, Search AI Summary, Brief, Document Summaries, LLMs, Features & Tabs, Appearance); **Save Settings** saves the changes on every tab at once.
+Select a group using the buttons at the top. The settings are grouped into tabs (Search Settings, Content Settings, Search AI Summary, Assistant, Brief, Document Summaries, LLMs, Features & Tabs, Appearance); **Save Settings** saves the changes on every tab at once.
 
 #### Search Settings
 
@@ -276,11 +278,24 @@ Click **Save Settings** to apply, or **Reset to Defaults** to clear all group ov
 
 ---
 
+#### Assistant
+
+Choose **Assistant** in **Group Settings** to set defaults for the group's Assistant conversations.
+
+- **Model**, **Response variability** and **Maximum output tokens** control the model used for planning and writing. Blank values use the selected model combination.
+- **Starting research mode** controls whether Deep Research starts selected. Users can switch modes for a conversation.
+- The search limits apply separately to a focused question and to each stream of a broad question. A broad question also starts with one search for the original question.
+- **Planning prompt** controls how the Assistant chooses follow-up searches. **Answer prompt** guides the final cited answer. The editors show the current defaults, including the group's Search AI Summary instructions in the default answer prompt. Use **Reset to Default** to restore either prompt.
+
+Click **Save Settings** to apply the settings to the group.
+
 #### Brief
 
 | Setting | Description |
 |---------|-------------|
 | **Default section length** | The section length target new briefs start with, in words per section (Short, Standard, Long, a custom number, or no target). Authors can change it per brief and per section; sections that overshoot by more than the configured tolerance are condensed automatically. Default: no target. |
+
+Use **Section prompt** to guide the writing of researched Brief sections. The section still uses its target length and the rest of the Brief outline. Select **Reset to Default** to restore the site prompt, then **Save Settings**.
 
 #### Document Summaries
 

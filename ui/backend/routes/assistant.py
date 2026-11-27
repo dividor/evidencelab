@@ -17,22 +17,36 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
+from starlette.concurrency import run_in_threadpool
 
 from ui.backend.auth.schemas import AssistantChatRequest, ThreadRenameRequest
 from ui.backend.services.ai_daily_limit import require_ai_allowance
 from ui.backend.services.assistant_service import stream_research_response
+from ui.backend.services.assistant_settings import (
+    AssistantSettings,
+    assistant_settings_for_groups,
+)
 from ui.backend.services.brief_section_prompt import (
-    build_section_prompt,
+    brief_citation_check_for_groups,
+    brief_search_query,
+    brief_section_prompt_default,
+    brief_section_prompt_for_groups,
     build_survey_prompt,
 )
 from ui.backend.services.data_source_access import settle_data_source
-from ui.backend.services.llm_choice import BRIEF, user_group_choice
+from ui.backend.services.group_settings import CITATION_CHECK_DEFAULT, user_groups
+from ui.backend.services.llm_choice import (
+    BRIEF,
+    CITATION_CHECK,
+    config_defaults,
+    user_group_choice,
+)
 from ui.backend.services.usage_recorder import (
     schedule_daily_spend_recording,
     schedule_llm_usage_recording,
 )
 from ui.backend.utils.app_limits import get_rate_limits, limiter
-from ui.backend.utils.llm_request_limits import check_model_config
+from ui.backend.utils.llm_request_limits import check_model_config, check_requested_llm
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +124,56 @@ async def _resolve_group_prompt(user, session) -> str | None:
     return None
 
 
+async def _assistant_settings(body, user, session) -> AssistantSettings:
+    user_id = getattr(user, "id", None)
+    if (
+        not _USER_MODULE
+        or body.usage_context == "brief"
+        or user_id is None
+        or session is None
+    ):
+        return AssistantSettings()
+    return assistant_settings_for_groups(await user_groups(session, user_id))
+
+
+async def _assistant_answer_prompt(
+    settings: AssistantSettings, user, session
+) -> str | None:
+    if settings.answerInstructions or settings.answerPrompt:
+        return settings.answerPrompt
+    return await _resolve_group_prompt(user, session)
+
+
+async def _research_preferences(
+    body, user, session, assistant_settings: AssistantSettings
+) -> tuple[str | None, bool]:
+    if body.brief_survey is not None:
+        return None, False
+    if body.brief_section is None:
+        enabled = assistant_settings.citationCheck
+        return None, CITATION_CHECK_DEFAULT if enabled is None else enabled
+    user_id = getattr(user, "id", None)
+    groups = (
+        await user_groups(session, user_id)
+        if _USER_MODULE and user_id is not None and session is not None
+        else []
+    )
+    citation_check = brief_citation_check_for_groups(groups)
+    prompt = brief_section_prompt_for_groups(groups) or await run_in_threadpool(
+        brief_section_prompt_default
+    )
+    return prompt, citation_check
+
+
+async def _citation_model(check_citations: bool, user, session) -> str | None:
+    if not check_citations:
+        return None
+    selected = await user_group_choice(session, user, CITATION_CHECK)
+    model = selected or config_defaults()[CITATION_CHECK]
+    check_requested_llm(model, None)
+    return model
+
+
 # ---------------------------------------------------------------------------
 # SSE heartbeat helper
 # ---------------------------------------------------------------------------
@@ -130,13 +194,15 @@ async def _anext_or_stop(ait):
 # ---------------------------------------------------------------------------
 
 
-def _research_query(body: AssistantChatRequest) -> str:
-    """The prompt to research. The Brief sends parts and the API writes it."""
+def _research_input(body: AssistantChatRequest) -> tuple[str, str | None]:
+    """Return the writing prompt and an optional separate first search."""
     if body.brief_section:
-        return build_section_prompt(body.brief_section)
+        return body.query, brief_search_query(body.brief_section)
     if body.brief_survey:
-        return build_survey_prompt(body.brief_survey)
-    return body.query
+        return build_survey_prompt(body.brief_survey), brief_search_query(
+            body.brief_survey
+        )
+    return body.query, None
 
 
 def _resolve_model_config(body: AssistantChatRequest):
@@ -156,8 +222,20 @@ async def _purpose_model_key(
     library survey), the group's Brief model (Group Settings > LLMs) overrides
     the model combo's; otherwise the model the request names."""
     if body.usage_context == "brief":
-        return await user_group_choice(session, user, BRIEF) or model_key
+        return (
+            await user_group_choice(session, user, BRIEF)
+            or model_key
+            or config_defaults()[BRIEF]
+        )
     return model_key
+
+
+async def _generation_options(body, settings, user, session):
+    model_key, temperature, max_tokens = _resolve_model_config(body)
+    if body.usage_context == "brief":
+        model_key = await _purpose_model_key(body, model_key, user, session)
+        return model_key, temperature, max_tokens
+    return settings.model_options(model_key, temperature, max_tokens)
 
 
 def _message_to_history_entry(msg) -> dict:
@@ -177,22 +255,24 @@ def _message_to_history_entry(msg) -> dict:
 
 
 async def _load_conversation_history(body, user, session):
-    """Load prior messages for a thread, returning a list of dicts."""
+    """Load prior messages from a thread owned by the signed-in user."""
     if not (body.thread_id and _USER_MODULE and user and session):
         return []
     try:
         thread_id = uuid.UUID(body.thread_id)
-        stmt = (
-            select(ConversationMessage)
-            .where(ConversationMessage.thread_id == thread_id)
-            .order_by(ConversationMessage.created_at)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Thread not found") from None
+    stmt = (
+        select(ConversationThread)
+        .options(selectinload(ConversationThread.messages))
+        .where(
+            ConversationThread.id == thread_id, ConversationThread.user_id == user.id
         )
-        result = await session.execute(stmt)
-        msgs = result.scalars().all()
-        return [_message_to_history_entry(m) for m in msgs]
-    except Exception as exc:
-        logger.warning("Failed to load thread history: %s", exc)
-        return []
+    )
+    thread = (await session.execute(stmt)).scalar_one_or_none()
+    if thread is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return [_message_to_history_entry(m) for m in thread.messages]
 
 
 def _record_assistant_usage(event: dict, body: AssistantChatRequest, user) -> None:
@@ -275,14 +355,23 @@ async def stream_assistant_chat(
     """
     body.data_source = await settle_data_source(body.data_source, user, session)
     check_model_config(body.assistant_model_config)
-    model_key, temperature, max_tokens = _resolve_model_config(body)
-    model_key = await _purpose_model_key(body, model_key, user, session)
-    research_query = _research_query(body)
+    settings = await _assistant_settings(body, user, session)
+    model_key, temperature, max_tokens = await _generation_options(
+        body, settings, user, session
+    )
+    research_query, initial_search_query = _research_input(body)
     conversation_messages = await _load_conversation_history(body, user, session)
-    # For unauthenticated users (no thread persistence), use client-sent history
+    # Client history can clarify the question. Only the server supplies evidence.
     if not conversation_messages and body.conversation_history:
-        conversation_messages = body.conversation_history
-    group_prompt = await _resolve_group_prompt(user, session)
+        conversation_messages = [
+            {key: message[key] for key in ("role", "content") if key in message}
+            for message in body.conversation_history
+        ]
+    group_prompt = await _assistant_answer_prompt(settings, user, session)
+    brief_section_prompt, check_citations = await _research_preferences(
+        body, user, session, settings
+    )
+    citation_model_key = await _citation_model(check_citations, user, session)
 
     async def event_generator():
         thread_id = body.thread_id
@@ -296,18 +385,25 @@ async def stream_assistant_chat(
             )
             ait = stream_research_response(
                 query=research_query,
+                initial_search_query=initial_search_query,
                 data_source=body.data_source,
                 model_key=model_key,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                max_iterations=3,
                 conversation_messages=conversation_messages,
                 reranker_model=body.reranker_model,
                 search_settings=search_kwargs,
                 system_prompt_override=group_prompt,
+                assistant_settings=settings,
+                citation_order=body.usage_context != "brief",
                 deep_research=body.deep_research,
                 target_words=body.target_words,
                 introduces_sub_sections=body.introduces_sub_sections,
+                brief_section_prompt=brief_section_prompt,
+                brief_section=body.brief_section,
+                survey_only=body.brief_survey is not None,
+                check_citations=check_citations,
+                citation_model_key=citation_model_key,
             ).__aiter__()
 
             async for event in _stream_with_heartbeat(ait):
@@ -322,7 +418,7 @@ async def stream_assistant_chat(
                     last_sources = event.get("sources")
                 if etype == "done":
                     _record_assistant_usage(event, body, user)
-                if _should_persist(event, user, session):
+                if body.brief_survey is None and _should_persist(event, user, session):
                     logger.info(
                         "[deepres] done event: deep=%s synthesis_len=%d sources_count=%d",
                         body.deep_research,
@@ -360,6 +456,7 @@ def _should_persist(event, user, session) -> bool:
     """Check if this event should trigger conversation persistence."""
     return (
         event.get("type") == "done"
+        and event.get("section_written") is not False
         and _USER_MODULE
         and user is not None
         and session is not None

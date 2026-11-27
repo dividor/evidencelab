@@ -52,6 +52,11 @@ def configured(monkeypatch):
             module, "UI_MODEL_COMBOS", {"Bedrock": COMBO}, raising=False
         )
     monkeypatch.setattr(db_config, "get_default_model_combo", lambda: "Bedrock")
+    monkeypatch.setattr(
+        db_config,
+        "get_application_config",
+        lambda: {"assistant": {"citation_check_model": "nova-pro"}},
+    )
 
 
 def _group(name, **settings):
@@ -131,6 +136,7 @@ class TestConfigDefaults:
             "summary": "nova-2-lite",
             "brief": "nova-pro",
             "judge": "sonnet",
+            "citation_check": "nova-pro",
         }
 
     def test_defaults_when_no_assistant_or_judge_then_summary_model(self):
@@ -138,11 +144,26 @@ class TestConfigDefaults:
         assert llm_choice.combo_default(llm_choice.BRIEF, combo) == "nova-2-lite"
         assert llm_choice.combo_default(llm_choice.JUDGE, combo) == "nova-2-lite"
 
+    @pytest.mark.asyncio
+    async def test_citation_check_uses_group_model_or_config_and_skips_resolution_when_off(
+        self, monkeypatch
+    ):
+        from unittest.mock import AsyncMock
+
+        group_model = AsyncMock(return_value="nova-2-lite")
+        monkeypatch.setattr(assistant_routes, "user_group_choice", group_model)
+        assert await assistant_routes._citation_model(False, None, None) is None
+        group_model.assert_not_awaited()
+        assert await assistant_routes._citation_model(True, None, None) == "nova-2-lite"
+        group_model.return_value = None
+        assert await assistant_routes._citation_model(True, None, None) == "nova-pro"
+
     def test_defaults_route_when_called_then_returns_config_models(self):
         assert get_config_llm_defaults().model_dump() == {
             "summary": "nova-2-lite",
             "brief": "nova-pro",
             "judge": "sonnet",
+            "citation_check": "nova-pro",
         }
 
     def test_llms_route_when_model_refuses_temperature_then_flagged(self, monkeypatch):
@@ -285,6 +306,24 @@ class TestRoutesUseGroupChoice:
                 body, "nova-2-lite", object(), object()
             )
             == "sonnet"
+        )
+
+    @pytest.mark.asyncio
+    async def test_brief_stream_when_no_request_model_uses_site_configuration(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(assistant_routes, "user_group_choice", _choice(None))
+        monkeypatch.setattr(
+            assistant_routes, "config_defaults", lambda: {"brief": "site-writer"}
+        )
+        body = AssistantChatRequest(query="q", usage_context="brief")
+        assert (
+            await assistant_routes._purpose_model_key(body, None, None, None)
+            == "site-writer"
+        )
+        assert (
+            await assistant_routes._purpose_model_key(body, "chosen", None, None)
+            == "chosen"
         )
 
     @pytest.mark.asyncio

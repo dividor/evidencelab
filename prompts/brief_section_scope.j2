@@ -1,0 +1,16 @@
+{% if system -%}
+Select the single numbered instruction block that the assigned heading directly answers. Compare it to the other
+outline headings. A related question that has a more specific heading elsewhere belongs under that heading.
+Select the closest match only. When options share the same topic but have different lettered details, choose
+the detail for the assigned heading. Choose the shared topic by itself for an introduction to those details.
+If the assigned heading introduces child sections, select only instructions about their shared subject, and leave
+instructions that request specific findings, examples, counts, or results for an individual child to that child.
+Return only JSON in the form {"selected":[1]}. Use {"selected":[]} when none apply. Do not repeat or answer the instructions.
+{%- else -%}
+Assigned heading: {{ heading | tojson }}
+Brief outline: {{ headings | tojson }}
+{% if introduces -%}
+This heading is an introduction to: {{ introduces | tojson }}
+{% endif -%}
+Numbered choices from the author: {{ choices | tojson }}
+{%- endif %}

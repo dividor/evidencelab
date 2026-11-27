@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { SearchResult, SourceReference } from '../../types/api';
-import { CitedMarkdown, CitedReferences } from '../citations/CitedContent';
+import { CitedMarkdown, CitedReferences, RequestCitationHighlight } from '../citations/CitedContent';
 import { IconClock, IconCopy, IconDownload, IconEdit, IconFactCheck, IconRefresh, IconShare, IconSparkle } from './BriefIcons';
 import { BriefAskAi } from './BriefAskAi';
+import { BriefSectionFrame } from './BriefSectionFrame';
 import { BriefFactCheckTooltip } from './BriefFactCheckTooltip';
 import { useFactMarkPainter, UseBriefFactCheckReturn } from './useBriefFactCheck';
 import type { BriefFactCheckEvidence, BriefFactCheckMark } from '../../types/testing';
@@ -82,7 +83,7 @@ interface SectionViewProps {
   // Viewer-only (shared brief): no editing or AI actions.
   readOnly?: boolean;
   // Hover on an un-enriched citation asks for that source to be highlighted.
-  onRequestHighlight?: (source: SourceReference) => void;
+  onRequestHighlight?: RequestCitationHighlight;
   // Commented passages in this section, and the thread currently open.
   marks?: CommentMark[];
   onOpenThread?: (threadId: string) => void;
@@ -226,7 +227,10 @@ const GuidancePanel: React.FC<{
       <div className="brief-regen-actions">
         <button
           className="brief-btn brief-btn-primary"
-          onClick={() => brief.regenerate(section.id, (section.guidance || '').trim() || null)}
+          onClick={(event) => {
+            event.currentTarget.closest('section')?.querySelector<HTMLInputElement>('.brief-doc-section-title')?.focus({ preventScroll: true });
+            brief.regenerate(section.id, (section.guidance || '').trim() || null);
+          }}
         >
           {isPending ? 'Research section' : 'Re-research section'}
         </button>
@@ -248,6 +252,7 @@ const SectionTools: React.FC<{
   showLog: boolean;
   onToggleEdit: () => void;
   onRegenerate: () => void;
+  regenerationFailed: boolean;
   onAiEdit: () => void;
   onAiUpdate: () => void;
   onOpenLog: () => void;
@@ -258,6 +263,7 @@ const SectionTools: React.FC<{
   showLog,
   onToggleEdit,
   onRegenerate,
+  regenerationFailed,
   onAiEdit,
   onAiUpdate,
   onOpenLog,
@@ -267,7 +273,11 @@ const SectionTools: React.FC<{
       label={`Ask AI for ${title}`}
       buttonClass="brief-regen-btn"
       actions={[
-        { label: 'Regenerate', icon: IconRefresh, onSelect: onRegenerate },
+        {
+          label: regenerationFailed ? 'Research settings' : 'Regenerate',
+          icon: IconRefresh,
+          onSelect: onRegenerate,
+        },
         {
           label: 'Edit',
           icon: IconEdit,
@@ -381,7 +391,7 @@ const SectionDoneBody: React.FC<{
   showingChanges: boolean;
   onToggleChanges: () => void;
   onSourceClick: (source: SourceReference) => void;
-  onRequestHighlight?: (source: SourceReference) => void;
+  onRequestHighlight?: RequestCitationHighlight;
   marks?: CommentMark[];
   onOpenThread?: (threadId: string) => void;
   activeThreadId?: string | null;
@@ -577,8 +587,43 @@ const pendingResearchMode = (
   anyResearching: boolean,
   readOnly: boolean,
 ): PendingMode => {
-  if (section.status !== 'pending' || panelOpen || anyResearching || readOnly) return 'none';
+  if (section.status !== 'pending' || section.researchFailure || panelOpen || anyResearching || readOnly) {
+    return 'none';
+  }
   return section.sample ? 'button' : 'inline';
+};
+
+const SectionResearchFailure: React.FC<{
+  section: BriefSection;
+  brief: UseBriefReturn;
+  readOnly: boolean;
+  panelOpen: boolean;
+  editingAi: boolean;
+  busy: boolean;
+}> = ({ section, brief, readOnly, panelOpen, editingAi, busy }) => {
+  const failure = section.researchFailure;
+  if (!failure || section.status === 'researching') return null;
+  const action = failure.mode === 'generate' ? 'regeneration' : 'update';
+  const retry = () => {
+    if (failure.mode === 'update') {
+      return brief.reviseSection(section.id, 'update', failure.instruction ?? null);
+    }
+    return brief.regenerate(section.id, section.guidance?.trim() || null);
+  };
+  return (
+    <div className="brief-section-warning brief-research-failure">
+      <div role="status">
+        <strong>AI {action} failed</strong>
+        <div>{failure.message}</div>
+        {section.content && <div>You’re viewing the previous draft.</div>}
+      </div>
+      {!readOnly && !panelOpen && !editingAi && (
+        <button type="button" className="brief-regen-btn" disabled={busy} onClick={retry}>
+          <IconRefresh /> Retry {action}
+        </button>
+      )}
+    </div>
+  );
 };
 
 const BriefSectionView: React.FC<SectionViewProps> = ({
@@ -607,13 +652,14 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   const changes = useSectionChanges(section, !!readOnly);
   const panelOpen = brief.regenFor === section.id;
   const isDone = section.status === 'done';
-  const anyResearching = brief.sections.some((s) => s.status === 'researching');
+  const anyResearching = brief.researching;
   const pendingMode = pendingResearchMode(section, panelOpen, anyResearching, !!readOnly);
   const audit = section.audit ?? [];
   const auditCount = audit.length;
   // Signed-in users who can open the brief see the Log; a brief kept only in
   // this browser has no stored history to show.
   const showLog = brief.remote;
+  const openRegeneration = () => brief.openRegen(section.id);
   const submitAi = () => {
     const panel = aiPanel;
     if (!panel) return;
@@ -624,7 +670,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   };
 
   return (
-    <section
+    <BriefSectionFrame researching={section.status === 'researching'}
       id={`brief-section-${section.id}`}
       data-brief-section-id={section.id}
       className={`brief-doc-section${section.level === 2 ? ' brief-doc-section-sub' : ''}`}
@@ -646,6 +692,15 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
         )}
       </div>
 
+      <SectionResearchFailure
+        section={section}
+        brief={brief}
+        readOnly={readOnly}
+        panelOpen={panelOpen}
+        editingAi={Boolean(aiPanel)}
+        busy={anyResearching}
+      />
+
       {/* The owner gets the section tools; a signed-in viewer gets the Log. */}
       {isDone && readOnly && (
         <ViewerLogButton show={showLog} auditCount={auditCount} onOpen={() => setLogOpen(true)} />
@@ -657,7 +712,8 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
           auditCount={auditCount}
           showLog={showLog}
           onToggleEdit={() => setEditing((v) => !v)}
-          onRegenerate={() => brief.openRegen(section.id)}
+          onRegenerate={openRegeneration}
+          regenerationFailed={section.researchFailure?.mode === 'generate'}
           onAiEdit={() => {
             setAiText('');
             setAiPanel((p) => (p === 'edit' ? null : 'edit'));
@@ -756,7 +812,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
           onFactPointerLeave={onFactPointerLeave}
         />
       )}
-    </section>
+    </BriefSectionFrame>
   );
 };
 
@@ -927,7 +983,7 @@ interface BriefDocumentProps {
 const ResearchStatusBar: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => {
   const current = brief.sections.find((s) => s.status === 'researching');
   if (!current) return null;
-  const total = brief.sections.length;
+  const total = brief.regeneration?.total ?? brief.sections.length;
   return (
     <div className="brief-status-bar" role="status">
       <span className="brief-spinner brief-status-bar-spinner" />
@@ -935,7 +991,9 @@ const ResearchStatusBar: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => {
         <div className="brief-status-bar-label">
           {current.revising ? 'Revising' : 'Researching'} “{current.title}”
           <span className="brief-status-bar-count">
-            {brief.doneCount}/{total} sections
+            {brief.regenerating
+              ? `${brief.updatedCount} of ${total} updated`
+              : `${brief.doneCount}/${total} sections`}
           </span>
         </div>
         <div className="brief-status-bar-track">
@@ -1037,7 +1095,9 @@ const ResearchProgress: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => (
     <div className="brief-doc-progress-row">
       <span>Researching…</span>
       <span className="brief-doc-progress-right">
-        {brief.doneCount}/{brief.sections.length}
+        {brief.regenerating
+          ? `${brief.updatedCount} of ${brief.regeneration?.total} updated`
+          : `${brief.doneCount}/${brief.sections.length}`}
         <button className="brief-stop-btn" onClick={brief.stopResearch} title="Stop all research">
           ■ Stop
         </button>
@@ -1048,6 +1108,30 @@ const ResearchProgress: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => (
     </div>
   </div>
 );
+
+const RegenerationResult: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => {
+  const result = brief.regeneration;
+  if (brief.regenerating || (!result && !brief.failedGenerationCount)) return null;
+  const canRetry = brief.canEdit && brief.failedGenerationCount > 0;
+  return (
+    <div className="brief-doc-progress brief-regeneration-result">
+      <div role="status">
+        {result && <div>Updated {brief.updatedCount} of {result.total} sections.</div>}
+        {canRetry && <div>Sections that failed are marked in Contents.</div>}
+      </div>
+      {canRetry && (
+        <button
+          type="button"
+          className="brief-regen-btn"
+          disabled={brief.researching}
+          onClick={() => void brief.retryFailedSections()}
+        >
+          <IconRefresh /> Retry failed sections ({brief.failedGenerationCount})
+        </button>
+      )}
+    </div>
+  );
+};
 
 // The outline-generation activity log (queries run, sources read).
 const OutlineLog: React.FC<{ brief: UseBriefReturn; onClose: () => void }> = ({ brief, onClose }) => (
@@ -1102,7 +1186,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   // Viewer-only: a brief shared with (not owned by) this user renders read-only.
   const readOnly = !brief.canEdit;
   // Structural edits (reorder/add/remove via the TOC) lock while research runs.
-  const canEditStructure = !readOnly && !sections.some((s) => s.status === 'researching');
+  const canEditStructure = !readOnly && !brief.researching;
 
   // A cited excerpt from the Fact Checker's card, opened the same way.
   const handleEvidenceClick = (source: BriefFactCheckEvidence) => {
@@ -1202,7 +1286,8 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           showComments={showComments}
           onToggleComments={onToggleComments}
         />
-        {brief.stage === 'research' && <ResearchProgress brief={brief} />}
+        {brief.stage === 'research' && brief.researching && <ResearchProgress brief={brief} />}
+        <RegenerationResult brief={brief} />
         {logOpen && hasOutlineLog && <OutlineLog brief={brief} onClose={() => setLogOpen(false)} />}
       </div>
 
@@ -1216,8 +1301,8 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           brief={brief}
           onSourceClick={handleSourceClick}
           readOnly={readOnly}
-          onRequestHighlight={(src) =>
-            src.chunkId && brief.requestSourceHighlight(s.id, src.chunkId)
+          onRequestHighlight={(src, claim) =>
+            src.chunkId ? brief.requestSourceHighlight(s.id, src.chunkId, claim) : undefined
           }
           marks={showComments === false ? undefined : commentMarks?.get(s.id)}
           onOpenThread={onOpenThread}

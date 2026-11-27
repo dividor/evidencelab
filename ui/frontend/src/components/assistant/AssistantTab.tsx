@@ -22,6 +22,8 @@ interface AssistantTabProps {
   rerankerModel?: string | null;
   searchSettings?: AssistantSearchSettings | null;
   exampleQueries?: string[];
+  defaultDeepResearch?: boolean;
+  modelsReady?: boolean;
   onResultClick?: (result: SearchResult) => void;
 }
 
@@ -34,6 +36,8 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   rerankerModel,
   searchSettings,
   exampleQueries,
+  defaultDeepResearch = false,
+  modelsReady = true,
   onResultClick,
 }) => {
   const auth = useAuth();
@@ -44,7 +48,9 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
-  const [deepResearch, setDeepResearch] = useState(false);
+  const [requestError, setRequestError] = useState('');
+  const [deepResearch, setDeepResearch] = useState(defaultDeepResearch);
+  useEffect(() => setDeepResearch(defaultDeepResearch), [defaultDeepResearch]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingPhase, setStreamingPhase] = useState<string>('');
   const [streamingContent, setStreamingContent] = useState('');
@@ -143,6 +149,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
         setSearchQueries([]);
         setToolCalls([]);
         setActiveThreadId(threadId);
+        setRequestError('');
         setMessages(
           data.messages.map((m: any) => ({
             id: m.id,
@@ -208,6 +215,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   }, []);
 
   const handleNewChat = useCallback(() => {
+    setRequestError('');
     // Stop any in-progress stream
     abortRef.current?.abort();
     abortRef.current = null;
@@ -238,7 +246,8 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   }, [onResultClick]);
 
   const submitQuery = useCallback(async (query: string) => {
-    if (!query.trim() || isStreaming) return;
+    if (!query.trim() || isStreaming || !modelsReady) return;
+    setRequestError('');
 
     // Add user message
     const userMsg: ChatMessage = {
@@ -291,7 +300,13 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
         }
         setLastResponseDeep(deepResearch);
       },
-      onError: (message) => {
+      onError: (message, canResend) => {
+        if (canResend) {
+          setMessages((prev) => prev.filter((item) => item.id !== userMsg.id));
+          setInputValue(userMsg.content);
+          setRequestError(message);
+          return;
+        }
         setMessages((prev) => [
           ...prev,
           {
@@ -395,7 +410,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
       setStreamingPhase('');
       abortRef.current = null;
     }
-  }, [isStreaming, dataSource, activeThreadId, assistantModelConfig, rerankerModel, searchSettings, deepResearch, isAuthenticated, loadThreads]);
+  }, [isStreaming, modelsReady, dataSource, activeThreadId, assistantModelConfig, rerankerModel, searchSettings, deepResearch, isAuthenticated, loadThreads]);
 
   const handleSubmit = useCallback(() => {
     submitQuery(inputValue);
@@ -494,6 +509,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
                   <button
                     key={q}
                     className="assistant-example-btn"
+                    disabled={!modelsReady}
                     onClick={() => submitQuery(q)}
                   >
                     {capitalize(q)}
@@ -522,10 +538,12 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
 
         <ChatInput
           value={inputValue}
+          error={requestError}
           onChange={setInputValue}
           onSubmit={handleSubmit}
           onStop={handleStop}
-          disabled={isStreaming}
+          disabled={isStreaming || !modelsReady}
+          placeholder={modelsReady ? undefined : 'Loading research settings…'}
           isStreaming={isStreaming}
           footerLeft={chatFooterLinks}
         />
