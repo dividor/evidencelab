@@ -124,7 +124,7 @@ export interface TestResult {
   id: string;
   experiment_id: string;
   run_id?: string | null;
-  test_case_id: string;
+  test_case_id: string | null;
   status: ResultStatus;
   score?: number | null;
   actual_output?: Record<string, unknown> | null;

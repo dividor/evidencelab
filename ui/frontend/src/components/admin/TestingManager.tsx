@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { ExperimentDetail as ExperimentDetailType, TestDataset, TestExperiment } from '../../types/testing';
 import DatasetList from './testing/DatasetList';
+import BriefEvaluationTemplates from './testing/BriefEvaluationTemplates';
 import DatasetEditor from './testing/DatasetEditor';
 import ExperimentList from './testing/ExperimentList';
 import ExperimentEditor from './testing/ExperimentEditor';
@@ -25,8 +26,9 @@ const DatasetsView: React.FC<DatasetsViewProps> = ({ onViewExperiments }) => {
   const [selected, setSelected] = useState<TestDataset | null>(null);
 
   if (selected) {
+    const Editor = selected.capability === 'brief' ? BriefEvaluationTemplates : DatasetEditor;
     return (
-      <DatasetEditor
+      <Editor
         dataset={selected}
         onBack={() => setSelected(null)}
         onViewExperiments={onViewExperiments}

@@ -290,6 +290,19 @@ const ResultQuery: React.FC<{
   );
 };
 
+function TemplateSettings({ assignment }: { assignment?: Record<string, unknown> }) {
+  if (!assignment?.template_name) return null;
+  const voice = assignment.voice_profile as { name: string; instructions: string } | null;
+  return <details className="testing-case-block">
+    <summary>Template settings used for this section</summary>
+    <p><strong>Template</strong> {str(assignment.template_name)}</p>
+    {str(assignment.instructions) && <p><strong>Brief prompt</strong> {str(assignment.instructions)}</p>}
+    {str(assignment.guidance) && <p><strong>Section prompt</strong> {str(assignment.guidance)}</p>}
+    {typeof assignment.target_words === 'number' && <p><strong>Target words</strong> {assignment.target_words}</p>}
+    {voice && <p><strong>Voice and tone</strong> {voice.name} · {voice.instructions}</p>}
+  </details>;
+}
+
 const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> }> = ({
   result,
   input,
@@ -310,7 +323,7 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
           {expanded ? '▾' : '▸'}
         </td>
         <td className="testing-result-case" title={topic}>
-          {heading || topic || '—'}
+          {assignment?.template_name ? `${assignment.template_name} · ` : ''}{heading || topic || '—'}
         </td>
         <td>
           <span
@@ -331,6 +344,7 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
             <div className="testing-result-detail">
               <ResultQuery topic={topic} heading={heading} input={input} />
               <GeneratedSection result={result} />
+              <TemplateSettings assignment={assignment} />
               {warnings.length > 0 && (
                 <div className="testing-case-block">
                   <span className="testing-case-label">Warnings</span>
@@ -557,7 +571,7 @@ const RunSection: React.FC<{
             </thead>
             <tbody>
               {results.map((r) => (
-                <ResultRow key={r.id} result={r} input={caseInputs[r.test_case_id]} />
+                <ResultRow key={r.id} result={r} input={r.test_case_id ? caseInputs[r.test_case_id] : undefined} />
               ))}
               {results.length === 0 && (
                 <tr>

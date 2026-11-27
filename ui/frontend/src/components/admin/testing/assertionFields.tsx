@@ -48,7 +48,8 @@ export const summarizeAssertion = (assertion: Assertion): string => {
     .filter(([key]) => key !== 'type')
     .map(([key, val]) => `${key}=${formatParamValue(val)}`)
     .join(', ');
-  return params ? `${assertion.type} (${params})` : assertion.type;
+  const name = assertion.type.startsWith('brief_') ? getAssertionSpec('brief', assertion.type)?.label || assertion.type : assertion.type;
+  return params ? `${name} (${params})` : name;
 };
 
 interface FieldInputProps {

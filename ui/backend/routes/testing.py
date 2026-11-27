@@ -68,6 +68,10 @@ from ui.backend.services.ai_daily_limit import require_ai_allowance
 from ui.backend.services.brief_citation_model import BriefCitationError
 from ui.backend.services.brief_fact_check import brief_changed
 from ui.backend.services.brief_sharing import user_group_ids
+from ui.backend.services.brief_template_evaluation import (
+    TemplateSelectionError,
+    read_selected_templates,
+)
 from ui.backend.services.citation_check_runner import (
     build_review_workbook,
     count_cited_passages,
@@ -147,9 +151,12 @@ async def _get_experiment(
 
 
 async def _dataset_read(session: AsyncSession, dataset: TestDataset) -> TestDatasetRead:
-    num_cases = await session.scalar(
-        select(func.count(TestCase.id)).where(TestCase.dataset_id == dataset.id)
-    )
+    from ui.backend.auth.models import BriefTemplate
+
+    query = select(func.count(TestCase.id)).where(TestCase.dataset_id == dataset.id)
+    if dataset.capability == "brief":
+        query = select(func.count(BriefTemplate.id))
+    num_cases = await session.scalar(query)
     last_exp = await session.scalar(
         select(TestExperiment)
         .where(TestExperiment.dataset_id == dataset.id)
@@ -296,6 +303,8 @@ async def create_case(
     session: AsyncSession = Depends(get_async_session),
 ) -> TestCase:
     dataset = await _get_dataset(session, dataset_id)
+    if dataset.capability == "brief":
+        raise HTTPException(422, "Create a Brief template to add an evaluation record.")
     case = TestCase(
         dataset_id=dataset_id,
         input=_case_input(dataset, body.input),
@@ -349,6 +358,14 @@ async def delete_case(
 # ---------------------------------------------------------------------------
 
 
+async def _validate_templates(session, dataset, config, matrix):
+    if dataset.capability == "brief":
+        try:
+            await read_selected_templates(session, config, matrix or {})
+        except TemplateSelectionError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+
 @router.post(
     "/experiments", response_model=TestExperimentRead, status_code=201, tags=["testing"]
 )
@@ -360,7 +377,8 @@ async def create_experiment(
     session: AsyncSession = Depends(get_async_session),
 ) -> TestExperiment:
     """Create a draft experiment (define dataset + per-row assertions); not run."""
-    await _get_dataset(session, body.dataset_id)
+    dataset = await _get_dataset(session, body.dataset_id)
+    await _validate_templates(session, dataset, body.config, body.case_expectations)
     experiment = TestExperiment(
         dataset_id=body.dataset_id,
         name=body.name,
@@ -390,6 +408,17 @@ async def update_experiment(
     experiment = await _get_experiment(session, experiment_id)
     if experiment.status == EXPERIMENT_RUNNING:
         raise HTTPException(status_code=409, detail="Experiment is running")
+    if body.config is not None or body.case_expectations is not None:
+        await _validate_templates(
+            session,
+            await _get_dataset(session, experiment.dataset_id),
+            body.config if body.config is not None else experiment.config,
+            (
+                body.case_expectations
+                if body.case_expectations is not None
+                else experiment.case_expectations
+            ),
+        )
     if body.name is not None:
         experiment.name = body.name
     if body.config is not None:

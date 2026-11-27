@@ -19,7 +19,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ui.backend.auth.db import get_async_session
@@ -37,11 +37,12 @@ from ui.backend.auth.schemas import (
     BriefTemplateHeading,
     BriefTemplateRead,
     BriefTemplateUpdate,
+    EvaluationTemplateRead,
     VoiceProfileCreate,
     VoiceProfileRead,
     VoiceProfileUpdate,
 )
-from ui.backend.auth.users import current_active_user
+from ui.backend.auth.users import current_active_user, current_superuser
 from ui.backend.services.brief_sharing import (
     ShareTarget,
     add_share,
@@ -329,6 +330,10 @@ async def update_template(
 ):
     """Update a template (owner only)."""
     template = await _owned_template(session, template_id, user)
+    return await _save_template(session, template, body, user)
+
+
+async def _save_template(session, template, body, user):
     sent = body.model_fields_set
     headings = _headings_json(body.headings) if body.headings is not None else None
     new_voice = body.voice_profile_id if "voice_profile_id" in sent else None
@@ -337,7 +342,7 @@ async def update_template(
     await _require_usable_voices(session, user, named - already)
     if body.name is not None:
         template.name = body.name
-    if body.description is not None:
+    if "description" in sent:
         template.description = body.description
     if headings is not None:
         template.headings = headings
@@ -357,6 +362,86 @@ async def update_template(
         session, BriefTemplateShare, BriefTemplateShare.template_id, [template.id]
     )
     return _template_read(template, True, None, counts.get(template.id, 0))
+
+
+@router.get("/testing/brief-templates", response_model=list[EvaluationTemplateRead])
+async def evaluation_templates(
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_async_session),
+):
+    rows = (
+        await session.execute(
+            select(
+                BriefTemplate.id,
+                BriefTemplate.name,
+                BriefTemplate.description,
+                BriefTemplate.user_id,
+                func.jsonb_array_length(BriefTemplate.headings).label("section_count"),
+            ).order_by(BriefTemplate.name, BriefTemplate.id)
+        )
+    ).all()
+    names = await owner_names(session, (t.user_id for t in rows))
+    return [
+        EvaluationTemplateRead(
+            id=t.id,
+            name=t.name,
+            description=t.description,
+            section_count=t.section_count,
+            owner_name=names.get(t.user_id),
+            can_delete=t.user_id == admin.id,
+        )
+        for t in rows
+    ]
+
+
+async def _evaluation_template_owner(session, template_id):
+    template = await session.get(BriefTemplate, template_id)
+    if template is None:
+        raise HTTPException(404, _TEMPLATE_NOT_FOUND)
+    return template, await session.get(User, template.user_id)
+
+
+@router.get("/testing/brief-templates/{template_id}", response_model=BriefTemplateRead)
+async def evaluation_template(
+    template_id: uuid.UUID,
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_async_session),
+):
+    template, _ = await _evaluation_template_owner(session, template_id)
+    return _template_read(template, True, None, 0)
+
+
+@router.get(
+    "/testing/brief-templates/{template_id}/voices",
+    response_model=list[VoiceProfileRead],
+)
+async def evaluation_template_voices(
+    template_id: uuid.UUID,
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_async_session),
+):
+    template, owner = await _evaluation_template_owner(session, template_id)
+    profiles = await list_voice_profiles(owner, session)
+    missing = _voice_ids(template.headings, template.voice_profile_id) - {
+        p.id for p in profiles
+    }
+    if missing:
+        existing = await session.scalars(
+            select(VoiceProfile).where(VoiceProfile.id.in_(missing))
+        )
+        profiles.extend(_profile_read(p, False, None, 0) for p in existing)
+    return profiles
+
+
+@router.put("/testing/brief-templates/{template_id}", response_model=BriefTemplateRead)
+async def edit_evaluation_template(
+    template_id: uuid.UUID,
+    body: BriefTemplateUpdate,
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_async_session),
+):
+    template, owner = await _evaluation_template_owner(session, template_id)
+    return await _save_template(session, template, body, owner)
 
 
 @router.post(

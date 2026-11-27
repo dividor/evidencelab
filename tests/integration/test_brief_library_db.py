@@ -577,3 +577,148 @@ async def test_brief_shared_with_a_group_is_viewable_by_members(session):
             brief_id=brief.id, request=NO_REQUEST, user=member, session=session
         )
     )
+
+
+async def test_evaluation_admin_edits_original_and_keeps_owner_voice_permissions(
+    session,
+):
+    admin, owner = await _user(session, "admin"), await _user(session, "other")
+    admin.is_superuser = True
+    selected = await _voice(session, owner, "Research notes")
+    private = await _voice(session, admin, "Personal notes")
+    template = await _template(session, owner, voice_profile_id=selected.id)
+    listed = await brief_library.evaluation_templates(admin, session)
+    assert any(
+        t.id == template.id
+        and t.section_count == 2
+        and not t.can_delete
+        and t.owner_name
+        for t in listed
+    )
+    original = await brief_library.evaluation_template(template.id, admin, session)
+    assert original.id == template.id and original.can_edit
+    profiles = await brief_library.evaluation_template_voices(
+        template.id, admin, session
+    )
+    assert {p.id for p in profiles} == {selected.id}
+    with pytest.raises(HTTPException) as denied:
+        await brief_library.update_template(
+            template.id, BriefTemplateUpdate(name="Other"), admin, session
+        )
+    assert denied.value.status_code == 404
+    with pytest.raises(HTTPException) as disallowed:
+        await brief_library.edit_evaluation_template(
+            template.id,
+            BriefTemplateUpdate(voice_profile_id=private.id),
+            admin,
+            session,
+        )
+    assert disallowed.value.status_code == 400
+    await brief_library.edit_evaluation_template(
+        template.id, BriefTemplateUpdate(prompt="Use the interviews."), admin, session
+    )
+    assert (await brief_library.list_templates(owner, session))[
+        0
+    ].prompt == "Use the interviews."
+
+
+async def test_template_experiment_records_each_section_and_reloads_current_templates(
+    session, monkeypatch
+):
+    from sqlalchemy import select
+
+    from ui.backend.auth.testing_models import TestDataset, TestExperiment, TestResult
+    from ui.backend.services import brief_experiment, test_runner
+
+    owner = await _user(session, "editor")
+    voice = await _voice(session, owner, "Committee report")
+    first = await brief_library.create_template(
+        BriefTemplateCreate(
+            name="Maintenance",
+            prompt="Read the logs.",
+            voice_profile_id=voice.id,
+            target_words=200,
+            headings=[
+                _heading("Overview"),
+                BriefTemplateHeading(
+                    title="Costs",
+                    sub=True,
+                    prompt="Use annual totals.",
+                    target_words=80,
+                ),
+            ],
+        ),
+        owner,
+        session,
+    )
+    second = await brief_library.create_template(
+        BriefTemplateCreate(
+            name="Separate review", headings=[_heading("Availability")]
+        ),
+        owner,
+        session,
+    )
+    ds = TestDataset(name="Manual database", capability="brief", data_source="uneg")
+    session.add(ds)
+    await session.flush()
+    experiment = TestExperiment(
+        dataset_id=ds.id,
+        name="Templates",
+        status="draft",
+        config={"brief_topic": "Depot operations"},
+        case_expectations={
+            "columns": [{"type": "brief_structure"}],
+            "cases": {
+                str(t.id): {"active": True, "cols": [True]} for t in [first, second]
+            },
+        },
+    )
+    session.add(experiment)
+    await session.flush()
+    observed = []
+
+    async def research(**args):
+        observed.append(args)
+        yield {"type": "token", "token": f"Evidence for {args['query']} [1]."}
+        yield {"type": "sources", "sources": [{"index": 1, "text": "A depot log."}]}
+        yield {"type": "done", "section_written": True}
+
+    monkeypatch.setattr(brief_experiment, "stream_research_response", research)
+    monkeypatch.setattr("ui.backend.utils.app_state.get_db_for_source", lambda _: None)
+    monkeypatch.setattr("ui.backend.utils.app_state.get_pg_for_source", lambda _: None)
+    await test_runner._execute(session, experiment)
+    assert [a["query"] for a in observed] == ["Overview", "Costs", "Availability"]
+    assert [a["target_words"] for a in observed] == [120, 80, None]
+    assert observed[0]["introduces_sub_sections"] == ["Costs"]
+    assert (
+        observed[1]["brief_section"].outline[0].content == "Evidence for Overview [1]."
+    )
+    assert observed[1]["brief_section"].instructions == "Read the logs."
+    assert observed[1]["brief_section"].voice_instructions == voice.instructions
+    assert observed[1]["brief_section"].focus == "Use annual totals."
+    assert len(observed[2]["brief_section"].outline) == 1
+    await brief_library.update_template(
+        first.id,
+        BriefTemplateUpdate(name="Revised", prompt="Read the new logs."),
+        owner,
+        session,
+    )
+    await test_runner._execute(session, experiment)
+    saved = (
+        await session.scalars(
+            select(TestResult)
+            .where(TestResult.experiment_id == experiment.id)
+            .order_by(TestResult.created_at)
+        )
+    ).all()
+    assert len(saved) == 6 and all(r.test_case_id is None for r in saved)
+    assert [r.actual_output["assignment"]["template_name"] for r in saved] == [
+        "Maintenance",
+        "Maintenance",
+        "Separate review",
+        "Revised",
+        "Revised",
+        "Separate review",
+    ]
+    assert saved[0].actual_output["assignment"]["instructions"] == "Read the logs."
+    assert saved[3].actual_output["assignment"]["instructions"] == "Read the new logs."

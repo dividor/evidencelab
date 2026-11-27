@@ -3,7 +3,7 @@
 import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
@@ -453,49 +453,13 @@ async def test_manual_sibling_can_duplicate_first_claim_and_distinct_finding_sur
         )
 
 
-def test_default_cases_seed_editable_experiments_for_their_configured_libraries(
-    monkeypatch,
-):
+def test_installing_brief_evaluations_does_not_insert_examples():
     path = ROOT / "alembic/versions/0044_install_brief_starters.py"
-    spec = importlib.util.spec_from_file_location("seed_brief_cases", path)
+    spec = importlib.util.spec_from_file_location("brief_migration", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    inserted = []
-    monkeypatch.setattr(
-        mod,
-        "_insert",
-        lambda table, rows: inserted.extend((table.name, row) for row in rows),
-    )
-    monkeypatch.setattr(
-        "pipeline.db.config.load_datasources_config",
-        lambda: {
-            "datasources": {"a": {"data_subdir": "uneg"}, "worldbank": {}, "other": {}}
-        },
-    )
-    monkeypatch.setattr(mod.op, "get_bind", lambda: MagicMock(scalar=lambda _: False))
+    # A fresh install performs no database work in this revision.
     mod.upgrade()
-    cases = [row for table, row in inserted if table == "test_cases"]
-    experiments = [row for table, row in inserted if table == "test_experiments"]
-    assert sorted(len(e["case_expectations"]["cases"]) for e in experiments) == [3, 7]
-    assert len(cases) == 10 and len({c["id"] for c in cases}) == 10
-    for c in cases:
-        case = brief.BriefCase.model_validate(c["input"])
-        assert any(s.content for s in [*case.siblings, *case.children])
-        assert case.reference_standard["source"]["text"]
-        assert case.reference_standard["scope_notes"] == c["notes"]
-        assert [x["supported"] for x in case.reference_standard["controls"]] == [
-            True,
-            False,
-        ]
-    for ex in experiments:
-        matrix = ex["case_expectations"]
-        assert {"brief_structure", "brief_length", "brief_overlap"} <= {
-            a["type"] for a in matrix["columns"]
-        }
-        assert all(
-            len(row["cols"]) == len(matrix["columns"])
-            for row in matrix["cases"].values()
-        )
 
 
 @pytest.mark.asyncio

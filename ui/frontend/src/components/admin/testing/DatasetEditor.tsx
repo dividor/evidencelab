@@ -4,7 +4,6 @@ import * as XLSX from 'xlsx-js-style';
 import API_BASE_URL from '../../../config';
 import type { TestCase, TestDataset } from '../../../types/testing';
 import ConfirmModal from '../ConfirmModal';
-import BriefCaseEditor from './BriefCaseEditor';
 import CaseEditor, { CasePayload } from './CaseEditor';
 import { SAMPLE_DATASET_CSV } from './csv';
 
@@ -203,8 +202,6 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({ dataset, onBack }) => {
     }
   };
 
-  const brief = dataset.capability === 'brief';
-  const Editor = brief ? BriefCaseEditor : CaseEditor;
   const editingCase = cases.find((c) => c.id === editingId) || null;
 
   if (loading) return <div className="admin-loading">Loading...</div>;
@@ -249,7 +246,7 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({ dataset, onBack }) => {
           </p>
           {!creating && !editingCase && (
             <div className="testing-dataset-actions" style={{ marginLeft: 'auto' }}>
-              {!brief && <div className="testing-upload-group">
+              <div className="testing-upload-group">
                 <button
                   className="btn-sm"
                   onClick={() => fileRef.current?.click()}
@@ -264,7 +261,7 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({ dataset, onBack }) => {
                 >
                   Download case CSV example
                 </button>
-              </div>}
+              </div>
               <button
                 className="btn-sm btn-primary"
                 onClick={() => setCreating(true)}
@@ -289,7 +286,7 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({ dataset, onBack }) => {
 
         {creating && (
           <div className="testing-case-editor-wrap">
-            <Editor
+            <CaseEditor
               initialCase={null}
               dataSource={dataset.data_source}
               saving={saving}
@@ -302,7 +299,7 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({ dataset, onBack }) => {
 
         {editingCase && (
           <div className="testing-case-editor-wrap">
-            <Editor
+            <CaseEditor
               key={editingCase.id}
               initialCase={editingCase}
               dataSource={dataset.data_source}
@@ -320,8 +317,8 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({ dataset, onBack }) => {
           <table className="admin-table testing-cases-table">
             <thead>
               <tr>
-                <th>{brief ? 'Topic' : 'Query'}</th>
-                <th>{brief ? 'Section to generate' : 'Filters / params'}</th>
+                <th>Query</th>
+                <th>Filters / params</th>
                 <th>Tags</th>
                 <th>Notes</th>
                 <th></th>
@@ -329,12 +326,12 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({ dataset, onBack }) => {
             </thead>
             <tbody>
               {cases.map((testCase) => {
-                const extra = brief ? String(testCase.input.heading || '') : caseExtra(testCase);
+                const extra = caseExtra(testCase);
                 return (
                   <tr key={testCase.id}>
                     <td className="testing-cases-query">{caseQuery(testCase) || '—'}</td>
                     <td className="testing-cases-extra">
-                      {brief ? extra : extra ? (
+                      {extra ? (
                         <code title={extra}>{extra}</code>
                       ) : (
                         <span className="text-muted">—</span>
@@ -350,7 +347,7 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({ dataset, onBack }) => {
                       </div>
                     </td>
                     <td className="testing-cases-notes">{testCase.notes || ''}</td>
-                    <td className="testing-row-actions">
+                    <td><div className="testing-row-actions">
                       <button className="btn-sm" onClick={() => setEditingId(testCase.id)}>
                         Edit
                       </button>
@@ -360,7 +357,7 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({ dataset, onBack }) => {
                       >
                         Delete
                       </button>
-                    </td>
+                    </div></td>
                   </tr>
                 );
               })}

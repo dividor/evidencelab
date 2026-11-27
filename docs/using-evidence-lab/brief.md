@@ -242,7 +242,7 @@ The model reads these instructions when it writes the outline, researches a sect
 Templates and voice & tone profiles can be shared, so a team writes to the same structure and in the same register. A typical use: a team lead builds a template with a prompt for each heading and the team's voice & tone profile, and shares it with the team's group, so every brief the team starts from it is researched and written the same way.
 
 - **Share** — click **Share** on a template or profile you own, then add people by name or email address, or a whole group by name, exactly as for a brief: pick a suggestion to share with it straight away.
-- **What recipients can do** — shared templates and profiles appear in their Brief Central, labelled with the owner's name, and in every template and voice picker. They can use them, but only the owner can edit, delete or share them. When the owner edits one, recipients get the change.
+- **What recipients can do** — shared templates and profiles appear in their Brief Central, labelled with the owner's name, and in every template and voice picker. In Brief Central, recipients can use them and the owner can edit, delete or share them. Evaluation administrators can also edit an original template from a Brief evaluation dataset. People using the template see those edits. See [Brief evaluation templates](../admin/evaluation.md#compare-generated-brief-sections).
 - **Make a copy** — click **Copy** on any template or profile to make your own private copy, which you can edit and share. Copying is how you adapt a shared template without changing the original.
 - **Stop sharing** — open **Share** and remove the person or group. It disappears from their lists.
 

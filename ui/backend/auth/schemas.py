@@ -673,6 +673,15 @@ class BriefTemplateRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class EvaluationTemplateRead(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str | None
+    owner_name: str | None
+    section_count: int
+    can_delete: bool
+
+
 class BriefCreate(BaseModel):
     """Payload for saving a brief.
 

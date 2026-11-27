@@ -156,7 +156,7 @@ class TestResultRead(BaseModel):
     id: uuid.UUID
     experiment_id: uuid.UUID
     run_id: Optional[uuid.UUID] = None
-    test_case_id: uuid.UUID
+    test_case_id: uuid.UUID | None
     status: str
     score: Optional[float] = None
     actual_output: Optional[Dict[str, Any]] = None

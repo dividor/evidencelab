@@ -14,7 +14,9 @@ Open the **Admin** panel. **Testing (Experiments)** has two sub‑views, **Datas
 
 ![Admin → Testing tab](../images/admin/eval/testing-datasets.png)
 
-The typical workflow is:
+For Brief, choose templates and a topic when you create your experiment. See [Compare generated Brief sections](#compare-generated-brief-sections).
+
+For Search and AI Summary, follow these steps.
 
 1. **Create a dataset** of inputs (queries + optional filters).
 2. **Create an experiment** on that dataset — choose a model combo / group and define the expectations.
@@ -68,7 +70,7 @@ In **Datasets**, click **New dataset** and provide:
 
 #### Add test cases
 
-Open the dataset to manage its cases. Each case is a **query** plus optional **filters/params**, **tags**, and **notes**, shown as a table.
+Open a Search or AI Summary dataset to manage its cases. Each case is a **query** plus optional **filters/params**, **tags**, and **notes**, shown as a table.
 
 You can add cases two ways:
 
@@ -221,11 +223,16 @@ Once a check has completed, everyone who can open the brief sees a **Fact Checke
 
 ### Compare generated Brief sections
 
-In **Admin → Testing (Experiments) → Experiments**, open **UNEG Brief quality** or **World Bank procurement Brief quality**. On upgrade, an installation with no Brief experiments receives seven UNEG cases or three World Bank procurement cases when those libraries are configured. If both are present it receives both sets. Other installations receive two editable, general-purpose cases per configured library. They invite the writer to choose a subject covered by that library. Customize these cases with your own questions and existing section text for a more demanding comparison. The upgrade preserves existing experiments, cases and run history. Choose a model combo and, if needed, **Run as group**, then click **Run**. Generation and grading both use model calls. Each run records token usage and estimated cost.
+A Brief evaluation runs the templates you choose against a topic and document library. You create the dataset and the experiment yourself.
 
-![Seven cases in the UNEG Brief sections dataset](../images/admin/eval/brief-section-cases.png)
+1. Open **Admin → Testing (Experiments) → Datasets → New dataset**. Choose **brief**, select the data source, and save. Open the dataset to see all Brief Central templates. Every Brief dataset uses this same template library. Its data source determines which documents the writer searches.
+2. Select **Create template** to add a record or **Edit template** to change an original. Both open the Brief Central template editor. Set the headings and subheadings, brief-wide research instructions, voice and tone profile, and word targets. Expand a heading to enter its own instructions or override the profile and length. Evaluation admins can edit another owner's original from this screen. The change reaches everyone who uses that template. Owners can also delete their own template here. **Save template** saves and returns to the list. **Back to brief evaluation** returns without saving.
+3. Select **View experiments**, then create an experiment. Choose the dataset, enter the **Brief topic**, and select one or more templates. Add expectation columns and check the ones to apply to each template. Choose the model combo and group settings, save, then select **Run**.
+4. Open the run to review a result for each section. The writer follows the outline in order. It receives the brief-wide instructions, the current section's prompt, and the text of other sections already written. A section profile overrides the template profile. A section length overrides the template length. Introductions use the configured shorter target unless the heading sets its own length. The writer researches each section against the selected library. Generation and model-based grading incur model usage, which the run records.
 
-Each case generates one new section through Brief's research and writing workflow, using the selected library. The topic, heading, instructions, word target, voice and other sections are held fixed so you can compare runs. Existing briefs are unaffected. To test your own library, create a dataset with capability **brief**, add cases, and create an experiment. Give at least one other section a heading and its existing text to test repetition. To test an H1 introduction, add its H2 headings and choose **Subheading introduced by this section** for each. A written child tests duplication of existing material. A child with just a title tests whether the introduction leaves its detailed question open.
+![Brief evaluation lists the original templates, their owners and section counts, with actions to edit each template.](../images/admin/eval/brief-evaluation-templates.png)
+
+The experiment reads the selected templates at the start of each run. Template edits affect later runs. Previous results retain their own headings, prompts, voice instructions, grades and cited evidence. Older experiments that used individual cases keep their run history. Editing their setup lets you choose templates for future runs.
 
 A case can finish research without producing a publishable section. For example, a revised opening might still refer to an action that no sentence explains. Such a case fails the structure check, which shows the editor’s reason. Its searches and reported token usage are kept with the result. A service or grading exception appears as an error.
 
@@ -237,7 +244,7 @@ Open **Factual support from citations** to read the claims in order. Each claim 
 
 Open another expectation to inspect its reasoning and the section’s claims. When the assessment quotes a claim, that claim appears first. Each claim lists its references with the excerpts closed. Expand a reference to compare the claim with the complete saved passage.
 
-Select a **Voice and tone profile** in the Brief dataset case to save its name and instructions with the case. The writer and the voice check both use those instructions. With **No profile**, the voice check passes automatically and makes no model call. An audience note can still guide the writer. Earlier runs retain their original judgments.
+The writer and voice check use the same selected profile instructions. With no profile, the voice check passes without calling a model. The word count check applies to sections with a target. Introduction scope applies to parents with subheadings. Repetition applies when another section has written text to compare.
 
 | Check | What to look for |
 | --- | --- |
@@ -246,8 +253,8 @@ Select a **Voice and tone profile** in the Brief dataset case to save its name a
 | Word count meets target | The actual word count falls within 15% of the case target. A short, carefully supported section can pass grounding and fail length. |
 | Findings are distinct across sections | A judge compares the draft with the text of every supplied section. A paraphrase of the same finding fails. Related findings about distinct measures or populations can pass. A repetition verdict must quote matching clauses from the new draft and the named section. You can read both in the result. |
 | Introduction leaves details to subheadings | The judge reads the introduction and the titles of its children. An introduction may name their subjects. It fails if it supplies their detailed findings or examples, even if those children are still blank. |
-| Limit one-sentence paragraphs | For sections with three or more paragraphs, the starter allows up to half to contain one sentence. Change the percentage to match your publication or turn this check off for a case. |
-| Paragraph development | The starter’s editable writing rubric asks whether each paragraph develops an idea with related evidence. The writing judge reads the assignment, the section in its original paragraphs, and the measured word count. It can assess voice or flow without the factual reference answers. It considers the middle and end of the section as well as its opening. It can fail a sequence of disconnected observations even when every citation resolves. A short introduction can pass. |
-| Grounding and scope | Editable judge prompts check the draft against the evidence and the assigned subject. The starter cases for named libraries include examples of supported and unsupported statements. Where a case has an editorial note, the judge also sees the distinction the editor wants checked. These examples and notes are withheld from the writer. |
+| Limit one-sentence paragraphs | For sections with three or more paragraphs, the default allows up to half to contain one sentence. Change the percentage to match your publication or turn this check off for a case. |
+| Paragraph development | Add a writing criterion to check whether each paragraph develops an idea with related evidence. The writing judge reads the assignment, the section in its original paragraphs, and the measured word count. It can assess voice or flow without the factual reference answers. It considers the middle and end of the section as well as its opening. It can fail a sequence of disconnected observations even when every citation resolves. A short introduction can pass. |
+| Grounding and scope | Editable judge prompts check the draft against the evidence and the assigned subject. Use **Factual support from citations** to grade every claim, or add a separate criterion for adherence to the assigned topic. |
 
 Expand a run and a case to inspect the section, the other sections, the cited passages and the judge's reasons. Read the cited text when a score seems surprising. To compare configurations, keep the case inputs and expectations identical across runs. The separate **Brief citation check** reviews a previously saved brief.

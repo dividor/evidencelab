@@ -65,7 +65,11 @@ def _settings(config):
     return AssistantSearchSettings.model_validate(values).model_dump(exclude_none=True)
 
 
-async def run_brief_case(raw, config, source):
+def _case_assignment(raw):
+    from ui.backend.services.brief_template_evaluation import TemplateSection
+
+    if isinstance(raw, TemplateSection):
+        return raw.assignment()
     case = BriefCase.model_validate(raw)
     section = BriefSectionPrompt(
         topic=case.query,
@@ -80,6 +84,11 @@ async def run_brief_case(raw, config, source):
             case.voice_profile.instructions if case.voice_profile else case.voice
         ),
     )
+    return case, section
+
+
+async def run_brief_case(raw, config, source):
+    case, section = _case_assignment(raw)
     target = case.target_words
     events = stream_research_response(
         query=case.heading,
@@ -93,6 +102,7 @@ async def run_brief_case(raw, config, source):
         brief_section=section,
         brief_section_prompt=config["brief_prompt"],
         initial_search_query=brief_search_query(section),
+        introduces_sub_sections=[c.title for c in case.children] or None,
         target_words=target,
         citation_order=False,
         check_citations=config["brief_citation_check"],

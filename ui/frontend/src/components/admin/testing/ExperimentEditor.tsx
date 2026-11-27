@@ -8,6 +8,8 @@ import type {
   TestDataset,
   TestExperiment,
 } from '../../../types/testing';
+import type { EvaluationTemplate } from './BriefEvaluationTemplates';
+import { evaluationTemplatesUrl } from './BriefEvaluationTemplates';
 import AssertionMatrix from './AssertionMatrix';
 
 interface ExperimentEditorProps {
@@ -137,13 +139,13 @@ const toMatrix = (raw: unknown): MatrixValue => {
 // user never touched default to active (so they run) with all columns padded.
 // Unlisted cases are treated as inactive by the runner, so this materialises
 // the editor's visible defaults into the persisted matrix.
-const normalizeMatrix = (matrix: MatrixValue, caseList: TestCase[]): MatrixValue => {
+const normalizeMatrix = (matrix: MatrixValue, caseList: Pick<TestCase, 'id'>[], defaultActive = true): MatrixValue => {
   const ncols = matrix.columns.length;
   const cases: Record<string, CaseRowState> = {};
   caseList.forEach((c) => {
     const prev = matrix.cases[c.id];
     cases[c.id] = {
-      active: prev ? prev.active : true,
+      active: prev ? prev.active : defaultActive,
       cols: Array.from({ length: ncols }, (_, i) => Boolean(prev?.cols?.[i])),
       ovr: Array.from({ length: ncols }, (_, i) => prev?.ovr?.[i] ?? ''),
     };
@@ -173,7 +175,8 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
     toMatrix(experiment?.case_expectations),
   );
 
-  const [cases, setCases] = useState<TestCase[]>([]);
+  const [topic, setTopic] = useState(stringField(experiment?.config?.brief_topic));
+  const [cases, setCases] = useState<Pick<TestCase, 'id' | 'input'>[]>([]);
   const [modelCombos, setModelCombos] = useState<string[]>([]);
   const [groups, setGroups] = useState<GroupOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -247,28 +250,20 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
   }, [fetchDatasets]);
 
   // Load the cases for the currently-selected dataset.
-  const fetchCases = useCallback(async (id: string) => {
-    if (!id) {
-      setCases([]);
-      return;
-    }
-    setCasesLoading(true);
-    try {
-      const resp = await axios.get<TestCase[]>(
-        `${API_BASE_URL}/testing/datasets/${id}/cases`,
-      );
-      setCases(resp.data);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load test cases');
-      setCases([]);
-    } finally {
-      setCasesLoading(false);
-    }
-  }, []);
-
+  const capability = selectedDataset?.capability;
   useEffect(() => {
-    fetchCases(datasetId);
-  }, [datasetId, fetchCases]);
+    let active = true;
+    setCases([]);
+    if (!datasetId || !capability) return;
+    setCasesLoading(true);
+    const request = capability === 'brief'
+      ? axios.get<EvaluationTemplate[]>(evaluationTemplatesUrl).then(({ data }) => data.map(t => ({ id: t.id, input: { query: t.name } })))
+      : axios.get<TestCase[]>(`${API_BASE_URL}/testing/datasets/${datasetId}/cases`).then(({ data }) => data);
+    request.then(rows => { if (active) setCases(rows); })
+      .catch(() => { if (active) setError('Could not load experiment inputs.'); })
+      .finally(() => { if (active) setCasesLoading(false); });
+    return () => { active = false; };
+  }, [datasetId, capability]);
 
   const handleDatasetChange = (id: string) => {
     if (id !== datasetId) {
@@ -278,11 +273,12 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
     setDatasetId(id);
   };
 
+  const brief = capability === 'brief';
   const buildBody = () => ({
     dataset_id: datasetId,
     name: name.trim(),
-    config: draftToConfig(config),
-    case_expectations: normalizeMatrix(matrix, cases),
+    config: { ...draftToConfig(config), ...(brief ? { brief_topic: topic.trim() } : {}) },
+    case_expectations: normalizeMatrix(matrix, cases, !brief),
   });
 
   // Save the draft (POST for new, PUT for existing). Returns the experiment id.
@@ -295,14 +291,17 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
       setError('Please select a dataset');
       return null;
     }
+    if (brief && (!topic.trim() || !cases.some(c => matrix.cases[c.id]?.active))) {
+      setError('Enter a brief topic and select at least one template.');
+      return null;
+    }
     setSaving(true);
     setError('');
     try {
       if (isEdit && experiment) {
+        const { name: editedName, config: editedConfig, case_expectations } = buildBody();
         await axios.put(`${API_BASE_URL}/testing/experiments/${experiment.id}`, {
-          name: name.trim(),
-          config: draftToConfig(config),
-          case_expectations: normalizeMatrix(matrix, cases),
+          name: editedName, config: editedConfig, case_expectations,
         });
         return experiment.id;
       }
@@ -381,11 +380,14 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
       </div>
 
       <div className="admin-section" style={{ marginTop: 0 }}>
-        <h4>Expectations per test case</h4>
+        {brief && <div className="form-group">
+          <label htmlFor="evaluation-brief-topic">Brief topic</label>
+          <textarea id="evaluation-brief-topic" value={topic} maxLength={5000} onChange={e => setTopic(e.target.value)} />
+        </div>}
+        <h4>{brief ? 'Templates and expectations' : 'Expectations per test case'}</h4>
         <p className="text-muted" style={{ marginTop: 0 }}>
-          Toggle a row to enable/disable a case; add expectation columns and use a
-          column&apos;s header checkbox to apply it to all cases. Only active cases and
-          checked expectations are run.
+          {brief ? 'Select the templates to run on this topic. Each selected check applies to its relevant sections.'
+            : 'Choose the cases and expectations to run. Use a column checkbox to apply an expectation to all cases.'}
         </p>
         {!selectedDataset && (
           <p className="text-muted">Select a dataset to define expectations for its cases.</p>

@@ -235,10 +235,10 @@ class TestResult(Base):
         nullable=True,
         index=True,
     )
-    test_case_id: Mapped[uuid.UUID] = mapped_column(
+    test_case_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("test_cases.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     )
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     score: Mapped[float | None] = mapped_column(Float, nullable=True)

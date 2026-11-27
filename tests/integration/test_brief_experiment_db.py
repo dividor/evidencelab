@@ -210,13 +210,10 @@ async def test_starter_upgrade_preserves_existing_experiments_and_history(existi
                 await conn.run_sync(install)
                 session.expire_all()
                 experiments = (await session.scalars(select(TestExperiment))).all()
-                assert len(experiments) == (1 if existing == "brief" else 2)
+                assert len(experiments) == 1
                 assert experiment.config == {"custom": True}
                 assert experiment.summary_stats == {"passed": 17}
                 cases = (await session.scalars(select(TestCase))).all()
-                assert len(cases) == (0 if existing == "brief" else 2)
-                if cases:
-                    assert all(c.input["reference_standard"] == {} for c in cases)
-                    assert any(c.input["children"] for c in cases)
+                assert cases == []
     finally:
         await engine.dispose()

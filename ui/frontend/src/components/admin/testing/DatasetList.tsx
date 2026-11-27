@@ -200,7 +200,7 @@ const DatasetList: React.FC<DatasetListProps> = ({ onOpen }) => {
             <th>Name</th>
             <th>Capability</th>
             <th>Data source</th>
-            <th># Cases</th>
+            <th>Records</th>
             <th>Created</th>
             <th></th>
           </tr>
@@ -211,7 +211,7 @@ const DatasetList: React.FC<DatasetListProps> = ({ onOpen }) => {
               <td>{ds.name}</td>
               <td>{ds.capability}</td>
               <td>{ds.data_source}</td>
-              <td>{ds.num_cases ?? 0}</td>
+              <td>{ds.num_cases ?? 0} {ds.capability === 'brief' ? 'templates' : 'cases'}</td>
               <td>{formatTimestamp(ds.created_at)}</td>
               <td onClick={(e) => e.stopPropagation()}>
                 <button
@@ -234,7 +234,9 @@ const DatasetList: React.FC<DatasetListProps> = ({ onOpen }) => {
       {deleteTarget && (
         <ConfirmModal
           title="Delete Dataset"
-          message={`Permanently delete "${deleteTarget.name}" and all its test cases and experiments? This cannot be undone.`}
+          message={deleteTarget.capability === 'brief'
+            ? `Delete “${deleteTarget.name}” and its experiments and run history? Its Brief Central templates stay in the library.`
+            : `Permanently delete "${deleteTarget.name}" and all its test cases and experiments? This cannot be undone.`}
           confirmLabel="Delete Dataset"
           onConfirm={confirmDelete}
           onCancel={() => setDeleteTarget(null)}

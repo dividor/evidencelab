@@ -1,44 +1,53 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
-import BriefCaseEditor from '../components/admin/testing/BriefCaseEditor';
+import axios from 'axios';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import BriefEvaluationTemplates from '../components/admin/testing/BriefEvaluationTemplates';
 import { getAssertionSpecs } from '../components/admin/testing/assertionSpecs';
-import { listVoiceProfiles } from '../components/brief/briefCentralApi';
 
-jest.mock('../components/brief/briefCentralApi', () => ({ listVoiceProfiles: jest.fn() }));
-beforeEach(() => { (listVoiceProfiles as jest.Mock).mockResolvedValue([]); });
+jest.mock('axios');
+const api = axios as jest.Mocked<typeof axios>;
+const dataset = { id: 'd', name:'Technical documents', capability:'brief' as const, data_source:'demo', created_at:'', updated_at:'' };
+const template = { id:'t', name:'Maintenance', owner_name:'Lee', description:'Quarterly checks',
+  section_count:1,headings:[{title:'Service history',sub:false}], prompt:'Compare quarterly costs.',
+  voice_profile_id:'v',target_words:150 };
+const voices = [{id:'v', name:'Operator guide', instructions:'Use direct address.',can_edit:true}];
+const show = () => render(<BriefEvaluationTemplates dataset={dataset} onBack={jest.fn()} onViewExperiments={jest.fn()} />);
 
-test('saves section scope, target and existing sections while retaining editorial references', () => {
-  const save = jest.fn();
-  const reference = { source: { text: 'Documented observation.' } };
-  const testCase = { id: 'c', dataset_id: 'd', created_at: '', updated_at: '', input: {
-    query: 'Operations', heading: 'Cost', target_words: 150, reference_standard: reference,
-    siblings: [{ title: 'Duration', content: 'The survey took a week.' }],
-  } };
-  render(<BriefCaseEditor initialCase={testCase} dataSource="demo" saving={false}
-    submitLabel="Save" onSubmit={save} onCancel={jest.fn()} />);
-  fireEvent.change(screen.getByLabelText('Section instructions'), { target: { value: 'Compare unit costs.' } });
-  fireEvent.click(screen.getByText('Add another section'));
-  fireEvent.change(screen.getAllByLabelText('Heading')[1], { target: { value: 'Personnel' } });
-  fireEvent.change(screen.getAllByLabelText('Existing text')[1], { target: { value: 'Five people took part.' } });
-  fireEvent.change(screen.getAllByLabelText('Position in the outline')[1], { target: { value: 'child' } });
-  fireEvent.click(screen.getByText('Save'));
-  expect(save.mock.calls[0][0].input).toEqual({
-    ...testCase.input, guidance: 'Compare unit costs.', voice: '', voice_profile: null,
-    siblings: testCase.input.siblings,
-    children: [{ title: 'Personnel', content: 'Five people took part.', level: 2 }],
-  });
-  expect(getAssertionSpecs('brief').map(x => x.type)).toEqual(expect.arrayContaining(['brief_structure','brief_length','brief_paragraphs','brief_writing','brief_overlap','brief_intro_scope','llm_judge']));
+test('lists actual templates and opens the shared editor on the original, with its owner’s profile',async () => {
+  api.get.mockImplementation(async url => ({data:url.endsWith('/voices') ? voices : url.endsWith('/t') ? template : [template]}));
+  api.put.mockResolvedValue({data:template});
+  show();
+  fireEvent.click(await screen.findByRole('button',{name:'Edit Maintenance'}));
+  const name = await screen.findByLabelText('Template name');
+  expect(name).toHaveValue('Maintenance');
+  expect(screen.getByRole('option',{name:/Operator guide/})).toBeInTheDocument();
+  expect(screen.getByDisplayValue('Compare quarterly costs.')).toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:'Delete Maintenance'})).toBeNull();
+  fireEvent.change(name,{target:{value:'Revised maintenance'}});
+  fireEvent.click(screen.getByRole('button',{name:'Save template'}));
+  await waitFor(()=>expect(api.put).toHaveBeenCalledWith(expect.stringContaining('/testing/brief-templates/t'),expect.objectContaining({
+    name:'Revised maintenance', voice_profile_id:'v',target_words:150,
+    headings:[expect.objectContaining({title:'Service history'})],
+  })));
+  await waitFor(()=>expect(screen.queryByLabelText('Template name')).toBeNull());
 });
 
-test('saves the instructions of the selected voice profile with the case', async () => {
-  const selected = { id: 'v1', name: 'Operator guide', instructions: 'Address the operator directly.' };
-  (listVoiceProfiles as jest.Mock).mockResolvedValue([selected]);
-  const save = jest.fn();
-  render(<BriefCaseEditor dataSource="demo" saving={false} submitLabel="Save" onSubmit={save} onCancel={jest.fn()} />);
-  await screen.findByRole('option', { name: 'Operator guide' });
-  fireEvent.change(screen.getByLabelText('Voice and tone profile'), { target: { value: 'v1' } });
-  fireEvent.change(screen.getByLabelText('Brief topic'), { target: { value: 'Operations' } });
-  fireEvent.change(screen.getByLabelText('Section to generate'), { target: { value: 'Safety' } });
-  fireEvent.click(screen.getByText('Save'));
-  expect(save.mock.calls[0][0].input.voice_profile).toEqual(selected);
+test('explains how to add the first record and returns from the template editor without saving',async () => {
+  api.get.mockResolvedValue({data:[]});
+  show();
+  expect(await screen.findByText('No Brief templates yet.')).toBeVisible();
+  fireEvent.click(screen.getByRole('button',{name:'Create template'}));
+  fireEvent.click(await screen.findByRole('button',{name:/Back to brief evaluation/}));
+  expect(screen.queryByLabelText('Template name')).toBeNull();
+  expect(api.post).not.toHaveBeenCalled();
+  expect(getAssertionSpecs('brief').map(x => x.type)).toEqual(expect.arrayContaining(['brief_structure','brief_length','brief_paragraphs','brief_writing','brief_overlap','brief_intro_scope','brief_factual']));
+});
+
+test('owners see a deletion confirmation naming the original template', async () => {
+  api.get.mockResolvedValue({data:[{...template,can_delete:true}]});
+  show();
+  fireEvent.click(await screen.findByRole('button',{name:'Delete Maintenance'}));
+  expect(screen.getByText(/Delete “Maintenance” from Brief Central/)).toBeVisible();
+  fireEvent.click(screen.getByRole('button',{name:'Cancel'}));
+  expect(api.delete).not.toHaveBeenCalled();
 });

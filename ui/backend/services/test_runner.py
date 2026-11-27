@@ -40,6 +40,11 @@ from ui.backend.auth.testing_models import (
     TestResult,
     TestRun,
 )
+from ui.backend.services.brief_template_evaluation import (
+    TemplateSection,
+    TemplateSelectionError,
+    template_plan,
+)
 from ui.backend.services.citations import render_reference_lines
 from ui.backend.services.evaluation_metrics import compute_summary_stats
 from ui.backend.services.llm_choice import JUDGE, group_choice
@@ -475,6 +480,7 @@ async def _apply_group(session, config: Dict[str, Any]) -> Dict[str, Any]:
     if config.get("capability") == CAPABILITY_BRIEF:
         settings = group.search_settings or {}
         for field, key in {
+            "briefTargetWords": "brief_target_words",
             "briefModel": "brief_model",
             "briefCitationCheck": "brief_citation_check",
             "briefSectionPrompt": "brief_prompt",
@@ -792,7 +798,7 @@ def _case_usage_totals(output: Any) -> Dict[str, Any]:
 
 
 async def evaluate_case(
-    case_input: Dict[str, Any],
+    case_input: Any,
     expectations: List[Dict[str, Any]],
     runner: CaseRunner,
     judge_factory: Optional[JudgeFactory] = None,
@@ -984,7 +990,7 @@ def _build_result_row(
     return TestResult(
         experiment_id=experiment.id,
         run_id=run.id,
-        test_case_id=case.id,
+        test_case_id=None if isinstance(case, TemplateSection) else case.id,
         **stored,
     )
 
@@ -1107,16 +1113,30 @@ async def _execute(
     # progress (and stream each result) as the run advances. Committing per case
     # — safe because the session is created with expire_on_commit=False — lets
     # the polling UI report how far along the run is instead of a blind "running".
-    plan = _active_case_plan(
-        matrix, await _load_cases(session, dataset.id), dataset.capability
-    )
+    if dataset.capability == CAPABILITY_BRIEF and "brief_topic" in requested:
+        try:
+            plan = await template_plan(session, config, matrix)
+        except TemplateSelectionError as exc:
+            await _fail_run(session, experiment, run, str(exc))
+            return
+        run.config = {**run.config, "brief_topic": requested["brief_topic"]}
+    else:
+        plan = _active_case_plan(
+            matrix, await _load_cases(session, dataset.id), dataset.capability
+        )
     total = len(plan)
     run.summary_stats = _progress_stats(0, total)
     await session.commit()
 
     case_results: List[Dict[str, Any]] = []
     for completed, (case, assertions) in enumerate(plan, start=1):
-        outcome = await evaluate_case(case.input, assertions, runner, judge_factory)
+        if isinstance(case, TemplateSection):
+            outcome = await evaluate_case(
+                case, case.applicable_checks(assertions), runner, judge_factory
+            )
+            case.record(outcome)
+        else:
+            outcome = await evaluate_case(case.input, assertions, runner, judge_factory)
         case_results.append(outcome)
         session.add(_build_result_row(experiment, run, case, outcome))
         run.summary_stats = _progress_stats(completed, total)
