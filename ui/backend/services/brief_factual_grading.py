@@ -1,17 +1,23 @@
 """Grade each numbered claim against the excerpts cited in that claim."""
 
 from pydantic import BaseModel, Field, ValidationError, model_validator
+from starlette.concurrency import run_in_threadpool
 
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.brief_experiment_claims import brief_claim_evidence
-from ui.backend.services.brief_grading_errors import IncompleteClaimGrades
+
+
+class SupportingQuote(BaseModel):
+    citation: int = Field(ge=1)
+    quote: str = Field(min_length=1, pattern=r"\S")
 
 
 class ClaimGrade(BaseModel):
     claim: int = Field(ge=1, strict=True)
     reason: str = Field(min_length=1, pattern=r"\S")
-    factual: bool = Field(strict=True, exclude=True)
-    unmet: list[str] = Field(exclude=True)
+    factual: bool = Field(strict=True)
+    unmet: list[str]
+    supporting_quotes: list[SupportingQuote] = Field(default_factory=list)
     score: float = Field(ge=0, le=1)
 
     @model_validator(mode="after")
@@ -24,7 +30,24 @@ class ClaimGrade(BaseModel):
 
 
 class ClaimGrades(BaseModel):
-    claims: list[ClaimGrade]
+    claims: list[dict]
+
+
+def _evidence_issue(grade, claim, sources):
+    from ui.backend.services.citation_fidelity import locate_quote, quotable_text
+
+    if grade.factual and grade.score > 0 and not grade.supporting_quotes:
+        return "The judge gave credit without a supporting quote."
+    for quote in grade.supporting_quotes:
+        label = str(quote.citation)
+        if label not in claim["citations"] or label not in sources:
+            return f"The judge quoted [{label}], which this claim does not cite."
+        if (
+            locate_quote(quote.quote, [quotable_text(sources[label])])["status"]
+            == "missing"
+        ):
+            return f"The judge’s quote could not be found in [{label}]: {quote.quote}"
+    return ""
 
 
 def _claim_inputs(output):
@@ -55,39 +78,75 @@ def _claim_inputs(output):
     return claims, sources
 
 
-async def _grade_batch(claims, sources, prompt, system, output, model):
+def _read_claim(rows, claim, sources):
+    number = claim["claim"]
+    matched = [r for r in rows if r.get("claim") == number]
+    if len(matched) != 1:
+        return None, "The judge must return one grade for this claim."
+    try:
+        grade = ClaimGrade.model_validate(matched[0])
+    except ValidationError:
+        return None, "The judge returned an incomplete or inconsistent grade."
+    cited = any(sources.get(label, {}).get("text") for label in claim["citations"])
+    if grade.factual and not cited and grade.score > 0:
+        return None, "An uncited factual claim cannot receive credit."
+    issue = _evidence_issue(grade, claim, sources)
+    return grade.model_dump(), issue
+
+
+def _read_batch(raw, pending, sources):
+    try:
+        rows = ClaimGrades.model_validate_json(raw).claims
+    except ValidationError:
+        rows = []
+    return [(c["claim"], *_read_claim(rows, c, sources)) for c in pending]
+
+
+async def _grade_batch(claims, sources, context, template, system, output, model):
     from ui.backend.services.test_runner import _judge_call
 
-    expected = [item["claim"] for item in claims]
-    uncited = {
-        item["claim"]
-        for item in claims
-        if not any(sources.get(label, {}).get("text") for label in item["citations"])
-    }
-    for attempt in range(2):
-        raw, usage = await _judge_call(prompt, model, system, max_tokens=1600)
+    accepted, issues, prompts = {}, {}, []
+    ungraded = {}
+    for _ in range(2):
+        pending = [c for c in claims if c["claim"] not in accepted]
+        labels = {label for c in pending for label in c["citations"]}
+        prompt = template.render(
+            **context,
+            claims=pending,
+            sources={k: v for k, v in sources.items() if k in labels},
+        )
+        if issues:
+            prompt += "\n" + template.render(
+                repair=[c["claim"] for c in pending],
+                problems=issues,
+                uncited=[
+                    c["claim"]
+                    for c in pending
+                    if not any(sources.get(k, {}).get("text") for k in c["citations"])
+                ],
+            )
+        prompts.append(system + "\n\n" + prompt)
+        raw, usage = await _judge_call(prompt, model, system, max_tokens=2400)
         output.setdefault("judge_usage", []).append(usage)
-        try:
-            grades = sorted(
-                ClaimGrades.model_validate_json(raw).claims, key=lambda g: g.claim
-            )
-            unsupported = any(
-                g.factual and g.claim in uncited and g.score > 0 for g in grades
-            )
-            if [grade.claim for grade in grades] == expected and not unsupported:
-                return [
-                    grade.model_dump() for grade in grades
-                ], system + "\n\n" + prompt
-        except ValidationError:
-            pass
-        if not attempt:
-            template = assistant_prompt_templates.get_template(
-                "brief_factual_grading.j2"
-            )
-            prompt += "\n" + template.render(repair=expected, uncited=sorted(uncited))
-    raise IncompleteClaimGrades(
-        "The factual support judge did not return one valid grade per claim."
-    )
+        for number, grade, issue in await run_in_threadpool(
+            _read_batch, raw, pending, sources
+        ):
+            if issue:
+                issues[number] = issue
+                ungraded[number] = dict(
+                    claim=number,
+                    error=True,
+                    reason=issue,
+                    supporting_quotes=(grade or {}).get("supporting_quotes", []),
+                )
+            else:
+                accepted[number] = grade
+                issues.pop(number, None)
+        if not issues:
+            break
+    return [
+        accepted.get(c["claim"]) or ungraded[c["claim"]] for c in claims
+    ], "\n\n".join(prompts)
 
 
 async def grade_factual_claims(output, rubric, model):
@@ -97,20 +156,17 @@ async def grade_factual_claims(output, rubric, model):
     grades, prompts = [], []
     for start in range(0, len(claims), 8):
         batch = claims[start : start + 8]
-        labels = dict.fromkeys(label for item in batch for label in item["citations"])
-        prompt = template.render(
+        context = dict(
             rubric=rubric,
-            claims=batch,
             draft=output["summary"],
             guidance={
                 k: v
                 for k, v in output.get("reference_standard", {}).items()
                 if k != "source"
             },
-            sources={label: sources[label] for label in labels if label in sources},
         )
         results, sent = await _grade_batch(
-            batch, sources, prompt, system, output, model
+            batch, sources, context, template, system, output, model
         )
         grades.extend(results)
         prompts.append(sent)

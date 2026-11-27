@@ -1,0 +1,99 @@
+"""Persist the grades of a full check and the passage rows used by the Fact Checker."""
+
+import time
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+from starlette.concurrency import run_in_threadpool
+
+from ui.backend.auth.models import Brief, BriefVersion
+from ui.backend.auth.testing_models import BriefCitationCheck, BriefCitationCheckPassage
+from ui.backend.services import brief_versions
+from ui.backend.services.saved_brief_evaluation import (
+    grade_saved_section,
+    section_inputs,
+    section_result,
+    version_profiles,
+)
+
+
+async def _active(session, check):
+    # Read the latest committed status and lock it until this section is saved.
+    status = await session.scalar(
+        select(BriefCitationCheck.status)
+        .where(BriefCitationCheck.id == check.id)
+        .with_for_update()
+    )
+    return status in {"pending", "running"}
+
+
+async def run_full_check(session, check):
+    from ui.backend.services.citation_check_runner import _record_check_usage
+
+    started = time.monotonic()
+    brief = await session.get(Brief, check.brief_id)
+    version = await session.get(BriefVersion, check.brief_version_id)
+    if not brief or not version:
+        raise ValueError("The pinned Brief version is unavailable.")
+    content = await run_in_threadpool(
+        brief_versions.materialise, version.content, brief.content.get("sources", [])
+    )
+    voices = await version_profiles(session, content, version.updated_at)
+    inputs = await run_in_threadpool(lambda: list(section_inputs(content, voices)))
+    if not inputs:
+        raise ValueError("The Brief version has no sections.")
+    if not await _active(session, check):
+        return
+    total = len(inputs)
+    check.status = "running"
+    check.started_at = datetime.now(timezone.utc)
+    check.summary_stats = {"progress": {"completed": 0, "total": total}}
+    await session.commit()
+    rows, sections, usage = [], [], []
+    for position, (output, section_id, missing_voice) in enumerate(inputs):
+        checks, passages = await grade_saved_section(
+            output, position, missing_voice, check.judge_model, len(rows)
+        )
+        if not await _active(session, check):
+            return
+        sections.append(
+            await run_in_threadpool(
+                section_result, output, checks, section_id, missing_voice
+            )
+        )
+        rows.extend(passages)
+        usage.extend(output.get("judge_usage", []))
+        session.add_all(
+            BriefCitationCheckPassage(check_id=check.id, **p) for p in passages
+        )
+        check.summary_stats = {"progress": {"completed": len(sections), "total": total}}
+        if len(sections) == total:
+            check.section_results = sections
+            check.summary_stats = full_summary(
+                rows, sections, usage, started, check.judge_model
+            )
+            check.status = "completed"
+            check.finished_at = datetime.now(timezone.utc)
+        await session.commit()
+    await _record_check_usage(check)
+
+
+def full_summary(rows, sections, usage, started, model):
+    from ui.backend.services.citation_check_runner import summarise
+    from ui.backend.utils.llm_costs import compute_cost
+
+    stats = summarise(rows, int((time.monotonic() - started) * 1000), model)
+    prompt = sum(e.get("prompt_tokens") or 0 for e in usage)
+    completion = sum(e.get("completion_tokens") or 0 for e in usage)
+    cost = compute_cost(model, prompt, completion)
+    stats.update(
+        prompt_tokens=prompt,
+        completion_tokens=completion,
+        total_tokens=prompt + completion,
+        cost_usd=float(cost) if cost is not None else None,
+        section_counts={
+            s: sum(row["status"] == s for row in sections)
+            for s in ("pass", "fail", "error")
+        },
+    )
+    return stats

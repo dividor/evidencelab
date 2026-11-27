@@ -412,5 +412,6 @@ class TestResolveJudgeModel:
         monkeypatch.setattr(
             "ui.backend.services.test_runner._default_summary_model", lambda: "default"
         )
+        monkeypatch.setattr("ui.backend.services.llm_choice.default_combo", lambda: {})
         assert runner.resolve_judge_model("X") == "combo-model"
         assert runner.resolve_judge_model(None) == "default"

@@ -35,6 +35,17 @@ def reply(grades):
                     "factual": True,
                     "score": score,
                     "reason": reason,
+                    "supporting_quotes": (
+                        [
+                            (
+                                {"citation": 9, "quote": "Ten pounds were saved."}
+                                if n == 2 and score == 0.4
+                                else {"citation": 4, "quote": "Costs dropped."}
+                            )
+                        ]
+                        if score
+                        else []
+                    ),
                     "unmet": [] if score == 1 else ["Unsupported detail."],
                 }
                 for n, score, reason in grades
@@ -92,11 +103,11 @@ async def test_requires_one_valid_grade_for_every_claim(monkeypatch, bad):
     call = AsyncMock(side_effect=[reply(bad), reply(bad)])
     monkeypatch.setattr(test_runner, "_judge_call", call)
     o = output()
-    with pytest.raises(ValueError, match="one valid grade per claim"):
-        await judge_brief(
-            o, [{"type": "brief_factual", "rubric": "Check the units."}], "model"
-        )
-    assert "[1, 2]" in call.await_args.args[0]
+    check = {"type": "brief_factual", "rubric": "Check the units."}
+    result = evaluate_assertion(check, o, await judge_brief(o, [check], "model"))
+    assert result["error"] and "score" not in result
+    assert len(result["claim_grades"]) == 2
+    assert any(g.get("error") for g in result["claim_grades"])
     assert len(o["judge_usage"]) == 2
 
 
@@ -214,4 +225,35 @@ async def test_cannot_award_credit_to_an_uncited_fact_but_accepts_a_transition(
     assert [
         g["score"] for g in evaluate_assertion(check, o, verdict)["claim_grades"]
     ] == [0, 1]
-    assert "no cited excerpt: [1, 2]" in call.await_args.args[0]
+    assert "no cited excerpt: [1]" in call.await_args.args[0]
+
+
+async def test_unverified_quotation_retries_only_that_claim_and_preserves_other_grades(
+    monkeypatch,
+):
+    valid = {
+        "claim": 1,
+        "factual": True,
+        "score": 1,
+        "unmet": [],
+        "reason": "Recorded in the log.",
+        "supporting_quotes": [{"citation": 4, "quote": "Costs dropped."}],
+    }
+    wrong = {
+        **valid,
+        "claim": 2,
+        "supporting_quotes": [{"citation": 9, "quote": "Profits rose sharply."}],
+    }
+    call = AsyncMock(
+        side_effect=[
+            (json.dumps({"claims": [valid, wrong]}), {}),
+            (json.dumps({"claims": [wrong]}), {}),
+        ]
+    )
+    monkeypatch.setattr(test_runner, "_judge_call", call)
+    o = output()
+    check = {"type": "brief_factual", "rubric": RUBRIC}
+    result = evaluate_assertion(check, o, await judge_brief(o, [check], "model"))
+    assert result["error"] and result["claim_grades"][0]["passed"]
+    assert "could not be found in [9]" in result["claim_grades"][1]["reason"]
+    assert "Costs dropped." not in call.await_args.args[0]

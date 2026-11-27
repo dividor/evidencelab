@@ -122,6 +122,7 @@ async def run_brief_case(raw, config, source):
             heading=case.heading,
             child_headings=[child.title for child in case.children],
             guidance=case.guidance,
+            instructions=section.instructions,
             voice=section.voice_instructions,
             voice_profile=(
                 case.voice_profile.model_dump(mode="json")

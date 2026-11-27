@@ -17,12 +17,8 @@ _CHECK_NAMES = {
 }
 
 
-class IncompleteClaimGrades(ValueError):
-    """The judge failed to return a valid grade for every claim."""
-
-
 def grading_error_reason(exc):
-    if isinstance(exc, (UnverifiedOverlapQuote, IncompleteClaimGrades)):
+    if isinstance(exc, UnverifiedOverlapQuote):
         return str(exc)
     if isinstance(exc, ValidationError):
         return "The judge returned a response that did not match the required grading format."

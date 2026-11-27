@@ -106,7 +106,8 @@ async def test_brief_experiment_persists_generation_context_and_repetition_verdi
                             ),
                             (
                                 '{"claims":[{"claim":1,"reason":"The source confirms two days.",'
-                                '"factual":true,"unmet":[],"score":1}]}',
+                                '"factual":true,"unmet":[],"score":1,'
+                                '"supporting_quotes":[{"citation":3,"quote":"two days"}]}]}',
                                 {},
                             ),
                         ],
@@ -166,6 +167,9 @@ async def test_brief_experiment_persists_generation_context_and_repetition_verdi
                     {
                         "claim": 1,
                         "reason": "The source confirms two days.",
+                        "factual": True,
+                        "unmet": [],
+                        "supporting_quotes": [{"citation": 3, "quote": "two days"}],
                         "score": 1,
                         "passed": True,
                     }

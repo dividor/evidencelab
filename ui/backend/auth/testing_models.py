@@ -290,6 +290,8 @@ class BriefCitationCheck(Base):
         nullable=False,
         index=True,
     )
+    check_kind: Mapped[str] = mapped_column(String(20), server_default="citation")
+    section_results: Mapped[list | None] = mapped_column(JSONB, deferred=True)
     # Snapshot: the brief may be renamed or re-researched after the check.
     brief_title: Mapped[str] = mapped_column(String(500), nullable=False)
     data_source: Mapped[str | None] = mapped_column(String(255), nullable=True)

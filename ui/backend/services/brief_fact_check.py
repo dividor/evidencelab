@@ -74,23 +74,26 @@ JudgedPassage = Tuple[Optional[str], CitedPassage, Any]
 
 def current_passages(
     content: Dict[str, Any],
+    include_uncited: bool = False,
 ) -> List[Tuple[Optional[str], CitedPassage]]:
     """The brief's cited passages in order, each with the id of its section:
     the same passages, in the same order, as a check judges them."""
     out: List[Tuple[Optional[str], CitedPassage]] = []
     for section in researched_sections(content):
-        for passage in extract_cited_passages(section):
+        for passage in extract_cited_passages(section, include_uncited):
             out.append((section.get("id"), passage))
     return out
 
 
 def judged_passages(
-    content: Dict[str, Any], check_passages: Sequence[Any]
+    content: Dict[str, Any],
+    check_passages: Sequence[Any],
+    include_uncited: bool = False,
 ) -> Optional[List[JudgedPassage]]:
     """The check's rows placed in the sections of ``content``, the brief as
     the check judged it, or ``None`` when ``content`` is not what the check
     judged (a passage edited, added or removed)."""
-    passages = current_passages(content)
+    passages = current_passages(content, include_uncited)
     rows = sorted(check_passages, key=lambda r: r.passage_id)
     if len(rows) != len(passages):
         return None
@@ -115,22 +118,46 @@ class Coverage:
     changed: List[Dict[str, str]] = field(default_factory=list)
 
 
-def coverage(content: Dict[str, Any], judged: Sequence[JudgedPassage]) -> Coverage:
+def _same_evidence(current, checked):
+    # Display numbers can move when a different section is edited. The
+    # stored passage IDs, excerpts and unresolved references identify what
+    # the judge actually inspected.
+    def identity(passage):
+        return {
+            (s.get("sourceId"), s.get("chunkId"), s.get("text"))
+            for s in passage.sources
+        }
+
+    return (
+        identity(current) == identity(checked)
+        and current.missing_indices == checked.missing_indices
+    )
+
+
+def coverage(
+    content: Dict[str, Any],
+    judged: Sequence[JudgedPassage],
+    include_uncited: bool = False,
+) -> Coverage:
     """Compare the brief as it is with what a check judged, section by
     section. A section is covered when its cited passages are the judged
     passages of that section, in order; a section with no cited passages has
     nothing to cover and is neither covered nor changed."""
-    by_section: Dict[Optional[str], List[Tuple[str, Any]]] = {}
+    by_section: Dict[Optional[str], List[Tuple[CitedPassage, Any]]] = {}
     for section_id, passage, row in judged:
-        by_section.setdefault(section_id, []).append((passage.passage_clean, row))
+        by_section.setdefault(section_id, []).append((passage, row))
     out = Coverage()
     for section in researched_sections(content):
         section_id = section.get("id")
-        passages = extract_cited_passages(section)
+        passages = extract_cited_passages(section, include_uncited)
         if not passages:
             continue
         was = by_section.get(section_id, [])
-        if [p.passage_clean for p in passages] == [text for text, _ in was]:
+        if len(passages) == len(was) and all(
+            p.passage_clean == previous.passage_clean
+            and (not include_uncited or _same_evidence(p, previous))
+            for p, (previous, _) in zip(passages, was)
+        ):
             out.covered[str(section_id)] = [
                 (passage, row) for passage, (_, row) in zip(passages, was)
             ]
@@ -294,20 +321,21 @@ async def fact_check(session: AsyncSession, brief: Brief) -> Dict[str, Any]:
     if check is None:
         return _nothing(current)
     content = brief.content or {}
+    include_uncited = getattr(check, "check_kind", None) == "full"
     judged = await judged_content(session, brief, check)
     if judged is None:
         # Before versions were linked: the check applies to the whole brief
         # as it is, or not at all.
-        pairs = judged_passages(content, check.passages) or []
+        pairs = judged_passages(content, check.passages, include_uncited) or []
     else:
-        matched = judged_passages(judged, check.passages)
+        matched = judged_passages(judged, check.passages, include_uncited)
         if matched is None:
             raise FactCheckError(
                 f"Citation check {check.id} does not match brief version "
                 f"{check.brief_version_number}"
             )
         pairs = matched
-    cov = coverage(content, pairs)
+    cov = coverage(content, pairs, include_uncited)
     if not cov.covered:
         return _nothing(current)
     checked = check.brief_version_number
@@ -457,6 +485,13 @@ async def fact_check_evidence(
 def check_label(check: Any) -> str:
     """How a version Log row names the check that judged it."""
     stats = check.summary_stats or {}
+    if getattr(check, "check_kind", None) == "full":
+        if counts := stats.get("section_counts"):
+            return (
+                f"Full Brief check: {counts['pass']} sections passed, "
+                f"{counts['fail']} failed, {counts['error']} with errors"
+            )
+        return f"Full Brief check {check.status}"
     if check.status == CHECK_COMPLETED and "total" in stats:
         return (
             f"Citation check: {stats.get('flagged', 0)} of "

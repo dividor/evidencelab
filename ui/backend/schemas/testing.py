@@ -284,6 +284,7 @@ class BriefCitationCheckRead(BaseModel):
     # (None when no version was recorded). The routes set ``brief_changed``.
     brief_version_number: Optional[int] = None
     brief_changed: Optional[bool] = None
+    check_kind: str = "citation"
     status: str
     summary_stats: Optional[Dict[str, Any]] = None
     started_at: Optional[datetime] = None
@@ -316,6 +317,7 @@ class BriefCitationCheckPassageRead(BaseModel):
 
 
 class BriefCitationCheckDetail(BriefCitationCheckRead):
+    section_results: Optional[List[Dict[str, Any]]] = None
     passages: List[BriefCitationCheckPassageRead] = Field(default_factory=list)
 
 

@@ -1,3 +1,6 @@
+import type { BriefSectionReview } from '../../../types/testing';
+import AssertionResultRow from './AssertionResultRow';
+import GeneratedSection from './GeneratedSection';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../../config';
@@ -70,6 +73,26 @@ const isActive = (status?: string): boolean => status === 'pending' || status ==
 /*  Summary header                                                    */
 /* ------------------------------------------------------------------ */
 
+function SectionReviews({ sections }: { sections: BriefSectionReview[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const attention = sections.filter(section => section.status !== 'pass');
+  const shown = showAll || !attention.length ? sections : attention;
+  return <div className="testing-section"><h3>Section checks</h3>
+    {attention.length > 0 && <p>{attention.length} of {sections.length} sections need attention.{' '}
+      {attention.length < sections.length && <button className="btn-sm" onClick={() => setShowAll(!showAll)}>
+        {showAll ? 'Show sections needing attention' : 'Show all sections'}
+      </button>}
+    </p>}
+    {shown.map(section => <details key={section.section_id} className="testing-case-block">
+      <summary><strong>{section.number} {section.heading}</strong>{' '}
+        <span className={`testing-badge testing-badge-${section.status}`}>{section.status}</span></summary>
+      <GeneratedSection result={section} />
+      {section.assertion_results?.map(check =>
+        <AssertionResultRow key={check.type} result={check} testResult={section} />)}
+    </details>)}
+  </div>;
+}
+
 const Summary: React.FC<{ detail: CheckDetailType }> = ({ detail }) => {
   const stats = detail.summary_stats || {};
   if (isActive(detail.status)) {
@@ -78,7 +101,7 @@ const Summary: React.FC<{ detail: CheckDetailType }> = ({ detail }) => {
     return (
       <div className="testing-run-progress" role="status">
         <div className="testing-run-progress-label">
-          <span>{p ? `${p.completed} of ${p.total} passages judged` : 'Starting…'}</span>
+          <span>{p ? `${p.completed} of ${p.total} ${detail.check_kind === 'full' ? 'sections checked' : 'passages judged'}` : 'Starting…'}</span>
           <span className="testing-run-progress-pct">{formatPercent(fraction)}</span>
         </div>
         <div className="testing-run-progress-track" role="progressbar" aria-valuenow={p?.completed ?? 0} aria-valuemin={0} aria-valuemax={p?.total ?? 0}>
@@ -480,7 +503,7 @@ const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
         <div>
           <strong>{check.brief_title}</strong>
           <div className="text-muted">
-            Checked {formatTimestamp(check.created_at)} · judge {check.judge_model || '—'}
+            {check.check_kind === 'full' ? 'Full Brief check' : 'Citation check'} · Checked {formatTimestamp(check.created_at)} · judge {check.judge_model || '—'}
             {check.model_combo ? ` (${check.model_combo})` : ''}
             {' · '}
             {check.brief_version_number != null
@@ -513,6 +536,7 @@ const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
       </div>
 
       {detail && <Summary detail={detail} />}
+      {detail?.section_results && <SectionReviews sections={detail.section_results} />}
 
       {passages.length > 0 && (
         <>

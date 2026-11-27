@@ -32,7 +32,11 @@ const lastCheckSummary = (check?: BriefCitationCheck | null): string => {
   if (isActive(check)) return 'Running…';
   if (check.status === 'failed') return `Failed: ${check.summary_stats?.error || 'unknown error'}`;
   const stats = check.summary_stats || {};
-  return `${stats.flagged ?? 0} of ${stats.total ?? 0} flagged (${formatPercent(
+  if (stats.section_counts) {
+    const counts = stats.section_counts;
+    return `Full Brief check · ${counts.pass} sections passed, ${counts.fail} failed, ${counts.error} with errors`;
+  }
+  return `Citation check · ${stats.flagged ?? 0} of ${stats.total ?? 0} flagged (${formatPercent(
     stats.flagged_share,
   )})`;
 };
@@ -114,9 +118,8 @@ const BriefCheckList: React.FC<BriefCheckListProps> = ({ modelCombo, onOpenCheck
         </div>
       )}
       <p className="text-muted testing-brief-intro">
-        Checks every cited passage of a brief against the exact source excerpts it cites. An LLM
-        judge gives each passage a verdict and its supporting quotes are verified against the
-        excerpts. Passages that are not fully supported are flagged for review.
+        Run the nine standard Brief experiment checks on the saved version. Open a result to review
+        each section’s writing, relevance, length, overlap and factual support, including uncited claims.
       </p>
       <div className="testing-controls">
         <div className="testing-scope-toggle" role="group" aria-label="Brief scope">
@@ -207,9 +210,9 @@ const BriefCheckList: React.FC<BriefCheckListProps> = ({ modelCombo, onOpenCheck
                     <button
                       className="btn-sm btn-primary"
                       onClick={() => handleRun(b)}
-                      disabled={busyId === b.id || isActive(last) || b.cited_passages === 0}
+                      disabled={busyId === b.id || isActive(last) || b.researched_sections === 0}
                       title={
-                        b.cited_passages === 0 ? 'This brief has no cited passages' : undefined
+                        b.researched_sections === 0 ? 'This brief has no written sections' : undefined
                       }
                     >
                       {busyId === b.id ? 'Starting...' : 'Run check'}

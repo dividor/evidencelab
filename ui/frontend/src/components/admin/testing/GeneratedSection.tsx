@@ -43,7 +43,7 @@ function Claim({ claim, references, sources }: {
   );
 }
 
-export function AssertionEvidence({ assessment, result }: { assessment: AssertionResult; result: TestResult }) {
+export function AssertionEvidence({ assessment, result }: { assessment: AssertionResult; result: Pick<TestResult, "actual_output" | "brief_evidence"> }) {
   const evidence = result.brief_evidence;
   if (!evidence) return null;
   const sources = (result.actual_output?.sources || []) as SavedSource[];
@@ -56,7 +56,8 @@ export function AssertionEvidence({ assessment, result }: { assessment: Assertio
       <div className="testing-evidence-claim" key={index}>
         <div className="testing-claim-heading">
           <strong>Claim {index + 1}</strong>
-          {grade && <>
+          {grade?.error && <span>Grading error</span>}
+          {grade && !grade.error && <>
             <span className={`testing-badge testing-badge-${grade.passed ? 'pass' : 'fail'}`}>{grade.passed ? 'Pass' : 'Fail'}</span>
             <span>Score {formatScore(grade.score)}</span>
           </>}
@@ -87,7 +88,7 @@ export function AssertionEvidence({ assessment, result }: { assessment: Assertio
   );
 }
 
-export default function GeneratedSection({ result }: { result: TestResult }) {
+export default function GeneratedSection({ result }: { result: Pick<TestResult, "actual_output" | "brief_evidence"> }) {
   const output = result.actual_output;
   if (output?.capability !== 'brief') return null;
   const evidence = result.brief_evidence;

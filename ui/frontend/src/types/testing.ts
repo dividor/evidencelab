@@ -67,7 +67,7 @@ export interface AssertionResult {
   label?: string;
   quoted_claims?: number[];
   factual_support?: boolean;
-  claim_grades?: { claim: number; reason: string; score: number; passed: boolean }[];
+  claim_grades?: { claim: number; reason: string; score?: number; passed?: boolean; error?: boolean }[];
   error?: boolean;
   not_run?: boolean;
   applicable?: boolean;
@@ -185,6 +185,7 @@ export interface CheckSectionStats {
 }
 
 export interface CheckSummaryStats {
+  section_counts?: Record<ResultStatus, number>;
   total?: number;
   verdicts?: Record<CitationVerdict, number>;
   flagged?: number;
@@ -202,6 +203,7 @@ export interface CheckSummaryStats {
 }
 
 export interface BriefCitationCheck {
+  check_kind?: "citation" | "full";
   id: string;
   brief_id: string;
   brief_title: string;
@@ -283,7 +285,12 @@ export interface BriefCitationCheckPassage {
   error_message?: string | null;
 }
 
+export type BriefSectionReview = Pick<TestResult, 'actual_output' | 'brief_evidence' | 'assertion_results' | 'status'> & {
+  section_id: string; heading: string; number: string;
+};
+
 export interface BriefCitationCheckDetail extends BriefCitationCheck {
+  section_results?: BriefSectionReview[] | null;
   passages: BriefCitationCheckPassage[];
 }
 

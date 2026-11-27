@@ -367,6 +367,19 @@ def _factual_result(assertion, output, judge_fn):
         }
     grades, prompt = judge_fn(_summary_text(output), judge_rubric_key(info))
     threshold = float(assertion.get("threshold", 1.0))
+    errors = [f"Claim {g['claim']}: {g['reason']}" for g in grades if g.get("error")]
+    assessed = [
+        g if g.get("error") else {**g, "passed": g["score"] >= threshold}
+        for g in grades
+    ]
+    if errors:
+        return {
+            **info,
+            "error": True,
+            "message": " ".join(errors),
+            "judge_prompt": prompt,
+            "claim_grades": assessed,
+        }
     score = min(g["score"] for g in grades)
     return {
         **info,
@@ -374,7 +387,7 @@ def _factual_result(assertion, output, judge_fn):
         "passed": score >= threshold,
         "message": "",
         "judge_prompt": prompt,
-        "claim_grades": [{**g, "passed": g["score"] >= threshold} for g in grades],
+        "claim_grades": assessed,
     }
 
 
@@ -436,6 +449,6 @@ def evaluate_assertions(
     With no assertions, the case trivially passes with score 1.0.
     """
     results = [evaluate_assertion(a, output, judge_fn=judge_fn) for a in assertions]
-    all_passed = all(r["passed"] for r in results) if results else True
-    min_score = min((r["score"] for r in results), default=1.0)
+    all_passed = all(r.get("passed") for r in results) if results else True
+    min_score = min((r.get("score", 0.0) for r in results), default=1.0)
     return results, all_passed, min_score

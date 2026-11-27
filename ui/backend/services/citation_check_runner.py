@@ -285,7 +285,7 @@ def _sheet_row(record: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def build_review_workbook(
-    passages: List[Dict[str, Any]], by_section: List[Dict[str, Any]]
+    passages: List[Dict[str, Any]], by_section: List[Dict[str, Any]], sections=None
 ) -> bytes:
     """The notebook's review workbook — Flagged / All judgements / Summary —
     from stored passage rows and the check's per-section summary."""
@@ -296,9 +296,21 @@ def build_review_workbook(
         key=lambda r: (severity.get(r["verdict"], 3), -(r["confidence"] or 0.0)),
     )
     buffer = BytesIO()
-    write_review_workbook(
-        {"Flagged": flagged, "All judgements": rows, "Summary": by_section}, buffer
-    )
+    sheets = {"Flagged": flagged, "All judgements": rows, "Summary": by_section}
+    if sections is not None:
+        sheets["Section checks"] = [
+            {
+                "section": section["heading"],
+                "number": section["number"],
+                "expectation": check.get("label") or check["type"],
+                "passed": check.get("passed"),
+                "score": check.get("score"),
+                "assessment": check.get("message"),
+            }
+            for section in sections
+            for check in section["assertion_results"]
+        ]
+    write_review_workbook(sheets, buffer)
     return buffer.getvalue()
 
 
@@ -502,6 +514,11 @@ async def run_check(
             logger.error("run_check: check %s not found", check_id)
             return
         try:
+            if getattr(check, "check_kind", None) == "full":
+                from ui.backend.services.saved_brief_check_runner import run_full_check
+
+                await run_full_check(session, check)
+                return
             await _execute(
                 session, check, judge or make_judge(check.judge_model), concurrency
             )

@@ -740,6 +740,7 @@ async def create_brief_check(
     except BriefCitationError as exc:
         raise citation_http_error(exc)
     check = BriefCitationCheck(
+        check_kind="full",
         brief_id=brief.id,
         brief_title=brief.title,
         data_source=brief.data_source,
@@ -798,7 +799,7 @@ async def get_brief_check(
     session: AsyncSession = Depends(get_async_session),
 ) -> BriefCitationCheckRead:
     check = await _get_check(session, check_id, admin)
-    await session.refresh(check, attribute_names=["passages"])
+    await session.refresh(check, attribute_names=["passages", "section_results"])
     current = await _current_version(session, check.brief_id)
     return _check_read(check, current, detail=True)
 
@@ -851,14 +852,17 @@ async def export_brief_check(
     """The review workbook (Flagged / All judgements / Summary), as the
     notebook writes it."""
     check = await _get_check(session, check_id, admin)
-    await session.refresh(check, attribute_names=["passages"])
+    await session.refresh(check, attribute_names=["passages", "section_results"])
     passages = [
         BriefCitationCheckPassageRead.model_validate(p).model_dump()
         for p in check.passages
     ]
     stats = check.summary_stats or {}
     payload = await run_in_threadpool(
-        build_review_workbook, passages, stats.get("by_section") or []
+        build_review_workbook,
+        passages,
+        stats.get("by_section") or [],
+        check.section_results,
     )
     filename = f"citation_check_{check.brief_id}.xlsx"
     return Response(
