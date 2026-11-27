@@ -10,6 +10,7 @@ import httpx
 import pytest
 from limits.storage import MemoryStorage
 from limits.strategies import MovingWindowRateLimiter
+from mcp.server.fastmcp import FastMCP
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 
 from mcp_server import http_server, oauth, rate_limit
@@ -20,6 +21,7 @@ from mcp_server.resources.heatmap import (
     HEATMAP_MIME_TYPE,
     HEATMAP_URI,
     read_heatmap_html,
+    register_heatmap_resource,
     resource_metadata,
 )
 from mcp_server.tools import heatmap as adapter
@@ -186,6 +188,41 @@ def test_resource_domain_hashes_the_exact_public_connector_url():
     assert resource_metadata("https://example.com/mcp/") != resource_metadata(
         "https://example.com/mcp"
     )
+
+
+@pytest.mark.parametrize(
+    "local_url",
+    [
+        "http://localhost:8001/mcp",
+        "http://127.0.0.1:18105/mcp",
+        "https://localhost/mcp",
+        "https://127.0.0.1/mcp",
+        "https://[::1]/mcp",
+    ],
+)
+def test_resource_metadata_uses_host_origin_for_local_urls(local_url):
+    assert resource_metadata(local_url) == {"ui": {"csp": {}}}
+
+
+@pytest.mark.asyncio
+async def test_local_resource_retains_csp_and_mime_type(monkeypatch, tmp_path):
+    monkeypatch.setattr(oauth, "_MCP_PUBLIC_URL", "http://127.0.0.1:18105/mcp")
+    monkeypatch.setenv("MCP_APP_ASSET_DIR", str(tmp_path))
+    monkeypatch.delenv("MCP_BRANDING_DIR", raising=False)
+    stock_logo = Path(__file__).parents[2] / "ui" / "frontend" / "public" / "logo.png"
+    shutil.copyfile(stock_logo, tmp_path / "logo.png")
+    (tmp_path / "heatmap.html").write_text(
+        "<title>{{BRAND_NAME}}</title>", encoding="utf-8"
+    )
+    server = FastMCP("Local Heatmapper")
+    register_heatmap_resource(server)
+
+    registered = await server.list_resources()
+    assert registered[0].meta == {"ui": {"csp": {}}}
+    (asset,) = await server.read_resource(HEATMAP_URI)
+    assert asset.mime_type == HEATMAP_MIME_TYPE
+    assert asset.content == "<title>Evidence Lab</title>"
+    assert asset.meta == {"ui": {"csp": {}}}
 
 
 @pytest.mark.asyncio

@@ -130,6 +130,12 @@ sandbox origin. Use [the custom connector steps](../overview/mcp.md#connecting-c
 to sign in. Inline rendering and clicking a cell use the connector's existing
 authentication. The HTML has no external scripts or API calls.
 
+For local testing through a Claude Desktop standard-input/output (stdio)
+bridge, use the local HTTP address for `MCP_PUBLIC_URL`. Claude gives the
+local app its sandbox origin. If the bridge connects to an HTTPS deployment,
+strip `_meta.ui.domain` from its UI resource responses before forwarding them
+to Claude Desktop.
+
 When the user module is enabled, signed-in MCP users must have access to the
 requested data source through Group Settings for Search and Heatmapper.
 Server and managed API keys retain access to the configured data sources.

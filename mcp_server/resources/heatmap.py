@@ -4,6 +4,7 @@ import hashlib
 import logging
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from mcp.server.fastmcp import FastMCP
 from starlette.concurrency import run_in_threadpool
@@ -26,6 +27,9 @@ def heatmap_tool_metadata(*, app_only: bool = False) -> dict:
 
 
 def resource_metadata(public_url: str) -> dict:
+    url = urlsplit(public_url)
+    if url.scheme != "https" or url.hostname in {None, "localhost", "127.0.0.1", "::1"}:
+        return {"ui": {"csp": {}}}
     domain = hashlib.sha256(public_url.encode()).hexdigest()[:32]
     return {"ui": {"csp": {}, "domain": f"{domain}.claudemcpcontent.com"}}
 
