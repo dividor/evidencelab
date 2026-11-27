@@ -554,8 +554,11 @@ class ResearchWorkflow:
         )
         if not remaining:
             return draft
+        # A whole-section revision needs the original citations as well as new material.
+        cited = {label: evidence[label] for label in cited_numbers_in_order(draft)}
         return await write(
-            evidence={p["global_index"]: p for p in remaining}, earlier_text=draft
+            evidence={**cited, **{p["global_index"]: p for p in remaining}},
+            earlier_text=draft,
         )
 
     async def check_answer(

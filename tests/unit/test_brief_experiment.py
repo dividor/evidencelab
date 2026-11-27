@@ -574,7 +574,7 @@ def test_overlapping_chunks_share_an_excerpt_only_within_the_same_source_and_sub
 
 
 def test_word_target_preserves_the_order_of_the_explanation():
-    from ui.backend.services.assistant_brief_writer import _combine_findings
+    from ui.backend.services.assistant_brief_writer import _fit_section_to_target
 
     opening = "The team inspected every joint in the new system [1]."
     cause = (
@@ -582,5 +582,5 @@ def test_word_target_preserves_the_order_of_the_explanation():
     )
     consequence = "This delayed repairs [3]."
     paragraph = f"{opening} {cause} {consequence}"
-    assert _combine_findings([paragraph], 13) == (opening, 9)
-    assert _combine_findings([paragraph], 20) == (f"{opening} {cause}", 22)
+    assert _fit_section_to_target(paragraph, 13) == (opening, 9)
+    assert _fit_section_to_target(paragraph, 20) == (f"{opening} {cause}", 22)

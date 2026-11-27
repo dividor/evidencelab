@@ -817,7 +817,7 @@ async def test_brief_keeps_its_verified_findings_and_qualified_evidence_gap():
 
 
 @pytest.mark.asyncio
-async def test_brief_adds_verified_findings_without_rewriting_or_exceeding_the_target():
+async def test_brief_revises_a_short_draft_as_one_paragraph_and_rechecks_each_sentence():
     first = "In Armenia, teachers delivered nutrition education."
     lead = "For example, in Armenia, teachers delivered nutrition education."
     second = "In Malawi, students learned safe food preparation."
@@ -831,7 +831,10 @@ async def test_brief_adds_verified_findings_without_rewriting_or_exceeding_the_t
                     "teachers delivered nutrition education",
                 )
             ),
-            _brief_draft((second, 2, "students learned safe food preparation")),
+            _brief_draft(
+                (first, 1, "teachers delivered nutrition education"),
+                (second, 2, "students learned safe food preparation"),
+            ),
         ],
         [[point(1, first), point(2, second)]],
         initial_query="Nutrition and hygiene learning in school meal programmes",
@@ -842,20 +845,44 @@ async def test_brief_adds_verified_findings_without_rewriting_or_exceeding_the_t
         target_words=100,
     )
     answer = next(event["token"] for event in events if event["type"] == "token")
-    assert answer == f"{first.rstrip('.')} [1].\n\n{second.rstrip('.')} [2]."
+    assert answer == f"{first.rstrip('.')} [1]. {second.rstrip('.')} [2]."
     assert len(answer.split()) <= 100
     drafts = [
         call.args[0][-1].content
         for call in llm.ainvoke.await_args_list
         if call.args[0][0].content.startswith("Write the prose of one section")
     ]
-    assert len(drafts) == 2 and "Add different findings" in drafts[-1]
+    assert len(drafts) == 2 and "complete revised section" in drafts[-1]
+    assert lead in drafts[-1]
     verdict_requests = [
         call.args[0][-1].content
         for call in llm.ainvoke.await_args_list
         if call.args[0][0].content.startswith("Check whether the proposed answer")
     ]
-    assert _review_rows(verdict_requests[-1])[0]["preceding_sentence"] == lead
+    rows = _review_rows(verdict_requests[-1])
+    assert [row["text"] for row in rows] == [
+        f"{first.rstrip('.')} [1].",
+        f"{second.rstrip('.')} [2].",
+    ]
+    assert rows[1]["preceding_sentence"] == rows[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_brief_keeps_the_checked_draft_when_revision_yields_less_evidence():
+    first = "Pressure returned to normal after the valve was repaired"
+    second = "The system then ran continuously for six hours"
+    events, _, _ = await run_research(
+        [
+            '{"queries":[]}',
+            _brief_draft((first, 1, first), (second, 1, second)),
+            _brief_draft((first, 1, first)),
+        ],
+        [[point(1, f"{first}. {second}.")]],
+        brief_section=BriefSectionPrompt(outline=[{"title": "Recovery"}], current=0),
+        target_words=150,
+    )
+    answer = next(event["token"] for event in events if event["type"] == "token")
+    assert answer == f"{first} [1]. {second} [1]."
 
 
 @pytest.mark.asyncio
@@ -871,7 +898,7 @@ async def test_brief_attempts_more_detail_when_four_findings_are_too_short():
         [
             '{"queries":[]}',
             _brief_draft(*((finding, 1, finding) for finding in findings[:4])),
-            _brief_draft((findings[4], 1, findings[4])),
+            _brief_draft(*((finding, 1, finding) for finding in findings)),
         ],
         [[point(1, ". ".join(findings) + ".")]],
         initial_query="School reintegration evaluation",
@@ -887,7 +914,10 @@ async def test_brief_attempts_more_detail_when_four_findings_are_too_short():
         for call in llm.ainvoke.await_args_list
         if call.args[0][0].content.startswith("Write the prose of one section")
     ]
-    assert len(drafts) == 2 and "24 words, leaving about 326 words" in drafts[-1]
+    assert (
+        len(drafts) == 2
+        and "24 words. The target for the complete section is 350 words" in drafts[-1]
+    )
 
 
 @pytest.mark.asyncio
@@ -1793,7 +1823,7 @@ async def test_brief_retries_the_supported_part_of_a_finding_reserved_for_two_he
             _brief_draft(
                 (finding, 1, finding), (mixed, 2, case), (unrelated, 1, finding)
             ),
-            _brief_draft((case, 2, case), limit=limit),
+            _brief_draft((finding, 1, finding), (case, 2, case), limit=limit),
         ],
         [[point(1, finding + "."), point(2, case + ". " + response + ".")]],
         query=heading,
@@ -1817,7 +1847,7 @@ async def test_brief_retries_the_supported_part_of_a_finding_reserved_for_two_he
     assert f"Finding removed during evidence check: {unrelated}" in drafts[-1]
     assert all(f'Voice and audience: "{voice}"' in draft for draft in drafts)
     answer = next(event["token"] for event in events if event["type"] == "token")
-    assert answer == f"{finding} [1].\n\n{case} [2].\n\n{limit}"
+    assert answer == f"{finding} [1]. {case} [2].\n\n{limit}"
 
 
 @pytest.mark.asyncio
@@ -2107,8 +2137,8 @@ async def test_short_section_checks_unused_search_hits_for_additional_supported_
             '{"queries":[]}',
             _brief_draft((first, 1, first)),
             _brief_draft((first, 1, first)),
-            _brief_draft((later, 13, later)),
-            _brief_draft((later, 13, later)),
+            _brief_draft((first, 1, first), (later, 13, later)),
+            _brief_draft((first, 1, first), (later, 13, later)),
         ],
         [rows],
         target_words=100,
