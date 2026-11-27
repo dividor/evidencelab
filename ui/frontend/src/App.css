@@ -859,10 +859,8 @@ h6,
   justify-content: center;
 }
 
-/* Tablets (641–1024px): the landing container, its content wrapper and the
-   form each add 2rem of side padding, so the search box shrank to about half the
-   screen beside the 200px button. Keep one modest gutter instead. */
-@media (min-width: 641px) and (max-width: 1024px) {
+/* Keep the input and example queries wide enough to read on smaller screens. */
+@media (max-width: 1024px) {
   .search-container.search-container-landing {
     padding-left: var(--spacing-md);
     padding-right: var(--spacing-md);
@@ -909,6 +907,25 @@ h6,
   cursor: pointer;
   transition: all 0.15s ease;
   font-family: inherit;
+}
+
+@media (max-width: 1024px) {
+  .search-examples-label,
+  .search-example-chip {
+    font-size: 1rem;
+  }
+
+  .search-example-chip {
+    min-height: 44px;
+    max-width: 100%;
+    line-height: 1.4;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .search-input-column {
+    min-width: 0;
+  }
 }
 
 .search-example-chip:hover {
@@ -10338,7 +10355,8 @@ sup.reference-number {
   margin-bottom: var(--spacing-2xl);
 }
 
-.admin-section h3 {
+.admin-section h3,
+.testing-manager > h3 {
   margin-bottom: var(--spacing-lg);
   font-size: 1.1rem;
   color: var(--gray-700);
@@ -12295,6 +12313,18 @@ a.admin-citation-clickable:hover {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md, 1rem);
+}
+
+.testing-manager > h3 {
+  margin: 0;
+}
+
+.testing-saved-briefs-table th:first-child {
+  min-width: 15rem;
+}
+
+.testing-saved-briefs-table .testing-brief-section-title {
+  overflow-wrap: break-word;
 }
 
 .testing-subnav {

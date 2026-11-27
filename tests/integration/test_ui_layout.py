@@ -406,3 +406,28 @@ def test_feedback_tab_when_search_is_compact_then_leaves_the_search_button_clear
         )
     finally:
         page.context.close()
+
+
+@pytest.mark.parametrize("width", [320, 847])
+def test_search_examples_fit_and_are_readable_on_small_screens(
+    browser: Browser, width: int
+):
+    page = browser.new_page(viewport={"width": width, "height": 850})
+    try:
+        query = urllib.parse.urlencode({"dataset": RESULTS_QUERY["dataset"]})
+        page.goto(f"{UI_BASE_URL}/search?{query}", wait_until="networkidle")
+        examples = page.locator(".search-example-chip")
+        examples.first.wait_for()
+        settle(page)
+        for example in examples.all():
+            size = example.evaluate(
+                """button => ({
+                    font: parseFloat(getComputedStyle(button).fontSize),
+                    height: button.offsetHeight,
+                    fits: button.scrollWidth <= button.clientWidth + 1 &&
+                        button.offsetWidth <= button.parentElement.clientWidth
+                })"""
+            )
+            assert size["font"] >= 16 and size["height"] >= 44 and size["fits"], size
+    finally:
+        page.context.close()

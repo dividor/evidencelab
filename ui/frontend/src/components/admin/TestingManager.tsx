@@ -65,6 +65,7 @@ export default function TestingManager() {
   const experiments = testing === 'experiments' || (!testing && !dataset);
   return (
     <div className="admin-tab-content testing-manager">
+      <h3>{experiments ? 'Experiments' : 'Experiment datasets'}</h3>
       <div className="testing-subnav">
         <button className={`btn-sm ${experiments ? '' : 'btn-primary'}`}
           onClick={() => openAdminLocation({ page: 'testing', testing: 'datasets' })}>Datasets</button>

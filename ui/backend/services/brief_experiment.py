@@ -25,12 +25,7 @@ from ui.backend.services.citation_fidelity import (
     unresolved_numbers,
 )
 from ui.backend.services.group_settings import CITATION_CHECK_DEFAULT
-from ui.backend.services.llm_choice import (
-    BRIEF,
-    CITATION_CHECK,
-    combo_default,
-    default_combo,
-)
+from ui.backend.services.llm_choice import BRIEF, combo_default
 from ui.backend.services.test_evaluators import (
     UnverifiedOverlapQuote,
     brief_assertion_type,
@@ -46,7 +41,6 @@ def configure_brief(config, combo):
         "brief_temperature": assistant.get("temperature"),
         "brief_max_tokens": assistant.get("max_tokens"),
         "brief_citation_check": CITATION_CHECK_DEFAULT,
-        "citation_model": combo_default(CITATION_CHECK, default_combo()),
         "brief_prompt": brief_section_prompt_default(),
     }
     for key, value in defaults.items():

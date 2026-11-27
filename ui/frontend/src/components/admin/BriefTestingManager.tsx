@@ -20,6 +20,7 @@ const BriefTestingManager: React.FC<BriefTestingManagerProps> = ({
   const { check } = useAdminLocation();
   return (
     <div className="admin-tab-content testing-manager">
+      <h3>Saved Briefs</h3>
       {check ? (
         <BriefCheckDetail
           key={check}

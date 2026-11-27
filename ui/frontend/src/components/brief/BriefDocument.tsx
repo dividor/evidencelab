@@ -1095,9 +1095,7 @@ const ResearchProgress: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => (
     <div className="brief-doc-progress-row">
       <span>Researching…</span>
       <span className="brief-doc-progress-right">
-        {brief.regenerating
-          ? `${brief.updatedCount} of ${brief.regeneration?.total} updated`
-          : `${brief.doneCount}/${brief.sections.length}`}
+        {brief.doneCount}/{brief.sections.length}
         <button className="brief-stop-btn" onClick={brief.stopResearch} title="Stop all research">
           ■ Stop
         </button>
@@ -1286,7 +1284,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           showComments={showComments}
           onToggleComments={onToggleComments}
         />
-        {brief.stage === 'research' && brief.researching && <ResearchProgress brief={brief} />}
+        {brief.stage === 'research' && brief.researching && !brief.regenerating && <ResearchProgress brief={brief} />}
         <RegenerationResult brief={brief} />
         {logOpen && hasOutlineLog && <OutlineLog brief={brief} onClose={() => setLogOpen(false)} />}
       </div>

@@ -107,7 +107,11 @@ async def user_group_choice(session: Any, user: Any, job: str) -> Optional[str]:
         return None
     from ui.backend.services.group_settings import user_groups
 
-    return group_choice(await user_groups(session, user.id), job)
+    groups = await user_groups(session, user.id)
+    selected = group_choice(groups, job)
+    if job == CITATION_CHECK and selected is None:
+        return group_choice(groups, JUDGE)
+    return selected
 
 
 def _stage_model(combo: Dict[str, Any], stage: str) -> Optional[str]:
@@ -130,21 +134,22 @@ def combo_default(job: str, combo: Optional[Dict[str, Any]]) -> Optional[str]:
         return summary
     if job == BRIEF:
         return _stage_model(combo, "assistant_model") or summary
-    if job == JUDGE:
+    if job in (JUDGE, CITATION_CHECK):
         return _stage_model(combo, "judge_model") or summary
-    if job == CITATION_CHECK:
-        assistant = db_config.get_application_config().get("assistant", {})
-        return (
-            _stage_model(assistant, "citation_check_model")
-            or _stage_model(combo, "assistant_model")
-            or summary
-        )
     raise ValueError(f"Unknown AI job {job!r}")
 
 
 def default_combo() -> Dict[str, Any]:
     """The model combo a visitor starts on."""
     return db_config.UI_MODEL_COMBOS.get(db_config.get_default_model_combo()) or {}
+
+
+def run_combo(name: Optional[str]) -> Dict[str, Any]:
+    if name is None:
+        return default_combo()
+    if name not in db_config.UI_MODEL_COMBOS:
+        raise HTTPException(status_code=422, detail="Unknown model combo.")
+    return db_config.UI_MODEL_COMBOS[name]
 
 
 def config_defaults() -> Dict[str, Optional[str]]:

@@ -50,7 +50,7 @@ from ui.backend.services.brief_template_evaluation import (
 from ui.backend.services.citations import render_reference_lines
 from ui.backend.services.evaluation_metrics import compute_summary_stats
 from ui.backend.services.evaluation_metrics import progress_stats as _progress_stats
-from ui.backend.services.llm_choice import JUDGE, group_choice
+from ui.backend.services.llm_choice import CITATION_CHECK, JUDGE, group_choice
 from ui.backend.services.search_defaults import (
     SYSTEM_SEARCH_DEFAULTS,
     default_section_types,
@@ -510,7 +510,14 @@ async def _apply_judge_choice(
     from ui.backend.services.group_settings import user_groups
 
     try:
-        choice = group_choice(await user_groups(session, user_id), JUDGE)
+        groups = await user_groups(session, user_id)
+        choice = group_choice(groups, JUDGE)
+        if config.get("capability") == CAPABILITY_BRIEF and config.get(
+            "brief_citation_check"
+        ):
+            checker = group_choice(groups, CITATION_CHECK)
+            if checker:
+                config["citation_model"] = checker
     except HTTPException as exc:
         return str(exc.detail)
     if choice:
@@ -550,6 +557,10 @@ def run_config_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
         snapshot.get("summary_model") or _default_summary_model()
     )
     snapshot["judge_model"] = snapshot.get("judge_model") or snapshot["summary_model"]
+    if snapshot.get("capability") == CAPABILITY_BRIEF and not snapshot.get(
+        "citation_model"
+    ):
+        snapshot["citation_model"] = snapshot["judge_model"]
     return _json_safe(snapshot)
 
 

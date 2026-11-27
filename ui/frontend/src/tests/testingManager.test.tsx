@@ -35,9 +35,11 @@ beforeEach(() => {
 describe('TestingManager', () => {
   test('renders the datasets sub-view with fetched datasets', async () => {
     render(<TestingManager />);
+    expect(screen.getByRole('heading', { name: 'Experiments' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Datasets' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Experiments' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Datasets' }));
+    expect(screen.getByRole('heading', {name: 'Experiment datasets'})).toBeVisible();
     await waitFor(() => expect(screen.getByText('Search Smoke')).toBeInTheDocument());
     expect(mockedAxios.get).toHaveBeenCalledWith(
       expect.stringContaining('/testing/datasets'),

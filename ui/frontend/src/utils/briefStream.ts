@@ -206,6 +206,7 @@ export interface RunDeepResearchOptions {
   dataSource: string;
   query: string;
   doneLabel?: string;
+  modelCombo?: string | null;
   assistantModelConfig?: SummaryModelConfig | null;
   // Reranker + search settings. Logged-in briefs pass the group's settings so
   // they search like the rest of the app; otherwise these are null (no rerank —
@@ -238,6 +239,7 @@ export const runDeepResearch = async ({
   dataSource,
   query,
   doneLabel = 'Section complete',
+  modelCombo,
   assistantModelConfig,
   rerankerModel = null,
   searchSettings = null,
@@ -258,6 +260,7 @@ export const runDeepResearch = async ({
     query,
     dataSource,
     deepResearch: true,
+    modelCombo,
     assistantModelConfig: assistantModelConfig ?? null,
     rerankerModel: rerankerModel ?? null,
     searchSettings: searchSettings ?? null,
@@ -329,6 +332,7 @@ export interface ResearchSectionOptions {
   briefTopic?: string | null;
   // Author guidance that shaped the outline; also steers section research.
   briefInstructions?: string | null;
+  modelCombo?: string | null;
   assistantModelConfig?: SummaryModelConfig | null;
   rerankerModel?: string | null;
   searchSettings?: AssistantSearchSettings | null;
@@ -429,6 +433,7 @@ export const researchBriefSection = ({
   context,
   briefTopic,
   briefInstructions,
+  modelCombo,
   assistantModelConfig,
   rerankerModel,
   searchSettings,
@@ -459,6 +464,7 @@ export const researchBriefSection = ({
       publishedAfterIso,
       voiceInstructions,
     }),
+    modelCombo,
     assistantModelConfig,
     rerankerModel,
     searchSettings,

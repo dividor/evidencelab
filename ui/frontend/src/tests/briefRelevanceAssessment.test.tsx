@@ -40,3 +40,18 @@ test('keeps the original assessment available for earlier grades without structu
   expect(screen.getByText('Historical assessment.')).toBeVisible();
   expect(screen.queryByText('Negatives:')).toBeNull();
 });
+
+test.each([true, false])('Word count shows section text and references when applicable is %s', async applicable => {
+  const message = applicable ? '3 words of 5 requested.' : 'This section has no word target.';
+  render(<AssertionResultRow testResult={saved} result={{ type: 'brief_length', passed: false, message, applicable }} />);
+  fireEvent.click(screen.getByText('Word count'));
+  expect(await screen.findByText(message)).toBeVisible();
+  expect(screen.queryByText('Section claims')).toBeNull();
+  const section = screen.getByText('Section text and references');
+  expect(section.closest('details')).not.toHaveAttribute('open');
+  fireEvent.click(section);
+  const reference = screen.getByText('[2] Service log');
+  expect(reference.closest('details')).not.toHaveAttribute('open');
+  fireEvent.click(reference);
+  expect(screen.getByText('Crews reported faster repairs.')).toBeVisible();
+});

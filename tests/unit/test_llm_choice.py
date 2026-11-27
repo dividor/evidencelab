@@ -136,7 +136,7 @@ class TestConfigDefaults:
             "summary": "nova-2-lite",
             "brief": "nova-pro",
             "judge": "sonnet",
-            "citation_check": "nova-pro",
+            "citation_check": "sonnet",
         }
 
     def test_defaults_when_no_assistant_or_judge_then_summary_model(self):
@@ -156,14 +156,14 @@ class TestConfigDefaults:
         group_model.assert_not_awaited()
         assert await assistant_routes._citation_model(True, None, None) == "nova-2-lite"
         group_model.return_value = None
-        assert await assistant_routes._citation_model(True, None, None) == "nova-pro"
+        assert await assistant_routes._citation_model(True, None, None) == "sonnet"
 
     def test_defaults_route_when_called_then_returns_config_models(self):
         assert get_config_llm_defaults().model_dump() == {
             "summary": "nova-2-lite",
             "brief": "nova-pro",
             "judge": "sonnet",
-            "citation_check": "nova-pro",
+            "citation_check": "sonnet",
         }
 
     def test_llms_route_when_model_refuses_temperature_then_flagged(self, monkeypatch):
@@ -400,3 +400,40 @@ class TestJudgeChoice:
     def test_citation_check_judge_when_combo_sets_judge_then_used(self):
         assert citation_check_runner.resolve_judge_model("Bedrock") == "sonnet"
         assert citation_check_runner.resolve_judge_model(None) == "sonnet"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "settings,expected",
+    [
+        ({}, "nova-2-lite"),
+        ({"judgeModel": "sonnet"}, "sonnet"),
+        ({"judgeModel": "sonnet", "citationCheckModel": "nova-pro"}, "nova-pro"),
+    ],
+)
+async def test_checker_inherits_the_run_judge_unless_explicitly_selected(
+    monkeypatch, settings, expected
+):
+    from unittest.mock import AsyncMock
+
+    other = {
+        "summarization_model": {"model": "nova-2-lite"},
+        "assistant_model": {"model": "sonnet"},
+    }
+    monkeypatch.setitem(db_config.UI_MODEL_COMBOS, "Other", other)
+    groups = AsyncMock(return_value=[_group("Readers", **settings)])
+    monkeypatch.setattr(group_settings_module, "user_groups", groups)
+    user = SimpleNamespace(id="user")
+    assert (
+        await assistant_routes._citation_model(True, user, object(), "Other")
+        == expected
+    )
+    cfg = {"capability": "brief", "model_combo": "Other", "brief_citation_check": True}
+    config = test_runner.effective_config(cfg)
+    assert await test_runner._apply_judge_choice(object(), config, user.id) is None
+    assert test_runner.run_config_snapshot(config)["citation_model"] == expected
+
+
+def test_unknown_run_combo_is_rejected():
+    with pytest.raises(HTTPException, match="Unknown model combo"):
+        llm_choice.run_combo("missing")

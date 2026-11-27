@@ -151,80 +151,82 @@ const BriefCheckList: React.FC<BriefCheckListProps> = ({ modelCombo, onOpenCheck
       {visible.length === 0 ? (
         <p className="text-muted">No briefs match.</p>
       ) : (
-        <table className="admin-table" aria-label="Saved briefs">
-          <thead>
-            <tr>
-              <th>Brief and data source</th>
-              <th>Owner</th>
-              <th>Status</th>
-              <th>Updated</th>
-              <th>Sections</th>
-              <th>Cited passages</th>
-              <th>Pass rate</th><th>Mean Total Score</th><ClaimHeaders /><th>Duration</th>
-              <th>Last check</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((b) => {
-              const last = b.last_check;
-              return (
-                <tr
-                  key={b.id}
-                  className={last ? 'testing-clickable-row' : ''}
-                  onClick={() => last && onOpenCheck(last)}
-                >
-                  <td className="testing-brief-section-title" title={b.title}>
-                    <strong>{b.title}</strong>
-                    <small>{b.data_source}</small>
-                    {b.access === 'shared' && <span className="testing-config-badge">shared</span>}
-                  </td>
-                  <td>{b.owner_name}</td>
-                  <td>{last ? <span className={`testing-status testing-status-${last.status}`}>{last.status}</span> : '—'}</td>
-                  <td>{formatTimestamp(b.updated_at)}</td>
-                  <td>{b.researched_sections}</td>
-                  <td>{b.cited_passages}</td>
-                  <td>{formatPercent(last?.summary_stats?.pass_rate)}</td>
-                  <td>{formatScore(last?.summary_stats?.mean_score)}</td>
-                  <ClaimCells stats={last?.summary_stats} />
-                  <td>{formatElapsed(last?.summary_stats?.duration_ms)}</td>
-                  <td>
-                    <span className="text-muted">{lastCheckSummary(last)}</span>
-                    {last?.brief_version_number != null && (
-                      <span
-                        className="text-muted testing-check-version"
-                        title="The brief version this check judged"
+        <div className="admin-table-scroll" role="region" aria-label="Saved briefs table" tabIndex={0}>
+          <table className="admin-table testing-saved-briefs-table" aria-label="Saved briefs">
+            <thead>
+              <tr>
+                <th>Brief and data source</th>
+                <th>Owner</th>
+                <th>Status</th>
+                <th>Updated</th>
+                <th>Sections</th>
+                <th>Cited passages</th>
+                <th>Pass rate</th><th>Mean Total Score</th><ClaimHeaders /><th>Duration</th>
+                <th>Last check</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((b) => {
+                const last = b.last_check;
+                return (
+                  <tr
+                    key={b.id}
+                    className={last ? 'testing-clickable-row' : ''}
+                    onClick={() => last && onOpenCheck(last)}
+                  >
+                    <td className="testing-brief-section-title" title={b.title}>
+                      <strong>{b.title}</strong>
+                      <small>{b.data_source}</small>
+                      {b.access === 'shared' && <span className="testing-config-badge">shared</span>}
+                    </td>
+                    <td>{b.owner_name}</td>
+                    <td>{last ? <span className={`testing-status testing-status-${last.status}`}>{last.status}</span> : '—'}</td>
+                    <td>{formatTimestamp(b.updated_at)}</td>
+                    <td>{b.researched_sections}</td>
+                    <td>{b.cited_passages}</td>
+                    <td>{formatPercent(last?.summary_stats?.pass_rate)}</td>
+                    <td>{formatScore(last?.summary_stats?.mean_score)}</td>
+                    <ClaimCells stats={last?.summary_stats} />
+                    <td>{formatElapsed(last?.summary_stats?.duration_ms)}</td>
+                    <td>
+                      <span className="text-muted">{lastCheckSummary(last)}</span>
+                      {last?.brief_version_number != null && (
+                        <span
+                          className="text-muted testing-check-version"
+                          title="The brief version this check judged"
+                        >
+                          {' '}
+                          v{last.brief_version_number}
+                        </span>
+                      )}
+                      {last?.brief_changed && (
+                        <span
+                          className="testing-config-badge"
+                          title="The brief has a newer version than the one this check judged"
+                        >
+                          brief changed since
+                        </span>
+                      )}
+                    </td>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className="btn-sm btn-primary"
+                        onClick={() => handleRun(b)}
+                        disabled={busyId === b.id || isActive(last) || b.researched_sections === 0}
+                        title={
+                          b.researched_sections === 0 ? 'This brief has no written sections' : undefined
+                        }
                       >
-                        {' '}
-                        v{last.brief_version_number}
-                      </span>
-                    )}
-                    {last?.brief_changed && (
-                      <span
-                        className="testing-config-badge"
-                        title="The brief has a newer version than the one this check judged"
-                      >
-                        brief changed since
-                      </span>
-                    )}
-                  </td>
-                  <td onClick={(e) => e.stopPropagation()} className="testing-row-actions">
-                    <button
-                      className="btn-sm btn-primary"
-                      onClick={() => handleRun(b)}
-                      disabled={busyId === b.id || isActive(last) || b.researched_sections === 0}
-                      title={
-                        b.researched_sections === 0 ? 'This brief has no written sections' : undefined
-                      }
-                    >
-                      {busyId === b.id ? 'Starting...' : 'Run check'}
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                        {busyId === b.id ? 'Starting...' : 'Run check'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
       <p className="text-muted testing-brief-legend">
         Verdicts: {VERDICT_LABEL.supported} · {VERDICT_LABEL.partially_supported} ·{' '}

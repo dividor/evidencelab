@@ -40,6 +40,10 @@ function BriefAssessment({ result, testResult }: ResultProps) {
     <RelevanceAssessment result={result} />
     <GeneratedSection result={testResult} label="Section text and references" />
   </>;
+  if (result.type === 'brief_length') return <>
+    <p className="testing-assertion-result-message">{result.message}</p>
+    <GeneratedSection result={testResult} label="Section text and references" />
+  </>;
   const evidence = <AssertionEvidence assessment={result} result={testResult} />;
   if (result.factual_support || result.type === 'brief_factual') return <>
     {evidence}
@@ -54,7 +58,8 @@ const AssertionResultRow: React.FC<ResultProps> = ({ result, testResult }) => {
   const [open, setOpen] = useState(false);
   const label = expectationName(result);
   const status = ungradedStatus(result);
-  if (status && !result.claim_grades?.length) return <div className="testing-assertion-result">
+  const wordCount = result.type === 'brief_length' && testResult.actual_output?.capability === 'brief';
+  if (status && !wordCount && !result.claim_grades?.length) return <div className="testing-assertion-result">
     <strong>{label}</strong> <span>{status}</span><p>{result.message}</p>
   </div>;
   const heading = <>

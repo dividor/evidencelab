@@ -119,7 +119,7 @@ async def test_generation_uses_real_request_contract_without_grading_material(
             yield event
 
     monkeypatch.setattr(brief, "stream_research_response", stream)
-    cfg = runner.run_config_snapshot({"rerank": False})
+    cfg = runner.run_config_snapshot({"capability": "brief", "rerank": False})
     brief.configure_brief(
         cfg, {"assistant_model": {"model": "writer", "temperature": 0.2}}
     )
@@ -487,7 +487,7 @@ async def test_case_distinguishes_an_editorial_rejection_from_a_service_error(
         yield {"type": "done", "section_written": False, "usage": {"prompt_tokens": 19}}
 
     monkeypatch.setattr(brief, "stream_research_response", stream)
-    cfg = runner.run_config_snapshot({"rerank": False})
+    cfg = runner.run_config_snapshot({"capability": "brief", "rerank": False})
     brief.configure_brief(cfg, {"assistant_model": {"model": "writer"}})
 
     async def generate(case):
@@ -658,7 +658,7 @@ async def test_parent_case_passes_child_outline_to_writer_and_grader(monkeypatch
         yield {"type": "done", "section_written": True}
 
     monkeypatch.setattr(brief, "stream_research_response", stream)
-    config = runner.run_config_snapshot({})
+    config = runner.run_config_snapshot({"capability": "brief"})
     brief.configure_brief(config, {})
     output = await brief.run_brief_case(
         {"query": "Repairs", "heading": "Overview", "children": children},

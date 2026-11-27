@@ -190,38 +190,40 @@ const ExperimentList: React.FC<ExperimentListProps> = ({
                 {showClaims && <ClaimCells stats={stats} />}
                 <td>{formatElapsed(stats?.duration_ms)}</td>
                 <td>{formatTimestamp(exp.created_at)}</td>
-                <td onClick={(e) => e.stopPropagation()} className="testing-row-actions">
-                  {isActive(exp) ? (
+                <td onClick={(e) => e.stopPropagation()}>
+                  <div className="testing-row-actions">
+                    {isActive(exp) ? (
+                      <button
+                        className="btn-sm btn-danger"
+                        onClick={() => handleCancel(exp)}
+                        disabled={busyId === exp.id}
+                      >
+                        {busyId === exp.id ? 'Cancelling...' : 'Cancel'}
+                      </button>
+                    ) : (
+                      <button
+                        className="btn-sm btn-primary"
+                        onClick={() => handleRun(exp)}
+                        disabled={busyId === exp.id}
+                      >
+                        {busyId === exp.id ? 'Starting...' : 'Run'}
+                      </button>
+                    )}
+                    <button
+                      className="btn-sm"
+                      onClick={() => onEdit(exp)}
+                      disabled={busyId === exp.id || isActive(exp)}
+                    >
+                      Edit
+                    </button>
                     <button
                       className="btn-sm btn-danger"
-                      onClick={() => handleCancel(exp)}
-                      disabled={busyId === exp.id}
+                      onClick={() => setDeleteTarget(exp)}
+                      disabled={busyId === exp.id || isActive(exp)}
                     >
-                      {busyId === exp.id ? 'Cancelling...' : 'Cancel'}
+                      Delete
                     </button>
-                  ) : (
-                    <button
-                      className="btn-sm btn-primary"
-                      onClick={() => handleRun(exp)}
-                      disabled={busyId === exp.id}
-                    >
-                      {busyId === exp.id ? 'Starting...' : 'Run'}
-                    </button>
-                  )}
-                  <button
-                    className="btn-sm"
-                    onClick={() => onEdit(exp)}
-                    disabled={busyId === exp.id || isActive(exp)}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className="btn-sm btn-danger"
-                    onClick={() => setDeleteTarget(exp)}
-                    disabled={busyId === exp.id || isActive(exp)}
-                  >
-                    Delete
-                  </button>
+                  </div>
                 </td>
               </tr>
             );

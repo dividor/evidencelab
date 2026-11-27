@@ -88,6 +88,8 @@ describe('BriefTestingManager', () => {
   test('lists briefs and opens a check without a combo picker', async () => {
     render(<BriefTestingManager dataSource="wfp" modelCombo="Google Vertex" onResultClick={jest.fn()} />);
     await waitFor(() => expect(screen.getByText(BRIEF_TITLE)).toBeInTheDocument());
+    expect(screen.getByRole('heading', { name: 'Saved Briefs' })).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Saved briefs table' })).toContainElement(screen.getByRole('table'));
     expect(screen.queryByLabelText('Judge model combo')).toBeNull();
     expect(screen.queryByText(/summarisation model/)).toBeNull();
     fireEvent.click(screen.getByText(BRIEF_TITLE));
