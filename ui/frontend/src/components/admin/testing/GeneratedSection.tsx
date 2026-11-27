@@ -1,6 +1,8 @@
 import React, { useId, useState } from 'react';
 import type { AssertionResult, BriefEvalClaim, BriefEvalReference, TestResult } from '../../../types/testing';
 
+import { formatScore } from './testingFormat';
+
 type SavedSource = { title?: string; page?: number | null; text?: string };
 type ReferenceProps = { reference: BriefEvalReference; sources: SavedSource[] };
 
@@ -46,15 +48,31 @@ export function AssertionEvidence({ assessment, result }: { assessment: Assertio
   if (!evidence) return null;
   const sources = (result.actual_output?.sources || []) as SavedSource[];
   const quoted = new Set(assessment.quoted_claims || []);
-  const claims = evidence.paragraphs.flat().map((claim, index) => (
-    <div className="testing-evidence-claim" key={index}>
-      <strong>Claim {index + 1}</strong>
-      <div>{claim.parts.map(part => part.text).join('')}</div>
-      {claim.references.length ? claim.references.map(ref => (
-        <Reference key={ref} reference={evidence.references[ref]} sources={sources} />
-      )) : <small>No citation on this sentence.</small>}
-    </div>
-  ));
+  const factual = assessment.factual_support || assessment.type === 'brief_factual';
+  const grades = new Map(assessment.claim_grades?.map(grade => [grade.claim, grade]));
+  const claims = evidence.paragraphs.flat().map((claim, index) => {
+    const grade = grades.get(index + 1);
+    return (
+      <div className="testing-evidence-claim" key={index}>
+        <div className="testing-claim-heading">
+          <strong>Claim {index + 1}</strong>
+          {grade && <>
+            <span className={`testing-badge testing-badge-${grade.passed ? 'pass' : 'fail'}`}>{grade.passed ? 'Pass' : 'Fail'}</span>
+            <span>Score {formatScore(grade.score)}</span>
+          </>}
+        </div>
+        <div>{claim.parts.map(part => part.text).join('')}</div>
+        {grade && <p className="testing-claim-reason"><strong>Judge assessment</strong> {grade.reason}</p>}
+        {claim.references.length ? claim.references.map(ref => (
+          <Reference key={ref} reference={evidence.references[ref]} sources={sources} />
+        )) : <small>No citation on this sentence.</small>}
+      </div>
+    );
+  });
+  if (factual) return <div className="testing-factual-claims">
+    {!assessment.claim_grades && <small>This run recorded a single grade for the section.</small>}
+    {claims}
+  </div>;
   if (!quoted.size) return <div className="testing-assessment-claims"><strong>Section claims</strong>{claims}</div>;
   return (
     <div className="testing-assessment-claims">

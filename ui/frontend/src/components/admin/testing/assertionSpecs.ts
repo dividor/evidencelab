@@ -152,6 +152,9 @@ export const ASSERTION_SPECS_BY_CAPABILITY: Record<TestCapability, AssertionType
     { type: 'brief_intro_scope', label: 'Introduction leaves details to subheadings', fields: [] },
     { type: 'brief_overlap', label: 'Findings are distinct across sections', fields: [] },
     judgeSpec,
+    { ...judgeSpec, type: 'brief_factual', label: 'Factual support from citations',
+      fields: judgeSpec.fields.map(field => field.key === 'rubric'
+        ? { ...field, default: 'Check factual grounding against the cited excerpts.' } : field) },
     { ...judgeSpec, type: 'brief_writing', label: 'Judge writing against the assignment' },
   ],
 };

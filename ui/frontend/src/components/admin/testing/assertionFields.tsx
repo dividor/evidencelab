@@ -41,7 +41,7 @@ const formatParamValue = (val: unknown): string =>
   Array.isArray(val) ? `[${val.join(', ')}]` : String(val);
 
 export const summarizeAssertion = (assertion: Assertion): string => {
-  if (assertion.type === 'llm_judge' || assertion.type === 'brief_writing') {
+  if (assertion.type === 'llm_judge' || assertion.type === 'brief_writing' || assertion.type === 'brief_factual') {
     return judgeCriterionName(assertion.type, assertion.rubric, assertion.label);
   }
   const params = Object.entries(assertion)

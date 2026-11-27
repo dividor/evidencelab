@@ -851,7 +851,7 @@ async def _load_cases(session, dataset_id) -> List[TestCase]:
 
 
 def _resolve_case_plan(
-    case_expectations: Dict[str, Any], case_id: str
+    case_expectations: Dict[str, Any], case_id: str, capability: Optional[str] = None
 ) -> Tuple[bool, List[Dict[str, Any]]]:
     """From the assertion matrix, return ``(is_active, active_assertions)``.
 
@@ -880,10 +880,14 @@ def _resolve_case_plan(
         assertion = columns[i]
         override = overrides[i] if i < len(overrides) else None
         if (
-            assertion.get("type") in ("llm_judge", "brief_writing")
+            assertion.get("type") in ("llm_judge", "brief_writing", "brief_factual")
             and isinstance(override, str)
             and override.strip()
         ):
+            from ui.backend.services.brief_experiment_claims import is_factual_criterion
+
+            if capability == "brief" and is_factual_criterion(assertion):
+                assertion = {**assertion, "type": "brief_factual"}
             assertion = {**assertion, "rubric": override.strip()}
         assertions.append(assertion)
     return True, assertions
@@ -951,7 +955,7 @@ def _progress_stats(completed: int, total: int) -> Dict[str, Any]:
 
 
 def _active_case_plan(
-    matrix: Dict[str, Any], cases: List[TestCase]
+    matrix: Dict[str, Any], cases: List[TestCase], capability: Optional[str] = None
 ) -> List[Tuple[TestCase, List[Dict[str, Any]]]]:
     """Resolve the cases that will actually run and the assertions each needs.
 
@@ -960,7 +964,7 @@ def _active_case_plan(
     """
     plan: List[Tuple[TestCase, List[Dict[str, Any]]]] = []
     for case in cases:
-        active, assertions = _resolve_case_plan(matrix, str(case.id))
+        active, assertions = _resolve_case_plan(matrix, str(case.id), capability)
         if active:
             plan.append((case, assertions))
     return plan
@@ -1103,7 +1107,9 @@ async def _execute(
     # progress (and stream each result) as the run advances. Committing per case
     # — safe because the session is created with expire_on_commit=False — lets
     # the polling UI report how far along the run is instead of a blind "running".
-    plan = _active_case_plan(matrix, await _load_cases(session, dataset.id))
+    plan = _active_case_plan(
+        matrix, await _load_cases(session, dataset.id), dataset.capability
+    )
     total = len(plan)
     run.summary_stats = _progress_stats(0, total)
     await session.commit()

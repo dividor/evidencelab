@@ -64,6 +64,15 @@ def brief_claim_evidence(output):
     return {"paragraphs": paragraphs, "references": references}
 
 
+def is_factual_criterion(assertion):
+    return assertion.get("type") == "brief_factual" or (
+        assertion.get("type") == "llm_judge"
+        and str(assertion.get("rubric", ""))
+        .strip()
+        .startswith("Check factual grounding against the cited excerpts.")
+    )
+
+
 def link_assessment_claims(assertions, evidence):
     """Identify literal quotations of the saved draft, without inferring a judge's intent."""
     claims = [
@@ -87,5 +96,8 @@ def link_assessment_claims(assertions, evidence):
             for i, claim in enumerate(claims)
             if any(phrase and f" {phrase} " in f" {claim} " for phrase in quoted)
         ]
-        linked.append({**assertion, "quoted_claims": mentioned})
+        result = {**assertion, "quoted_claims": mentioned}
+        if is_factual_criterion(assertion):
+            result["factual_support"] = True
+        linked.append(result)
     return linked

@@ -233,7 +233,9 @@ Expand a case, then open **Generated section** below the query to read its parag
 
 Click a citation in a sentence to read all the passages that sentence cites. Click it again to close them. **References** at the end lists each cited passage once. Expand an entry to read the full excerpt saved with that run. You can review earlier runs this way, even if the library has since changed.
 
-Open any expectation to inspect its reasoning and the section’s claims. When the assessment quotes a claim, that claim appears first. Each claim lists its references with the excerpts closed. Expand a reference to compare the claim with the complete saved passage.
+Open **Factual support from citations** to read the claims in order. Each claim shows its own assessment, score and pass or fail. Expand a reference below the claim to read the excerpt. The section receives the lowest claim score. The configured threshold applies to each claim and to the section. The grading criterion and full prompt are at the bottom. Earlier runs retain their original section-level assessment.
+
+Open another expectation to inspect its reasoning and the section’s claims. When the assessment quotes a claim, that claim appears first. Each claim lists its references with the excerpts closed. Expand a reference to compare the claim with the complete saved passage.
 
 Select a **Voice and tone profile** in the Brief dataset case to save its name and instructions with the case. The writer and the voice check both use those instructions. With **No profile**, the voice check passes automatically and makes no model call. An audience note can still guide the writer. Earlier runs retain their original judgments.
 

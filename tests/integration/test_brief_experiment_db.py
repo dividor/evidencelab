@@ -47,7 +47,11 @@ async def test_brief_experiment_persists_generation_context_and_repetition_verdi
                 )
                 session.add(case)
                 await session.flush()
-                columns = [{"type": "brief_structure"}, {"type": "brief_overlap"}]
+                columns = [
+                    {"type": "brief_structure"},
+                    {"type": "brief_overlap"},
+                    {"type": "brief_factual", "rubric": "Check the duration and unit."},
+                ]
                 experiment = TestExperiment(
                     name="Repetition",
                     dataset_id=dataset.id,
@@ -55,7 +59,9 @@ async def test_brief_experiment_persists_generation_context_and_repetition_verdi
                     config={},
                     case_expectations={
                         "columns": columns,
-                        "cases": {str(case.id): {"active": True, "cols": [True, True]}},
+                        "cases": {
+                            str(case.id): {"active": True, "cols": [True, True, True]}
+                        },
                     },
                 )
                 session.add(experiment)
@@ -79,13 +85,20 @@ async def test_brief_experiment_persists_generation_context_and_repetition_verdi
                     patch.object(
                         test_runner,
                         "_judge_call",
-                        return_value=(
-                            '{"reason":"Both report the same duration.",'
-                            '"repeats":[{"new_clause":"Repairs took two days",'
-                            '"other_heading":"Earlier finding",'
-                            '"existing_clause":"Repairs lasted 48 hours"}]}',
-                            {},
-                        ),
+                        side_effect=[
+                            (
+                                '{"reason":"Both report the same duration.",'
+                                '"repeats":[{"new_clause":"Repairs took two days",'
+                                '"other_heading":"Earlier finding",'
+                                '"existing_clause":"Repairs lasted 48 hours"}]}',
+                                {},
+                            ),
+                            (
+                                '{"claims":[{"claim":1,"reason":"The source confirms two days.",'
+                                '"factual":true,"unmet":[],"score":1}]}',
+                                {},
+                            ),
+                        ],
                     ),
                 ):
                     await test_runner._execute(session, experiment)
@@ -112,7 +125,22 @@ async def test_brief_experiment_persists_generation_context_and_repetition_verdi
                     saved.actual_output["siblings"][0]["content"]
                     == "Repairs lasted 48 hours."
                 )
-                assert [a["passed"] for a in saved.assertion_results] == [True, False]
+                assert [a["passed"] for a in saved.assertion_results] == [
+                    True,
+                    False,
+                    True,
+                ]
+                factual = TestResultRead.model_validate(saved).assertion_results[2]
+                assert factual["factual_support"]
+                assert factual["claim_grades"] == [
+                    {
+                        "claim": 1,
+                        "reason": "The source confirms two days.",
+                        "score": 1,
+                        "passed": True,
+                    }
+                ]
+                assert "Repairs took two days." in factual["judge_prompt"]
                 assert saved.actual_output["sources"][0]["index"] == 3
             await outer.rollback()
     finally:

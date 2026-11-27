@@ -13,6 +13,8 @@ from ui.backend.schemas.testing import BriefCase
 from ui.backend.services.assistant_service import stream_research_response
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.brief_citation_model import cited_numbers_in_order
+from ui.backend.services.brief_experiment_claims import is_factual_criterion
+from ui.backend.services.brief_factual_grading import grade_factual_claims
 from ui.backend.services.brief_section_prompt import (
     brief_search_query,
     brief_section_prompt_default,
@@ -312,6 +314,13 @@ async def judge_brief(output, assertions, model):
         "llm_judge": BriefVerdict,
     }
     for assertion in assertions:
+        if is_factual_criterion(assertion):
+            key = judge_rubric_key({**assertion, "type": "brief_factual"})
+            if output["written"] and key not in decisions:
+                decisions[key] = await grade_factual_claims(
+                    output, assertion["rubric"], model
+                )
+            continue
         kind = brief_assertion_type(assertion)
         if kind not in schemas:
             continue

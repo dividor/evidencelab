@@ -115,9 +115,13 @@ describe('ExperimentDetail run progress', () => {
         ],
       },
       assertion_results: [
-        { type: 'llm_judge', passed: true, message: 'The log documents “held pressure”.', quoted_claims: [1], rubric: 'Check factual grounding against the cited excerpts. Check the numbers.' },
+        { type: 'brief_factual', passed: false, score: 0.25, message: '', judge_prompt: 'Exact factual prompt',
+          claim_grades: [{ claim: 1, passed: false, score: 0.25, reason: 'The reading lacks a baseline.' },
+            { claim: 2, passed: true, score: 1, reason: 'The log confirms the replacement held.' }],
+          rubric: 'Check factual grounding against the cited excerpts. Check the numbers.' },
+        { type: 'llm_judge', passed: true, factual_support: true, label: 'Historical factual grade', message: 'Original reasoning.', rubric: 'Check factual grounding against the cited excerpts.' },
         { type: 'llm_judge', passed: true, rubric: 'Read the brief topic together with its section heading. Check the population.' },
-        { type: 'llm_judge', passed: true, label: 'Test conditions', rubric: 'Verify the temperature.' },
+        { type: 'llm_judge', passed: true, label: 'Test conditions', message: 'The log documents “held pressure”.', quoted_claims: [1], rubric: 'Verify the temperature.' },
         { type: 'llm_judge', passed: true, rubric: 'Does the draft specify the units? Check the pressure.' },
       ],
     };
@@ -159,14 +163,34 @@ describe('ExperimentDetail run progress', () => {
     const assessment = screen.getByText('Factual support from citations').closest('details')!;
     expect(assessment).not.toHaveAttribute('open');
     fireEvent.click(within(assessment).getByText('Factual support from citations'));
-    await within(assessment).findByText('Quoted in this assessment');
+    await within(assessment).findByText('Claim 1');
+    const first = assessment.querySelectorAll('.testing-evidence-claim')[0] as HTMLElement;
+    expect(within(first).getByText('Fail')).toBeVisible();
+    expect(within(first).getByText('Score 0.25')).toBeVisible();
+    expect(first).toHaveTextContent('The reading lacks a baseline.');
+    expect(within(assessment).getByText('Grading criterion').closest('details')).not.toHaveAttribute('open');
+    const body = assessment.querySelector('.testing-assertion-body')!;
+    expect(body.lastElementChild).toHaveTextContent('Full prompt sent to the LLM');
+    expect(body.lastElementChild?.previousElementSibling).toHaveTextContent('Grading criterion');
     expect(within(assessment).getByText('Claim 2')).toBeVisible();
-    const quotedClaim = within(assessment).getByText('Claim 2').parentElement!;
+    const quotedClaim = within(assessment).getByText('Claim 2').closest('.testing-evidence-claim')! as HTMLElement;
     const passage = within(quotedClaim).getByText('[8] Service log · p. 37').closest('details')!;
     expect(passage).not.toHaveAttribute('open');
     fireEvent.click(passage.querySelector('summary')!);
     expect(within(passage).getByText('Second inspection.')).toBeVisible();
-    expect(within(assessment).getByText('Other section claims (1)').closest('details')).not.toHaveAttribute('open');
+    expect(within(quotedClaim).getByText('Pass')).toBeVisible();
+    expect(within(quotedClaim).getByText('Score 1.00')).toBeVisible();
+    expect(quotedClaim).toHaveTextContent('The log confirms the replacement held.');
+    const legacy = screen.getByText('Historical factual grade').closest('details')!;
+    fireEvent.click(within(legacy).getByText('Historical factual grade'));
+    await within(legacy).findByText('This run recorded a single grade for the section.');
+    expect(within(legacy).getByText('Original section assessment').closest('details')).not.toHaveAttribute('open');
+    expect(within(legacy).queryByText('Judge assessment')).toBeNull();
+    const conditions = screen.getByText('Test conditions').closest('details')!;
+    fireEvent.click(within(conditions).getByText('Test conditions'));
+    await within(conditions).findByText('Quoted in this assessment');
+    expect(within(conditions).getByText('Claim 2')).toBeVisible();
+    expect(within(conditions).getByText('Other section claims (1)').closest('details')).not.toHaveAttribute('open');
   });
 
   test('shows a live "k of N cases" indicator while a run is in progress', async () => {

@@ -284,8 +284,8 @@ def brief_assertion_type(assertion):
 
 def judge_rubric_key(assertion: Dict[str, Any]) -> str:
     rubric = str(assertion.get("rubric", ""))
-    if assertion.get("type") == "brief_writing":
-        return json.dumps(["brief_writing", rubric])
+    if assertion.get("type") in ("brief_writing", "brief_factual"):
+        return json.dumps([assertion["type"], rubric])
     return rubric
 
 
@@ -342,12 +342,38 @@ _EVALUATORS: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], AssertionResul
 
 VALID_ASSERTION_TYPES = set(_EVALUATORS) | {
     "brief_voice",
+    "brief_factual",
     "llm_judge",
     "brief_overlap",
     "brief_intro_scope",
     "brief_writing",
     "brief_structure",
 }
+
+
+def _factual_result(assertion, output, judge_fn):
+    rubric = str(assertion["rubric"])
+    info = {"type": "brief_factual", "rubric": rubric}
+    if assertion.get("label"):
+        info["label"] = assertion["label"]
+    if not output["written"]:
+        return {**_result("brief_factual", False, "No section was written."), **info}
+    if judge_fn is None:
+        return {
+            **_result("brief_factual", False, "The factual support judge is disabled."),
+            **info,
+        }
+    grades, prompt = judge_fn(_summary_text(output), judge_rubric_key(info))
+    threshold = float(assertion.get("threshold", 1.0))
+    score = min(g["score"] for g in grades)
+    return {
+        **info,
+        "score": score,
+        "passed": score >= threshold,
+        "message": "",
+        "judge_prompt": prompt,
+        "claim_grades": [{**g, "passed": g["score"] >= threshold} for g in grades],
+    }
 
 
 def evaluate_assertion(
@@ -357,6 +383,10 @@ def evaluate_assertion(
 ) -> AssertionResult:
     """Evaluate a single assertion against ``output``."""
     atype = brief_assertion_type(assertion) if assertion.get("type") else None
+    from ui.backend.services.brief_experiment_claims import is_factual_criterion
+
+    if output.get("capability") == "brief" and is_factual_criterion(assertion):
+        return _factual_result(assertion, output, judge_fn)
     if atype == "brief_voice":
         if not (output.get("assignment") or {}).get("voice_profile"):
             return _result(

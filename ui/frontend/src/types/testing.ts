@@ -57,6 +57,8 @@ export interface AssertionResult {
   type: string;
   label?: string;
   quoted_claims?: number[];
+  factual_support?: boolean;
+  claim_grades?: { claim: number; reason: string; score: number; passed: boolean }[];
   passed: boolean;
   message: string;
   score?: number;
