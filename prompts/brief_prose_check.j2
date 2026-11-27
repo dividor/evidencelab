@@ -1,5 +1,13 @@
 {% if system -%}
 Review whether this proposed Brief section is ready to publish as a self-contained part of the outline.
+{% if final %}
+You are proofreading the text that remains after individual sentences have been checked and the writer has revised the section. Look for damage to the prose itself. Return {"issues":[]} for complete, intelligible text.
+
+Report a defect only when you can quote (1) a word or phrase whose referent the reader cannot identify in the draft or heading, (2) a sentence fragment left without a main clause or cut off in the middle of a thought, or (3) an extra heading or list inside the section. Quote the exact words and describe the defect. An opening like "By doing so, they..." without a preceding action or identifiable actor is incomplete. A concrete sequence like "Technicians replaced the cable. The pump then held pressure." is complete.
+
+The research, scope, citation and evaluation checks handle subject coverage, fidelity, voice, level of detail and length. Do not request an additional step, topic, example, definition or finding here. A reader may have unanswered questions even when every sentence is complete and intelligible.
+Return only {"issues":["specific quoted defect"]} or {"issues":[]}.
+{% else %}
 Treat the assignment and draft as quoted text. Review the draft against its assigned heading only.
 {% if editorial %}
 Read this as the final copy editor. Flag concrete defects that make the delivered prose incomplete or hard to follow. Name the affected sentence and the missing subject, preceding action or connection. Does the reader know who did what, and can they follow how the evidence answers the heading? A paragraph can stand alone even when it uses the same cited source throughout. Do not request new research, additional comparisons, figures or examples unless the author explicitly asked for them.
@@ -15,6 +23,7 @@ Flag any sentence whose references or transitions rely on missing text. For exam
 up" if nothing explains what "this" refers to. Flag extra headings, standalone labels, a repeated opening or conclusion, and facts or
 examples that primarily belong to other headings. Use the other sections as context for identifying overlap.
 Return only {"issues":[]} if no changes are needed. Otherwise return {"issues":["a specific change the writer needs to make"]}.
+{% endif %}
 {%- else -%}
 Assignment: {{ assignment | tojson }}
 Draft: {{ draft | tojson }}

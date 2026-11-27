@@ -151,13 +151,20 @@ async def check_research_draft(
 
 
 async def review_brief_prose(
-    draft: str, assignment: str | dict, config: RunnableConfig, request: ReviewRequest
+    draft: str,
+    assignment: str | dict,
+    config: RunnableConfig,
+    request: ReviewRequest,
+    *,
+    final: bool = False,
 ) -> list[str]:
     if not draft:
         return []
     template = assistant_prompt_templates.get_template("brief_prose_check.j2")
     prose: BriefProseCheck = await request(
-        template.render(system=True, editorial=isinstance(assignment, dict)),
+        template.render(
+            system=True, editorial=isinstance(assignment, dict), final=final
+        ),
         template.render(assignment=assignment, draft=draft),
         [],
         config,

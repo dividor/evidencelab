@@ -587,10 +587,9 @@ class ResearchWorkflow:
             earlier_text=draft,
             editorial_issues=editorial_issues,
         )
-        if revision == draft:
-            final_issues = editorial_issues
-        else:
-            final_issues = await prose_issues(revision)
+        if revision == draft and not editorial_issues:
+            return draft
+        final_issues = await prose_issues(revision, final=True)
         if revision and not final_issues:
             return revision
         if draft and not editorial_issues:
@@ -598,9 +597,8 @@ class ResearchWorkflow:
         if not revision:
             return ""
         logger.info("Brief editorial review requested changes: %s", final_issues)
-        raise InvalidAssistantResponse(
-            "The revised Brief section still needs an editorial correction"
-        )
+        get_stream_writer()({"type": "brief_editorial_review", "issues": final_issues})
+        return ""
 
     async def check_answer(
         self, state: ResearchState, config: RunnableConfig

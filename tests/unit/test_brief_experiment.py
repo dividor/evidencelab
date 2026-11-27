@@ -383,6 +383,40 @@ def test_default_cases_seed_editable_experiments_for_their_configured_libraries(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("infrastructure_error", [True, False])
+async def test_case_distinguishes_an_editorial_rejection_from_a_service_error(
+    infrastructure_error, monkeypatch
+):
+    reason = "The first sentence refers to a procedure the section never identifies."
+
+    async def stream(**kwargs):
+        if infrastructure_error:
+            yield {"type": "error", "error": "Service unavailable"}
+            return
+        yield {"type": "brief_editorial_review", "issues": [reason]}
+        yield {"type": "done", "section_written": False, "usage": {"prompt_tokens": 19}}
+
+    monkeypatch.setattr(brief, "stream_research_response", stream)
+    cfg = runner.run_config_snapshot({"rerank": False})
+    brief.configure_brief(cfg, {"assistant_model": {"model": "writer"}})
+
+    async def generate(case):
+        return await brief.run_brief_case(case, cfg, "demo")
+
+    result = await runner.evaluate_case(
+        {"query": "Timing", "heading": "Methods", "target_words": 100}, [], generate
+    )
+    if infrastructure_error:
+        assert result["status"] == "error"
+        assert result["actual_output"] is None
+    else:
+        assert result["status"] == "fail"
+        assert not result["actual_output"]["written"]
+        assert reason in result["assertion_results"][0]["message"]
+        assert result["prompt_tokens"] == 19
+
+
+@pytest.mark.asyncio
 async def test_unwritten_section_fails_even_without_selected_expectations():
     output = {**draft(""), "written": False, "words": 0}
     outcome = await runner.evaluate_case({}, [], AsyncMock(return_value=output))

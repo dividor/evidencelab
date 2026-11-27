@@ -116,6 +116,8 @@ async def run_brief_case(raw, config, source):
             raise RuntimeError("Brief generation failed.")
         if kind == "token":
             out["summary"] = event["token"]
+        elif kind == "brief_editorial_review":
+            out["editorial_issues"] = event["issues"]
         elif kind == "sources":
             out["sources"] = event["sources"]
         elif kind == "search_status":
@@ -136,6 +138,7 @@ def structure_result(output):
     problems = []
     if not output["written"] or not draft.strip():
         problems.append("No section was written.")
+        problems.extend(output.get("editorial_issues", []))
     if not cited or cited - available or unresolved_numbers(draft):
         problems.append(
             "The section needs citations that resolve to returned passages."

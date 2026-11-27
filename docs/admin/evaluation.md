@@ -227,6 +227,8 @@ In **Admin → Testing (Experiments) → Experiments**, open **UNEG Brief qualit
 
 Each case generates one new section through Brief's research and writing workflow, using the selected library. The topic, heading, instructions, word target, voice and other sections are held fixed so you can compare runs. Existing briefs are unaffected. To test your own library, create a dataset with capability **brief**, add cases, and create an experiment. Give at least one other section a heading and its existing text to test repetition. To test an H1 introduction, add its H2 headings and choose **Subheading introduced by this section** for each. A written child tests duplication of existing material. A child with just a title tests whether the introduction leaves its detailed question open.
 
+A case can finish research without producing a publishable section. For example, a revised opening might still refer to an action that no sentence explains. Such a case fails the structure check, which shows the editor’s reason. Its searches and reported token usage are kept with the result. A service or grading exception appears as an error.
+
 | Check | What to look for |
 | --- | --- |
 | Section format and citations | The section opens with a cited paragraph, uses prose without extra headings or lists, and its numbered citations resolve to the returned sources. |

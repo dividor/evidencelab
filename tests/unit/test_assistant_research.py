@@ -550,6 +550,24 @@ async def test_generated_section_rewrites_a_dangling_opening_with_its_original_s
 
 
 @pytest.mark.asyncio
+async def test_complete_section_can_pass_final_review_after_an_optional_edit():
+    finding = "Technicians inspected the sensors by hand"
+    draft = _brief_draft((finding, 1, finding))
+    reviews = iter([["Give more detail about the inspection."], []])
+    events, _, _ = await run_research(
+        ['{"queries":[]}', draft, draft],
+        [[point(1, finding + ".")]],
+        initial_query="Sensor inspection",
+        brief_section=BriefSectionPrompt(outline=[{"title": "Inspection"}], current=0),
+        prose=lambda prompt: next(reviews),
+    )
+    assert next(event["token"] for event in events if event["type"] == "token") == (
+        finding + " [1]."
+    )
+    assert events[-1]["section_written"] is True
+
+
+@pytest.mark.asyncio
 async def test_generated_section_does_not_publish_a_second_dangling_opening():
     issue = "Identify the actor in the opening sentence."
     events, _, model = await run_research(
@@ -565,7 +583,10 @@ async def test_generated_section_does_not_publish_a_second_dangling_opening():
         brief_section=BriefSectionPrompt(outline=[{"title": "Method"}], current=0),
         prose=lambda prompt: [issue],
     )
-    assert any(e["type"] == "error" for e in events)
+    assert events[-1]["type"] == "done" and not events[-1]["section_written"]
+    assert next(
+        e["issues"] for e in events if e["type"] == "brief_editorial_review"
+    ) == [issue]
     assert not any(e["type"] == "token" for e in events)
     reviews = [
         call.args[0][-1].content
