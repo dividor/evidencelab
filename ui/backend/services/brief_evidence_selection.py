@@ -126,17 +126,22 @@ async def select_brief_evidence(
 def _draft_excerpts(evidence: dict[int, Passage], accepted: dict[int, list[str]]):
     """Give each selected source sentence its own short label for this drafting call."""
     quotes: dict[int, tuple[int, str]] = {}
+    seen = set()
     groups = []
     for passage, lines in accepted.items():
+        source = evidence[passage]
         group = [
-            f"Source {passage}: {evidence[passage]['title']}",
+            f"Source {passage}: {source['title']}",
             f"Subject: {lines[0]}",
         ]
-        for line in dict.fromkeys(lines[1:]):
-            if line == evidence[passage]["title"]:
+        for line in lines[1:]:
+            key = (source.get("doc_id") or passage, lines[0], line)
+            if key in seen or line == source["title"]:
                 continue
+            seen.add(key)
             label = len(quotes) + 1
             quotes[label] = (passage, line)
             group.append(f"[{label}] {line}")
-        groups.append("\n".join(group))
+        if len(group) > 2:
+            groups.append("\n".join(group))
     return "\n\n".join(groups), quotes

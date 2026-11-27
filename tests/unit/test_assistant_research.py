@@ -432,7 +432,12 @@ async def test_brief_search_planning_is_scoped_and_only_the_writer_gets_the_full
     events, search, llm = await run_research(
         [
             json.dumps({"selected": [1]}),
-            json.dumps({"queries": [follow_up]}),
+            json.dumps(
+                {
+                    "queries": [follow_up],
+                    "reason": "Look for the portfolio denominator.",
+                }
+            ),
             '{"queries":[]}',
             _brief_draft(
                 (answer.split(" [1]")[0], 1, "Three reviewed programmes used SBC")
@@ -954,7 +959,10 @@ async def test_brief_uses_one_ranked_follow_up_when_model_lists_more_than_three(
     finding = "Schools provided language support to returning students"
     events, search, llm = await run_research(
         [
-            json.dumps({"queries": [first]}),
+            '{"queries":[]}',
+            json.dumps(
+                {"queries": [first], "reason": "Find which barriers were observed."}
+            ),
             json.dumps(
                 {
                     "queries": [
@@ -1045,6 +1053,29 @@ async def test_brief_describes_the_format_error_and_retries(invalid_draft, issue
     assert issue in retry_request
     assert events[-1]["section_written"] is True
     assert next(e["token"] for e in events if e["type"] == "token") == finding + " [1]."
+
+
+@pytest.mark.asyncio
+async def test_brief_recovers_the_opening_citation_in_its_original_paragraph():
+    opening = "The inspection found a leak"
+    detail = "The seal had cracked at the joint"
+    raw = opening + ". " + _brief_draft((detail, 2, detail))
+    corrected = _brief_draft((opening, 1, opening), (detail, 2, detail))
+    events, _, model = await run_research(
+        ['{"queries":[]}', raw, corrected],
+        [[point(1, opening + "."), point(2, detail + ".")]],
+        brief_section=BriefSectionPrompt(outline=[{"title": "Inspection"}], current=0),
+    )
+    requests = [
+        call.args[0][-1].content
+        for call in model.ainvoke.await_args_list
+        if call.args[0][0].content.startswith("Write the prose of one section")
+    ]
+    assert len(requests) == 2
+    assert f'Draft to correct: "{opening}. {detail}' in requests[1]
+    assert next(e["token"] for e in events if e["type"] == "token") == (
+        f"{opening} [1]. {detail} [2]."
+    )
 
 
 @pytest.mark.asyncio

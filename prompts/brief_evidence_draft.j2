@@ -29,5 +29,9 @@ The section already has these findings. Add different findings that cover missin
 Problems to fix: {{ issues | tojson }}
 If the cited source supports a narrower, relevant finding, state that finding in scope. Otherwise look for direct support elsewhere in the passages.
 {% endif %}
+{% if repair_draft %}
+Edit this draft in place. Find the supporting excerpt for each sentence with a missing or incorrect citation. Keep the supported explanation together in its original paragraph. If no excerpt supports part of the draft, revise the paragraph around the findings that are supported. Return the complete corrected paragraphs.
+Draft to correct: {{ repair_draft | tojson }}
+{% endif %}
 Write the finished section in paragraphs. Use the excerpt labels in square brackets. Check that a reader can follow the explanation from the opening finding through its supporting detail.
 {%- endif %}

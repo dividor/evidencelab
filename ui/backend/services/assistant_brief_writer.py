@@ -60,6 +60,7 @@ _FINDING_SCOPE = TypeAdapter(FindingScopeReview)
 _TRAILING_REFERENCE = re.compile(r"\s+\((\d+(?:,\s*\d+)*)\)$")
 _FINDING_WORD = re.compile(r"\b\w{3,}\b")
 _DRAFT_FORMAT_ISSUE = "Cite a numbered excerpt before the end of each factual sentence."
+_MISSING_CITATION = _DRAFT_FORMAT_ISSUE + " A sentence has no citation."
 
 
 def _prepare_finding(
@@ -107,7 +108,10 @@ def _read_draft_lines(raw: str, quotes: dict[int, tuple[int, str]]):
         findings = []
         for sentence in split_sentences(block):
             labels = cited_numbers_in_order(sentence)
-            if not labels or any(label not in quotes for label in labels):
+            if not labels:
+                issues.append(_MISSING_CITATION)
+                continue
+            if any(label not in quotes for label in labels):
                 issues.append(_DRAFT_FORMAT_ISSUE)
                 continue
             text = strip_citation_markers(sentence)
@@ -169,32 +173,40 @@ def _brief_draft_text(
     return "\n\n".join(paragraphs), list(dict.fromkeys(issues)), prepared_quotes
 
 
-def _combine_findings(drafts: list[str], target: int | None) -> tuple[str, int]:
-    """Keep findings intact and place the evidence limit after them."""
-    paragraphs = []
-    limit = ""
+def _distinct_draft_sentences(drafts: list[str]):
     seen: set[str] = set()
-    remaining = target or float("inf")
-    draft_paragraphs = chain.from_iterable(draft.split("\n\n") for draft in drafts)
-    for paragraph in draft_paragraphs:
-        sentences = []
+    paragraphs = chain.from_iterable(draft.split("\n\n") for draft in drafts)
+    for index, paragraph in enumerate(paragraphs):
         for sentence in split_sentences(paragraph):
-            if not cited_numbers_in_order(sentence):
-                limit = limit or sentence
-                continue
             plain = strip_citation_markers(sentence)
             key = match_key(plain)
-            words = len(plain.split())
-            if key in seen or (words > remaining and seen):
-                continue
-            remaining -= words
-            seen.add(key)
-            sentences.append(sentence)
-        if sentences:
-            paragraphs.append(" ".join(sentences))
-    if paragraphs and limit and len(limit.split()) <= remaining:
-        paragraphs.append(limit)
-    text = "\n\n".join(paragraphs)
+            cited = bool(cited_numbers_in_order(sentence))
+            if cited:
+                if key in seen:
+                    continue
+                seen.add(key)
+            yield index, sentence, len(plain.split()), cited
+
+
+def _combine_findings(drafts: list[str], target: int | None) -> tuple[str, int]:
+    """Stop at the nearest sentence boundary without skipping ahead in the argument."""
+    paragraphs: dict[int, list[str]] = {}
+    limit = ""
+    remaining = target or float("inf")
+    for index, sentence, words, cited in _distinct_draft_sentences(drafts):
+        if not cited:
+            limit = limit or sentence
+            continue
+        # Finish this sentence if it brings the section closer to its target
+        # and the result is still within the writing tolerance.
+        if target and paragraphs and words > remaining + min(remaining, target * 0.15):
+            break
+        paragraphs.setdefault(index, []).append(sentence)
+        remaining -= words
+    blocks = [" ".join(sentences) for sentences in paragraphs.values()]
+    if blocks and limit and len(limit.split()) <= remaining:
+        blocks.append(limit)
+    text = "\n\n".join(blocks)
     return text, len(strip_citation_markers(text).split())
 
 
@@ -428,7 +440,8 @@ async def write_grounded_brief(
     accepted = earlier_text
     written_words = len(strip_citation_markers(accepted).split())
     minimum_words = target_words * 0.85 if target_words else 1
-    for _ in range(2):
+    repair_draft = ""
+    for attempt in range(2):
         messages = [
             SystemMessage(content=system),
             HumanMessage(
@@ -439,6 +452,7 @@ async def write_grounded_brief(
                     voice=section.voice_instructions,
                     evidence=passages,
                     issues=issues,
+                    repair_draft=repair_draft,
                     accepted=strip_citation_markers(accepted),
                     target_words=target_words,
                     written_words=written_words,
@@ -447,13 +461,17 @@ async def write_grounded_brief(
             ),
         ]
         reply = await writer.ainvoke(messages, config=config)
+        raw = message_text(reply)
         text, issues, prepared_quotes = _brief_draft_text(
-            message_text(reply),
+            raw,
             evidence,
             other_claims
             | {match_key(strip_citation_markers(s)) for s in split_sentences(accepted)},
             quotes,
         )
+        if attempt == 0 and _MISSING_CITATION in issues:
+            repair_draft = raw
+            continue
         if text and review is not None:
             stream({"type": "phase", "phase": "checking_citations"})
             earlier = [

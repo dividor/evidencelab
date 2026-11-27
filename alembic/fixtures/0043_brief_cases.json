@@ -6,7 +6,7 @@
     "target_words": 150,
     "voice": "General reader",
     "scope_rubric": "Exclude tutoring, teaching support and response outcomes.",
-    "expected_distinction": "A single family illustrates the barrier. The enrolment count is not a prevalence measure.",
+    "expected_distinction": "Assess language difficulties among children returning to Albania from abroad. School enrolment paperwork alone does not answer the question. Attendance statistics for Roma children generally do not establish what returning children experienced. A single family can illustrate the barrier. The enrolment count is not a prevalence measure.",
     "source": {
       "docId": "8174b690-a537-536b-8b9c-51439279da43",
       "chunkId": "7a6aa115-9b02-5760-a727-1dc35c573273",
@@ -35,7 +35,7 @@
     "target_words": 350,
     "voice": "Policy committee, formal prose",
     "scope_rubric": "Do not apply findings from a different setting without evidence. Distinguish each requested outcome.",
-    "expected_distinction": "Exam candidate composition has a different denominator from girls’ completion.",
+    "expected_distinction": "Identify obstacles experienced by girls in Kenya. Participation figures describe an outcome. A figure alone does not explain an obstacle. Exam candidate composition has a different denominator from girls’ completion.",
     "source": {
       "docId": "2fa019ea-ecae-55fe-9ad4-0497e61c2c24",
       "chunkId": "d15859a4-390e-5527-8a0e-c7e46af65d6a",

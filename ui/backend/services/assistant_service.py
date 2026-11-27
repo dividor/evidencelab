@@ -237,7 +237,7 @@ async def stream_research_response(
                 "require_deep_plan": (
                     deep_research
                     and not survey_only
-                    and brief_section is None
+                    and (brief_section is None or brief_section.mode == "generate")
                     and search_budget >= 3
                 ),
             },

@@ -101,9 +101,13 @@ def _seed(source, name, cases):
             "type": "llm_judge",
             "threshold": 1,
             "rubric": (
-                "State the precise question asked by the section heading and quote the words "
-                "in the draft that answer it. A true finding on the broader topic or compliance "
-                "with exclusions alone earns no credit. Check coverage of each requested part. "
+                "Read the brief topic together with its section heading. Name the subject "
+                "and its defining conditions. Quote words in the cited evidence establishing "
+                "those conditions for the findings presented. An unspecified or different "
+                "population, setting, version or period fails even if the issue discussed "
+                "is similar. Then quote how the draft answers the heading for that subject. "
+                "Apply any editorial scope notes for this case. A finding on a different "
+                "question earns no credit. "
                 "Accept a clearly stated limit where evidence is unavailable."
             ),
         },
@@ -142,6 +146,7 @@ def _seed(source, name, cases):
                 {
                     "source": case["source"],
                     "controls": case["citation_calibration"],
+                    "scope_notes": case.get("expected_distinction"),
                 }
                 if "source" in case
                 else {}

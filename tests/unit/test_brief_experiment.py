@@ -208,6 +208,7 @@ def test_default_cases_seed_editable_experiments_for_their_configured_libraries(
         case = brief.BriefCase.model_validate(c["input"])
         assert any(s.content for s in [*case.siblings, *case.children])
         assert case.reference_standard["source"]["text"]
+        assert case.reference_standard["scope_notes"] == c["notes"]
         assert [x["supported"] for x in case.reference_standard["controls"]] == [
             True,
             False,
@@ -396,3 +397,32 @@ def test_source_context_is_available_but_only_selected_findings_are_citable():
     )
     assert "Subject: Applies to the north site." in text
     assert quotes == {1: (11, "A seal failed.")}
+
+
+def test_overlapping_chunks_share_an_excerpt_only_within_the_same_source_and_subject():
+    from ui.backend.services.brief_evidence_selection import _draft_excerpts
+
+    passages = {
+        i: {"doc_id": doc, "title": "Inspection record"}
+        for i, doc in enumerate(["A", "A", "A", "B"], 1)
+    }
+    selected = {
+        i: [subject, "A seal failed."]
+        for i, subject in enumerate(["North", "North", "South", "North"], 1)
+    }
+    text, quotes = _draft_excerpts(passages, selected)
+    assert "Source 2:" not in text
+    assert list(quotes.values()) == [(i, "A seal failed.") for i in (1, 3, 4)]
+
+
+def test_word_target_preserves_the_order_of_the_explanation():
+    from ui.backend.services.assistant_brief_writer import _combine_findings
+
+    opening = "The team inspected every joint in the new system [1]."
+    cause = (
+        "They found that seals next to an exposed pipe cracked during the freeze [2]."
+    )
+    consequence = "This delayed repairs [3]."
+    paragraph = f"{opening} {cause} {consequence}"
+    assert _combine_findings([paragraph], 13) == (opening, 9)
+    assert _combine_findings([paragraph], 20) == (f"{opening} {cause}", 22)
