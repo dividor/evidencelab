@@ -22,6 +22,7 @@ import RunPassRateChart from './RunPassRateChart';
 import { resultWarnings } from './resultWarnings';
 import { runConfigHeadline, runConfigRows } from './runConfig';
 import { judgeCriterionName } from './assertionSpecs';
+import RepetitionEvidence from './RepetitionEvidence';
 import GeneratedSection, { AssertionEvidence } from './GeneratedSection';
 
 interface ExperimentDetailProps {
@@ -52,7 +53,7 @@ const RunStats: React.FC<{ run: TestRun }> = ({ run }) => {
         <span>{formatScore(stats?.mean_score)}</span>
       </div>
       <div className="testing-summary-stat">
-        <span className="testing-summary-label">Total cases</span>
+        <span className="testing-summary-label">{run.config?.capability === 'brief' ? 'Total sections' : 'Total cases'}</span>
         <span>{stats?.total ?? '-'}</span>
       </div>
       <div className="testing-summary-stat">
@@ -100,11 +101,23 @@ const briefCheckLabels: Record<string, string> = {
   brief_intro_scope: 'Introduction scope', brief_length: 'Word count', brief_structure: 'Format and citations', brief_overlap: 'Cross-section repetition',
 };
 
-const AssertionResultRow: React.FC<{ result: AssertionResult; testResult: TestResult }> = ({ result, testResult }) => {
-  const [open, setOpen] = useState(false);
-  const label = result.type === 'llm_judge' || result.type === 'brief_writing'
+const expectationName = (result: AssertionResult) => result.type === 'llm_judge' || result.type === 'brief_writing'
     ? judgeCriterionName(result.type, result.rubric, result.label)
     : result.label || briefCheckLabels[result.type] || result.type.replace(/_/g, ' ');
+
+function ungradedStatus(result: AssertionResult) {
+  if (result.not_run) return 'Not graded';
+  if (result.error) return 'Grading error';
+  return result.applicable === false ? 'Not applicable' : '';
+}
+
+const AssertionResultRow: React.FC<{ result: AssertionResult; testResult: TestResult }> = ({ result, testResult }) => {
+  const [open, setOpen] = useState(false);
+  const label = expectationName(result);
+  const status = ungradedStatus(result);
+  if (status) return <div className="testing-assertion-result">
+    <strong>{label}</strong> <span>{status}</span><p>{result.message}</p>
+  </div>;
   const heading = <>
     <span className={`testing-badge testing-badge-${result.passed ? 'pass' : 'fail'}`}>{result.passed ? 'pass' : 'fail'}</span>
     <span className="testing-assertion-result-type">{label}</span>
@@ -120,11 +133,16 @@ const AssertionResultRow: React.FC<{ result: AssertionResult; testResult: TestRe
   const profile = (testResult.actual_output.assignment as { voice_profile?: { name: string; instructions: string } } | undefined)?.voice_profile;
   return (
     <details className="testing-assertion-result testing-brief-assertion" onToggle={e => setOpen(e.currentTarget.open)}>
-      <summary>{heading}</summary>
+      <summary><span className="testing-disclosure-arrow" aria-hidden="true" />{heading}</summary>
       {open && <div className="testing-assertion-body">
         {result.type === 'brief_voice' && profile && <div><strong>{profile.name}</strong><p>{profile.instructions}</p></div>}
-        {!factual && detail}
-        <AssertionEvidence assessment={result} result={testResult} />
+        {result.type === 'brief_overlap' ? <>
+          <RepetitionEvidence check={result} output={testResult.actual_output} />
+          {prompts}
+        </> : <>
+          {!factual && detail}
+          <AssertionEvidence assessment={result} result={testResult} />
+        </>}
         {factual && <>
           {result.message && (testResult.brief_evidence
             ? <details><summary>Original section assessment</summary><p>{result.message}</p></details>
@@ -303,6 +321,21 @@ function TemplateSettings({ assignment }: { assignment?: Record<string, unknown>
   </details>;
 }
 
+const BriefSectionTitle = ({ template, heading, number }: { template: string; heading: string; number?: string }) => (
+  <td className="testing-brief-section-title" title={[`${template} ·`, number, heading].filter(Boolean).join(' ')}>
+    <strong>{number && <span className="testing-heading-number">{number} </span>}{heading}</strong><small>{template}</small>
+  </td>
+);
+
+const ResultToggle = ({expanded, label}: {expanded: boolean; label: string}) => (
+  <td className="testing-result-caret">
+    <button type="button" className="testing-row-toggle" aria-expanded={expanded}
+      aria-label={`${expanded ? 'Collapse' : 'Expand'} ${label || 'result'}`}>
+      <span className="testing-disclosure-arrow" aria-hidden="true" />
+    </button>
+  </td>
+);
+
 const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> }> = ({
   result,
   input,
@@ -319,12 +352,10 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
         className="testing-clickable-row testing-result-row"
         onClick={() => setExpanded((v) => !v)}
       >
-        <td className="testing-result-caret" aria-hidden>
-          {expanded ? '▾' : '▸'}
-        </td>
-        <td className="testing-result-case" title={topic}>
-          {assignment?.template_name ? `${assignment.template_name} · ` : ''}{heading || topic || '—'}
-        </td>
+        <ResultToggle expanded={expanded} label={heading || topic} />
+        {assignment?.template_name ? <BriefSectionTitle template={str(assignment.template_name)} heading={heading} number={str(assignment.heading_number)} /> : (
+          <td className="testing-result-case" title={heading || topic}>{heading || topic || '—'}</td>
+        )}
         <td>
           <span
             className={`testing-badge testing-badge-${result.status} testing-result-status`}
@@ -361,7 +392,7 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
                   <AssertionResultRow key={i} result={ar} testResult={result} />
                 ))}
                 {(result.assertion_results || []).length === 0 && (
-                  <p className="text-muted" style={{ margin: 0 }}>No expectation results.</p>
+                  <p className="text-muted" style={{ margin: 0 }}>{assignment?.template_name ? 'This run saved no expectation grades. Run the experiment again to grade it with the current checks.' : 'No expectation results.'}</p>
                 )}
               </div>
               <div className="testing-case-block">
@@ -400,7 +431,7 @@ const passRateLevel = (rate?: number | null): string => {
 /* Live progress for an in-flight run: "k of N cases (z%)" plus a bar. The
    backend publishes `progress` on summary_stats while running and replaces it
    with the real stats on completion. */
-const RunProgressBar: React.FC<{ progress?: RunProgress | null }> = ({ progress }) => {
+const RunProgressBar: React.FC<{ progress?: RunProgress | null; unit: string }> = ({ progress, unit }) => {
   if (!progress) {
     return (
       <div className="testing-run-progress" role="status">
@@ -414,7 +445,7 @@ const RunProgressBar: React.FC<{ progress?: RunProgress | null }> = ({ progress 
     <div className="testing-run-progress" role="status">
       <div className="testing-run-progress-label">
         <span>
-          {completed} of {total} {total === 1 ? 'case' : 'cases'} processed
+          {completed} of {total} {unit}{total === 1 ? '' : 's'} processed
         </span>
         <span className="testing-run-progress-pct">{formatPercent(fraction)}</span>
       </div>
@@ -504,6 +535,8 @@ const RunSection: React.FC<{
   const active = isActive(run.status);
   const results = run.results || [];
   const level = passRateLevel(stats?.pass_rate);
+  const isBrief = run.config?.capability === 'brief';
+  const unit = isBrief ? 'section' : 'case';
   return (
     <div className={`testing-run${isLatest ? ' testing-run--latest' : ''}`}>
       <button
@@ -512,7 +545,7 @@ const RunSection: React.FC<{
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
       >
-        <span className="testing-run-caret" aria-hidden>{open ? '▾' : '▸'}</span>
+        <span className="testing-run-caret" aria-hidden><span className="testing-disclosure-arrow" /></span>
         <span className="testing-run-number">Run&nbsp;#{run.run_number}</span>
         <span
           className={`testing-status testing-status-${run.status} testing-run-status`}
@@ -527,7 +560,7 @@ const RunSection: React.FC<{
                 {stats.progress.completed}
                 <span className="testing-run-progress-of">/{stats.progress.total}</span>
               </strong>
-              <span className="testing-run-metric-label">cases</span>
+              <span className="testing-run-metric-label">{unit}s</span>
             </span>
           </span>
         ) : (
@@ -555,14 +588,14 @@ const RunSection: React.FC<{
       {open && (
         <div className="testing-run-body">
           {stats?.error && <div className="auth-error">Run error: {stats.error}</div>}
-          {active && <RunProgressBar progress={stats?.progress} />}
+          {active && <RunProgressBar progress={stats?.progress} unit={unit} />}
           <RunStats run={run} />
           <RunConfigPanel run={run} previous={previous} />
           <table className="admin-table">
             <thead>
               <tr>
                 <th aria-label="expand" />
-                <th>Case</th>
+                <th>{isBrief ? 'Section and template' : 'Case'}</th>
                 <th>Status</th>
                 <th>Score</th>
                 <th>Latency</th>
@@ -573,7 +606,10 @@ const RunSection: React.FC<{
               {results.map((r) => (
                 <ResultRow key={r.id} result={r} input={r.test_case_id ? caseInputs[r.test_case_id] : undefined} />
               ))}
-              {results.length === 0 && (
+              {stats?.progress?.remaining_sections?.map((section, index) => (
+                <tr key={index}><td /><BriefSectionTitle {...section} /><td>{index === 0 ? 'Running' : 'Queued'}</td><td colSpan={3} /></tr>
+              ))}
+              {results.length === 0 && !stats?.progress?.remaining_sections?.length && (
                 <tr>
                   <td colSpan={6} className="text-muted">
                     {active ? 'Running — results appear here as each case finishes…' : 'No results.'}

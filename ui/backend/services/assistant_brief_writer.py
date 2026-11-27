@@ -49,9 +49,8 @@ class BriefFinding(BaseModel):
     sources: list[EvidenceQuote]
 
 
-class FindingScopeDecision(BaseModel):
+class FindingScopeAssessment(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    id: int = Field(ge=1)
     subject: str
     reason: str
     source_matches_assignment: bool
@@ -61,12 +60,17 @@ class FindingScopeDecision(BaseModel):
     in_scope_revision: str | None = None
 
 
+class FindingScopeDecision(FindingScopeAssessment):
+    id: int = Field(ge=1)
+
+
 class FindingScopeReview(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reviews: list[FindingScopeDecision]
 
 
 _FINDING_SCOPE = TypeAdapter(FindingScopeReview)
+_SINGLE_FINDING = TypeAdapter(FindingScopeAssessment)
 _TRAILING_REFERENCE = re.compile(r"\s+\((\d+(?:,\s*\d+)*)\)$")
 _FINDING_WORD = re.compile(r"\b\w{3,}\b")
 _DRAFT_FORMAT_ISSUE = "Cite a numbered excerpt before the end of each factual sentence."
@@ -275,23 +279,36 @@ async def _review_finding_scope(
         "whole_section": draft if len(batches) > 1 else "",
     }
 
-    async def review_batch(batch: list[dict]) -> list[FindingScopeDecision]:
-        request = template.render(
+    def request_for(batch):
+        return template.render(
             **assignment,
             sentences=[
                 _finding_for_scope(row, evidence, prepared_quotes, similar)
                 for row in batch
             ],
         )
+
+    async def review_one(row):
+        async with concurrency:
+            assessment = await review(
+                template.render(system=True, single=True),
+                request_for([row]),
+                [],
+                config,
+                _SINGLE_FINDING,
+            )
+        return FindingScopeDecision(id=row["id"], **assessment.model_dump())
+
+    async def review_batch(batch: list[dict]) -> list[FindingScopeDecision]:
         async with concurrency:
             result: FindingScopeReview = await review(
-                system, request, [], config, _FINDING_SCOPE
+                system, request_for(batch), [], config, _FINDING_SCOPE
             )
-        if sorted(row.id for row in result.reviews) != [row["id"] for row in batch]:
-            raise InvalidAssistantResponse(
-                "The scope check must assess each finding once"
-            )
-        return result.reviews
+        if sorted(row.id for row in result.reviews) == [row["id"] for row in batch]:
+            return result.reviews
+        # Ambiguous attribution invalidates the batch. Recheck each sentence
+        # on its own so the request itself identifies which finding was graded.
+        return list(await asyncio.gather(*(review_one(row) for row in batch)))
 
     decisions = await asyncio.gather(*(review_batch(batch) for batch in batches))
     decision = FindingScopeReview(reviews=[row for batch in decisions for row in batch])
@@ -454,6 +471,21 @@ def _prefer_section_revision(
     return words >= previous_words or (bool(repair) and words >= minimum and not issues)
 
 
+async def _match_draft_citations(
+    raw, passages, quotes, config, review_scope, last_attempt, stream
+):
+    """Request a writer correction if the matcher cannot assign verifiable labels."""
+    try:
+        matched = await cite_missing_excerpts(
+            raw, passages, set(quotes), config, review_scope
+        )
+    except InvalidAssistantResponse:
+        if last_attempt:
+            stream({"type": "brief_editorial_review", "issues": [_MISSING_CITATION]})
+        return raw, not last_attempt
+    return matched, False
+
+
 async def write_grounded_brief(
     assignment: str,
     search_focus: str,
@@ -533,9 +565,20 @@ async def write_grounded_brief(
             ),
         ]
         reply = await writer.ainvoke(messages, config=config)
-        raw = await cite_missing_excerpts(
-            message_text(reply), passages, set(quotes), config, review_scope
+        raw, retry_citations = await _match_draft_citations(
+            message_text(reply),
+            passages,
+            quotes,
+            config,
+            review_scope,
+            attempt == 1,
+            stream,
         )
+        if retry_citations:
+            issues = [_MISSING_CITATION]
+            repair_draft = raw
+            draft_words = len(strip_citation_markers(raw).split())
+            continue
         draft_words = len(strip_citation_markers(raw).split())
         text, issues, prepared_quotes = _brief_draft_text(
             raw,

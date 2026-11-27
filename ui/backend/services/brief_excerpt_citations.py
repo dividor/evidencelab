@@ -18,7 +18,12 @@ class ExcerptMatch(BaseModel):
     excerpts: list[int]
 
 
-_MATCHES: TypeAdapter[list[ExcerptMatch]] = TypeAdapter(list[ExcerptMatch])
+class ExcerptMatches(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    matches: list[ExcerptMatch]
+
+
+_MATCHES: TypeAdapter[ExcerptMatches] = TypeAdapter(ExcerptMatches)
 
 
 async def cite_missing_excerpts(
@@ -55,7 +60,7 @@ async def _match_excerpts(draft, passages, labels, missing, config, request):
     sentences = {key: row[2] for key, row in missing.items()}
     invalid = ""
     for _ in range(2):
-        matches = await request(
+        response = await request(
             template.render(system=True),
             template.render(
                 draft=draft,
@@ -68,6 +73,7 @@ async def _match_excerpts(draft, passages, labels, missing, config, request):
             config,
             _MATCHES,
         )
+        matches = response.matches
         if sorted(row.sentence for row in matches) != list(sentences):
             invalid = "The Brief citation review returned invalid sentence numbers"
         elif any(not labels.issuperset(row.excerpts) for row in matches):

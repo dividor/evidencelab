@@ -106,7 +106,8 @@ Draft for revision: {{ draft | tojson }}
 Issues: {{ correction | tojson }}
 {% endif -%}
 {%- elif stage == 'retry_plan' -%}
-The previous reply did not match the required format. Return only a JSON object matching the system instructions.
+The previous reply did not match the required format. Return only JSON that matches the required schema below.
+Required JSON schema: {{ reply_schema | tojson }}
 Correct these validation errors (field path and error type): {{ validation_errors | tojson }}.
 {%- elif stage == 'distinct_search' -%}
 Propose a search. Do not answer or summarize the research question.

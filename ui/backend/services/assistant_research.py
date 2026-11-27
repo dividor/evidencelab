@@ -3,7 +3,6 @@
 import asyncio
 import logging
 import operator
-import re
 from collections import Counter
 from dataclasses import dataclass
 from functools import partial
@@ -15,23 +14,22 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
-from pydantic import TypeAdapter, ValidationError
+from pydantic import TypeAdapter
 from starlette.concurrency import run_in_threadpool
 from typing_extensions import Annotated
 
 from ui.backend.auth.schemas import BriefSectionPrompt
 from ui.backend.services.assistant_brief_writer import write_grounded_brief
 from ui.backend.services.assistant_grounding import (
-    InvalidAssistantResponse,
     Passage,
     ReviewRequest,
-    TruncatedAssistantResponse,
     check_research_draft,
     invalid_citations,
     prior_evidence_passages,
     render_evidence,
     render_evidence_streams,
     review_brief_prose,
+    review_remaining_prose,
 )
 from ui.backend.services.assistant_research_plan import (
     CONTEXT_PLAN,
@@ -48,6 +46,9 @@ from ui.backend.services.assistant_research_plan import (
     verified_geographic_scope,
 )
 from ui.backend.services.assistant_settings import assistant_prompt_templates
+from ui.backend.services.assistant_structured_response import (
+    request_structured_response,
+)
 from ui.backend.services.brief_citation_model import cited_numbers_in_order
 from ui.backend.services.brief_section_prompt import (
     BRIEF_SECTION_SCOPE,
@@ -63,7 +64,7 @@ from utils.llm_factory import message_text
 
 logger = logging.getLogger(__name__)
 
-_JSON_FENCE = re.compile(r"`{3}(?:json)?\s*(.*?)\s*`{3}", re.DOTALL | re.IGNORECASE)
+
 _NO_EVIDENCE = (
     "I couldn’t find evidence in the selected collection to answer this question."
 )
@@ -459,45 +460,14 @@ class ResearchWorkflow:
         *,
         llm=None,
     ) -> _Plan:
-        messages = [SystemMessage(content=system), *history]
-        request = prompt
-        model = self.llm if llm is None else llm
-        for _ in range(2):
-            response = await model.ainvoke(
-                [*messages, HumanMessage(content=request)], config=config
-            )
-            raw = message_text(response).strip()
-            fenced = _JSON_FENCE.search(raw)
-            try:
-                return schema.validate_json(fenced[1] if fenced else raw)
-            except ValidationError as exc:
-                errors = [
-                    (error["loc"], error["type"])
-                    for error in exc.errors(
-                        include_input=False, include_context=False, include_url=False
-                    )
-                ]
-                logger.warning(
-                    "Invalid structured Assistant response (stop=%s, output_tokens=%s): %s",
-                    response.response_metadata.get("finish_reason"),
-                    (getattr(response, "usage_metadata", None) or {}).get(
-                        "output_tokens"
-                    ),
-                    errors,
-                )
-                request = (
-                    prompt
-                    + "\n\n"
-                    + self.request.render(
-                        stage="retry_plan", validation_errors=errors[:12]
-                    )
-                )
-        if response.response_metadata.get("finish_reason") == "length":
-            raise TruncatedAssistantResponse(
-                "The structured response reached its output limit"
-            )
-        raise InvalidAssistantResponse(
-            "The Assistant model could not produce a valid structured response"
+        return await request_structured_response(
+            self.llm if llm is None else llm,
+            system,
+            prompt,
+            history,
+            config,
+            schema,
+            self.request,
         )
 
     async def draft_answer(
@@ -596,13 +566,17 @@ class ResearchWorkflow:
         )
         if revision == draft and not editorial_issues:
             return draft
-        final_issues = await prose_issues(revision, final=True)
+        removable: set[int] = set()
+        final_issues = await prose_issues(revision, final=True, removable=removable)
         if revision and not final_issues:
             return revision
         if draft and not editorial_issues:
             return draft
         if not revision:
             return ""
+        edited = await review_remaining_prose(revision, removable, prose_issues)
+        if edited:
+            return edited
         logger.info("Brief editorial review requested changes: %s", final_issues)
         get_stream_writer()({"type": "brief_editorial_review", "issues": final_issues})
         return ""

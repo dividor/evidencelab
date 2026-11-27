@@ -1,7 +1,10 @@
 """Resolve selected Brief Central templates into sections for a single evaluation run."""
 
+import json
+import logging
 from dataclasses import dataclass
 from itertools import takewhile
+from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy import select
@@ -9,27 +12,77 @@ from sqlalchemy import select
 from pipeline.db.config import get_application_config
 from ui.backend.auth.models import BriefTemplate, VoiceProfile
 from ui.backend.auth.schemas import (
-    BRIEF_TOPIC_MAX_CHARS,
     BriefOutlineSection,
     BriefSectionPrompt,
     BriefTemplateHeading,
 )
 from ui.backend.schemas.testing import BriefCase, BriefCaseVoice
+from ui.backend.services.brief_outline_numbers import outline_numbers
+
+DEFAULT_BRIEF_EXPECTATIONS = json.loads(
+    (
+        Path(__file__).resolve().parents[3]
+        / "prompts"
+        / "brief_evaluation_defaults.json"
+    ).read_text()
+)
+
+
+def brief_expectation_matrix(matrix):
+    """Apply the standard checks to an experiment created with no columns."""
+    if columns := matrix.get("columns"):
+        if any(
+            row.get("active") and not any(row.get("cols", [])[: len(columns)])
+            for row in matrix.get("cases", {}).values()
+        ):
+            raise TemplateSelectionError(
+                "Select at least one expectation for every selected Brief template."
+            )
+        return matrix
+    return {
+        "columns": DEFAULT_BRIEF_EXPECTATIONS,
+        "cases": {
+            key: {**row, "cols": [True] * len(DEFAULT_BRIEF_EXPECTATIONS)}
+            for key, row in matrix.get("cases", {}).items()
+        },
+    }
+
+
+async def grade_template_checks(output, assertions, judge_factory):
+    """Keep independent grades when one check cannot return a valid judgement."""
+    from ui.backend.services.test_evaluators import (
+        UnverifiedOverlapQuote,
+        evaluate_assertion,
+    )
+
+    results = []
+    for assertion in assertions:
+        try:
+            judge = await judge_factory(output, [assertion]) if judge_factory else None
+            results.append(evaluate_assertion(assertion, output, judge_fn=judge))
+        except Exception as exc:
+            logging.getLogger(__name__).exception(
+                "Brief expectation %s errored", assertion["type"]
+            )
+            results.append(
+                {
+                    **assertion,
+                    "error": True,
+                    "message": (
+                        str(exc)
+                        if isinstance(exc, UnverifiedOverlapQuote)
+                        else "The evaluator could not grade this expectation."
+                    ),
+                }
+            )
+    return results
 
 
 class TemplateSelectionError(ValueError):
     """An actionable selection error that is safe to display."""
 
 
-def selected_templates(config, matrix):
-    topic = (config or {}).get("brief_topic")
-    if (
-        not isinstance(topic, str)
-        or not 0 < len(topic.strip()) <= BRIEF_TOPIC_MAX_CHARS
-    ):
-        raise TemplateSelectionError(
-            f"Enter a brief topic of up to {BRIEF_TOPIC_MAX_CHARS} characters."
-        )
+def selected_templates(matrix):
     try:
         ids = [
             UUID(key) for key, row in matrix["cases"].items() if row["active"] is True
@@ -40,11 +93,11 @@ def selected_templates(config, matrix):
         ) from exc
     if not ids:
         raise TemplateSelectionError("Choose at least one brief template.")
-    return topic.strip(), ids
+    return ids
 
 
-async def read_selected_templates(session, config, matrix):
-    topic, ids = selected_templates(config, matrix)
+async def read_selected_templates(session, matrix):
+    ids = selected_templates(matrix)
     templates = {
         t.id: t
         for t in await session.scalars(
@@ -55,19 +108,19 @@ async def read_selected_templates(session, config, matrix):
         raise TemplateSelectionError(
             "A selected template was deleted. Edit the experiment and choose its templates again."
         )
-    return topic, [templates[k] for k in ids]
+    return [templates[k] for k in ids]
 
 
 @dataclass
 class TemplateSection:
     template: BriefTemplate
-    topic: str
     headings: list[BriefTemplateHeading]
     outline: list[BriefOutlineSection]
     voices: dict
     position: int
     default_words: int | None
     intro_words: int
+    number: str
 
     def assignment(self):
         i = self.position
@@ -86,7 +139,7 @@ class TemplateSection:
         voice_id = heading.voice_profile_id or self.template.voice_profile_id
         profile = self.voices[voice_id] if voice_id else None
         case = BriefCase(
-            query=self.topic,
+            query=self.template.name,
             heading=heading.title,
             guidance=heading.prompt or "",
             target_words=heading.target_words or default,
@@ -95,7 +148,7 @@ class TemplateSection:
             siblings=[*self.outline[:i], *self.outline[i + 1 + len(children) :]],
         )
         prompt = BriefSectionPrompt(
-            topic=self.topic,
+            topic=self.template.name,
             current=i,
             outline=self.outline,
             instructions=self.template.prompt,
@@ -104,14 +157,53 @@ class TemplateSection:
         )
         return case, prompt
 
-    def applicable_checks(self, assertions):
+    def inapplicable_checks(self):
         case, _ = self.assignment()
-        applicable = {
-            "brief_intro_scope": bool(case.children),
-            "brief_length": case.target_words is not None,
-            "brief_overlap": any(s.content for s in (*case.siblings, *case.children)),
-        }
-        return [check for check in assertions if applicable.get(check["type"], True)]
+        reasons = {}
+        if not case.children:
+            reasons["brief_intro_scope"] = (
+                "This section has no subheadings to introduce."
+            )
+        if not case.target_words:
+            reasons["brief_length"] = "This section has no word target."
+        if not any(s.content for s in (*case.siblings, *case.children)):
+            reasons["brief_overlap"] = (
+                "There are no other written sections to compare yet."
+            )
+        return reasons
+
+    async def evaluate(self, assertions, runner, judge_factory):
+        from ui.backend.services.test_runner import evaluate_case
+
+        reasons = self.inapplicable_checks()
+        applicable = [a for a in assertions if a["type"] not in reasons]
+        outcome = await evaluate_case(self, applicable, runner, judge_factory)
+        if outcome["assertion_results"] is None:
+            outcome["assertion_results"] = [
+                {
+                    **a,
+                    "not_run": True,
+                    "message": "Generation failed before this check could run.",
+                }
+                for a in applicable
+            ]
+        if assertions:
+            graded = iter(outcome["assertion_results"])
+            ordered = [
+                (
+                    {
+                        "type": a["type"],
+                        "applicable": False,
+                        "message": reasons[a["type"]],
+                    }
+                    if a["type"] in reasons
+                    else next(graded)
+                )
+                for a in assertions
+            ]
+            outcome["assertion_results"] = [*ordered, *graded]
+        self.record(outcome)
+        return outcome
 
     def record(self, outcome):
         output = outcome.get("actual_output") or {}
@@ -121,7 +213,8 @@ class TemplateSection:
             template_id=str(self.template.id),
             template_name=self.template.name,
             section_index=self.position,
-            topic=self.topic,
+            heading_number=self.number,
+            topic=self.template.name,
             heading=case.heading,
             instructions=section.instructions,
             guidance=case.guidance,
@@ -143,7 +236,8 @@ class TemplateSection:
 async def template_plan(session, config, matrix):
     from ui.backend.services.test_runner import _resolve_case_plan
 
-    topic, templates = await read_selected_templates(session, config, matrix)
+    templates = await read_selected_templates(session, matrix)
+    matrix = brief_expectation_matrix(matrix)
     headings = [
         [BriefTemplateHeading.model_validate(h) for h in t.headings] for t in templates
     ]
@@ -178,18 +272,18 @@ async def template_plan(session, config, matrix):
             for h in group
         ]
         _, assertions = _resolve_case_plan(matrix, str(template.id), "brief")
-        for i in range(len(group)):
+        for i, number in enumerate(outline_numbers(h.sub for h in group)):
             plan.append(
                 (
                     TemplateSection(
                         template,
-                        topic,
                         group,
                         outline,
                         voices,
                         i,
                         config.get("brief_target_words"),
                         intro_words,
+                        number,
                     ),
                     assertions,
                 )

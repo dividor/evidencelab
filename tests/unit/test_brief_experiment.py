@@ -168,7 +168,9 @@ async def test_overlap_judge_sees_both_sections_but_no_reference_answer(monkeypa
         return_value=(
             '{"reason":"Both sections report the same wait.",'
             '"repeats":[{"new_clause":"Processing time fell by half",'
-            '"other_heading":"Earlier findings","existing_clause":"halved processing time"}]}',
+            '"other_heading":"Earlier findings",'
+            '"assessment":"Both report a 50% cut in processing time.",'
+            '"existing_clause":"halved processing time"}]}',
             {},
         )
     )
@@ -183,7 +185,14 @@ async def test_overlap_judge_sees_both_sections_but_no_reference_answer(monkeypa
     )
     result = evaluate_assertion(assertion, o, verdict)
     assert not result["passed"] and "same wait" in result["message"]
-    assert "halved processing time" in result["message"]
+    assert result["repetitions"] == [
+        {
+            "source_index": 0,
+            "target_quote": "Processing time fell by half",
+            "source_quote": "halved processing time",
+            "assessment": "Both report a 50% cut in processing time.",
+        }
+    ]
     prompt, model, _system = call.await_args.args
     assert o["siblings"][0]["content"] in prompt and o["summary"] in prompt
     assert "editor only" not in prompt and model == "grader"
@@ -324,7 +333,8 @@ async def test_overlap_judge_retries_a_comparison_with_an_invented_quote(monkeyp
         side_effect=[
             (
                 '{"reason":"Shared result.","repeats":[{"new_clause":"invented result",'
-                '"other_heading":"Productivity","existing_clause":"more requests"}]}',
+                '"other_heading":"Productivity","assessment":"More requests.",'
+                '"existing_clause":"more requests"}]}',
                 {},
             ),
             ('{"reason":"Different findings.","repeats":[]}', {}),
@@ -348,7 +358,7 @@ async def test_unverifiable_repetition_quotes_report_which_check_errored(monkeyp
 
     invalid = (
         '{"reason":"Duplicate.","repeats":[{"new_clause":"unknown",'
-        '"other_heading":"Other","existing_clause":"invented"}]}'
+        '"other_heading":"Other","assessment":"Duplicate.","existing_clause":"invented"}]}'
     )
     monkeypatch.setattr(runner, "_judge_call", AsyncMock(return_value=(invalid, {})))
     result = await runner.evaluate_case(
@@ -488,22 +498,43 @@ async def test_case_distinguishes_an_editorial_rejection_from_a_service_error(
     )
     if infrastructure_error:
         assert result["status"] == "error"
+        assert result["error_message"] == "Service unavailable"
         assert result["actual_output"] is None
     else:
-        assert result["status"] == "fail"
+        assert result["status"] == "error" and result["score"] is None
         assert not result["actual_output"]["written"]
-        assert reason in result["assertion_results"][0]["message"]
+        assert reason in result["actual_output"]["editorial_issues"]
         assert result["prompt_tokens"] == 19
 
 
 @pytest.mark.asyncio
-async def test_unwritten_section_fails_even_without_selected_expectations():
+async def test_unwritten_section_is_an_error_even_without_selected_expectations():
     output = {**draft(""), "written": False, "words": 0}
     outcome = await runner.evaluate_case({}, [], AsyncMock(return_value=output))
     assert (
-        outcome["status"] == "fail"
-        and outcome["assertion_results"][0]["type"] == "brief_structure"
+        outcome["status"] == "error"
+        and outcome["score"] is None
+        and outcome["error_message"] == "No Brief section was generated."
     )
+
+
+@pytest.mark.asyncio
+async def test_empty_draft_keeps_all_requested_checks_ungraded_and_never_calls_judge():
+    output = {**draft("  "), "written": True, "words": 0}
+    judge = AsyncMock()
+    result = await runner.evaluate_case(
+        {},
+        [{"type": "brief_voice"}, {"type": "brief_length"}],
+        AsyncMock(return_value=output),
+        judge,
+    )
+    assert result["status"] == "error" and result["score"] is None
+    assert [c["type"] for c in result["assertion_results"]] == [
+        "brief_voice",
+        "brief_length",
+    ]
+    assert all(c["not_run"] for c in result["assertion_results"])
+    judge.assert_not_awaited()
 
 
 @pytest.mark.asyncio

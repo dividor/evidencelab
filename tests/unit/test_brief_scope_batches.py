@@ -6,7 +6,6 @@ import pytest
 
 from ui.backend.auth.schemas import BriefOutlineSection, BriefSectionPrompt
 from ui.backend.services.assistant_brief_writer import _review_finding_scope
-from ui.backend.services.assistant_grounding import InvalidAssistantResponse
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 
@@ -41,6 +40,10 @@ async def test_long_scope_review_checks_each_id_in_its_batch(misassigned):
                     "keep": index != 6,
                 }
             )
+        if "Review the single sentence supplied" in system:
+            assert len(rows) == 1
+            decisions[0].pop("id")
+            return schema.validate_python(decisions[0])
         return schema.validate_python({"reviews": decisions})
 
     result = _review_finding_scope(
@@ -53,11 +56,10 @@ async def test_long_scope_review_checks_each_id_in_its_batch(misassigned):
         {},
         review,
     )
-    if misassigned:
-        with pytest.raises(InvalidAssistantResponse, match="each finding once"):
-            await result
-        return
     text, issues = await result
-    assert sorted(batches) == [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10]]
+    expected = [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10]]
+    if misassigned:
+        expected.extend([[5], [6], [7], [8]])
+    assert sorted(batches) == sorted(expected)
     assert text == draft.replace(sentences[5] + " ", "")
     assert len(issues) == 1

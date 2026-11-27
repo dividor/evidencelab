@@ -67,9 +67,12 @@ from ui.backend.services import brief_version_store as versions
 from ui.backend.services.ai_daily_limit import require_ai_allowance
 from ui.backend.services.brief_citation_model import BriefCitationError
 from ui.backend.services.brief_fact_check import brief_changed
+from ui.backend.services.brief_outline_numbers import number_saved_sections
 from ui.backend.services.brief_sharing import user_group_ids
 from ui.backend.services.brief_template_evaluation import (
+    DEFAULT_BRIEF_EXPECTATIONS,
     TemplateSelectionError,
+    brief_expectation_matrix,
     read_selected_templates,
 )
 from ui.backend.services.citation_check_runner import (
@@ -358,12 +361,20 @@ async def delete_case(
 # ---------------------------------------------------------------------------
 
 
-async def _validate_templates(session, dataset, config, matrix):
+@router.get("/brief-expectations", tags=["testing"])
+def brief_expectations(admin: User = Depends(current_superuser)):
+    """The editable starting checks for Brief template experiments."""
+    return DEFAULT_BRIEF_EXPECTATIONS
+
+
+async def _validate_templates(session, dataset, matrix):
     if dataset.capability == "brief":
         try:
-            await read_selected_templates(session, config, matrix or {})
+            await read_selected_templates(session, matrix or {})
+            return brief_expectation_matrix(matrix)
         except TemplateSelectionError as exc:
             raise HTTPException(422, str(exc)) from exc
+    return matrix
 
 
 @router.post(
@@ -378,13 +389,13 @@ async def create_experiment(
 ) -> TestExperiment:
     """Create a draft experiment (define dataset + per-row assertions); not run."""
     dataset = await _get_dataset(session, body.dataset_id)
-    await _validate_templates(session, dataset, body.config, body.case_expectations)
+    matrix = await _validate_templates(session, dataset, body.case_expectations)
     experiment = TestExperiment(
         dataset_id=body.dataset_id,
         name=body.name,
         status=EXPERIMENT_DRAFT,
         config=body.config,
-        case_expectations=body.case_expectations,
+        case_expectations=matrix,
         created_by_user_id=admin.id,
     )
     session.add(experiment)
@@ -409,10 +420,9 @@ async def update_experiment(
     if experiment.status == EXPERIMENT_RUNNING:
         raise HTTPException(status_code=409, detail="Experiment is running")
     if body.config is not None or body.case_expectations is not None:
-        await _validate_templates(
+        experiment.case_expectations = await _validate_templates(
             session,
             await _get_dataset(session, experiment.dataset_id),
-            body.config if body.config is not None else experiment.config,
             (
                 body.case_expectations
                 if body.case_expectations is not None
@@ -423,8 +433,6 @@ async def update_experiment(
         experiment.name = body.name
     if body.config is not None:
         experiment.config = body.config
-    if body.case_expectations is not None:
-        experiment.case_expectations = body.case_expectations
     await session.commit()
     await session.refresh(experiment)
     return experiment
@@ -536,6 +544,7 @@ async def get_experiment(
     detail.runs.sort(key=lambda r: r.run_number, reverse=True)
     for run in detail.runs:
         run.results.sort(key=lambda r: r.created_at)
+        number_saved_sections(run.results)
     return detail
 
 

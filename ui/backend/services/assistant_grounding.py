@@ -14,6 +14,11 @@ from ui.backend.services.agent_passages import (
     passage_for_agent,
     passage_title_with_fields,
 )
+from ui.backend.services.assistant_sentences import (
+    HEADING,
+    numbered_sentences,
+    retain_supported_sentences,
+)
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.assistant_source_attribution import source_attribution_issues
 from ui.backend.services.brief_citation_model import cited_numbers_in_order
@@ -52,13 +57,13 @@ class CitationCheck(BaseModel):
 class BriefProseCheck(BaseModel):
     model_config = ConfigDict(extra="forbid")
     issues: list[str]
+    removable_sentences: list[int] = Field(default_factory=list)
 
 
 CITATION_CHECK: TypeAdapter[CitationCheck] = TypeAdapter(CitationCheck)
 BRIEF_PROSE_CHECK: TypeAdapter[BriefProseCheck] = TypeAdapter(BriefProseCheck)
 Passage = dict[str, Any]
 _Check = TypeVar("_Check")
-_HEADING = re.compile(r"^(#{1,6})[ \t]+\S")
 _CITATION = re.compile(r"\[(\d+(?:\s*[,–-]\s*\d+)*)\]")
 _SENTENCES_PER_CHECK = 4
 _CITATIONS_PER_CHECK = 6
@@ -157,19 +162,28 @@ async def review_brief_prose(
     request: ReviewRequest,
     *,
     final: bool = False,
+    removable: set[int] | None = None,
 ) -> list[str]:
     if not draft:
         return []
     template = assistant_prompt_templates.get_template("brief_prose_check.j2")
+    sentences = numbered_sentences(draft) if removable is not None else []
     prose: BriefProseCheck = await request(
         template.render(
-            system=True, editorial=isinstance(assignment, dict), final=final
+            system=True,
+            editorial=isinstance(assignment, dict),
+            final=final,
+            indexed=bool(sentences),
         ),
-        template.render(assignment=assignment, draft=draft),
+        template.render(assignment=assignment, draft=draft, sentences=sentences),
         [],
         config,
         BRIEF_PROSE_CHECK,
     )
+    if removable is not None and prose.issues:
+        proposed = set(prose.removable_sentences)
+        if proposed.issubset({row["id"] for row in sentences}):
+            removable.update(proposed)
     issues = list(prose.issues)
     opening = split_sentences(draft.strip())
     if not opening or not cited_numbers_in_order(opening[0]):
@@ -178,6 +192,18 @@ async def review_brief_prose(
             "from the retrieved evidence."
         )
     return issues
+
+
+async def review_remaining_prose(draft, removable, review):
+    """Publish an edit only when the remaining verified sentences pass a fresh review."""
+    if not removable:
+        return ""
+    rows = numbered_sentences(draft)
+    kept = {row["id"] for row in rows} - removable
+    candidate = retain_supported_sentences(draft, rows, kept)
+    if candidate and not await review(candidate, final=True):
+        return candidate
+    return ""
 
 
 def render_evidence(passages: list[Passage]) -> str:
@@ -327,61 +353,6 @@ def citation_check_batches(sentences: list[dict]) -> Iterable[list[dict]]:
         yield batch
 
 
-def numbered_sentences(answer: str, preceding_sentence: str = "") -> list[dict]:
-    """Keep the reader's preceding sentence available across verification batches."""
-    rows = []
-    for index, sentence in enumerate(split_sentences(answer), start=1):
-        row = {
-            "id": index,
-            "text": sentence,
-            "citations": cited_numbers_in_order(sentence),
-        }
-        if preceding_sentence:
-            row["preceding_sentence"] = preceding_sentence
-        rows.append(row)
-        preceding_sentence = sentence
-    return rows
-
-
-def _heading_stack(
-    headings: list[tuple[int, str]], depth: int, approved: bool, sentence: str
-) -> list[tuple[int, str]]:
-    retained = [item for item in headings if item[0] < depth]
-    if approved:
-        retained.append((depth, sentence))
-    return retained
-
-
-def retain_supported_sentences(
-    answer: str, sentences: list[dict], supported: set[int]
-) -> str:
-    parts: list[str] = []
-    headings: list[tuple[int, str]] = []
-    offset = 0
-    newline = ""
-    for row in sentences:
-        sentence = row["text"]
-        start = answer.index(sentence, offset)
-        between = answer[offset:start]
-        if "\n" in between:
-            newline = "\n\n" if "\n\n" in between else newline or "\n"
-        offset = start + len(sentence)
-        approved = row["id"] in supported
-        if match := _HEADING.match(sentence):
-            headings = _heading_stack(headings, len(match[1]), approved, sentence)
-            continue
-        if not approved:
-            continue
-        if parts:
-            parts.append("\n\n" if headings else newline or " ")
-        if headings:
-            parts.append("\n\n".join(heading for _, heading in headings) + "\n\n")
-            headings.clear()
-        parts.append(sentence)
-        newline = ""
-    return "".join(parts)
-
-
 def _missing_quotes(
     check: SentenceCheck,
     cited: set[int],
@@ -424,7 +395,7 @@ def citation_issues(
             notes.add(check.id)
             continue
         if check.status == "non_factual" and not cited and not keep_evidence_notes:
-            if _HEADING.match(row["text"]):
+            if HEADING.match(row["text"]):
                 notes.add(check.id)
             continue
         if check.status != "supported" or not cited:

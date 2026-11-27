@@ -2,7 +2,7 @@
 
 import re
 
-from pydantic import BaseModel, Field, ValidationError, ValidationInfo, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from ui.backend.auth.schemas import (
     AssistantSearchSettings,
@@ -14,6 +14,7 @@ from ui.backend.services.assistant_service import stream_research_response
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.brief_citation_model import cited_numbers_in_order
 from ui.backend.services.brief_experiment_claims import is_factual_criterion
+from ui.backend.services.brief_experiment_overlap import OverlapVerdict
 from ui.backend.services.brief_factual_grading import grade_factual_claims
 from ui.backend.services.brief_section_prompt import (
     brief_search_query,
@@ -136,7 +137,7 @@ async def run_brief_case(raw, config, source):
     async for event in events:
         kind = event["type"]
         if kind == "error":
-            raise RuntimeError("Brief generation failed.")
+            raise RuntimeError(event["error"])
         if kind == "token":
             out["summary"] = event["token"]
         elif kind == "brief_editorial_review":
@@ -201,41 +202,6 @@ class IntroductionVerdict(BaseModel):
     @property
     def score(self) -> float:
         return float(not self.unmet)
-
-
-class RepeatedFinding(BaseModel):
-    new_clause: str = Field(min_length=1)
-    existing_clause: str = Field(min_length=1)
-    other_heading: str = Field(min_length=1)
-
-
-class OverlapVerdict(BaseModel):
-    reason: str = Field(min_length=1)
-    repeats: list[RepeatedFinding]
-
-    @model_validator(mode="after")
-    def verify_quotes(self, info: ValidationInfo):
-        document = info.context
-        for match in self.repeats:
-            if match.new_clause not in document["summary"] or not any(
-                match.other_heading == s["title"]
-                and match.existing_clause in (s.get("content") or "")
-                for s in document["siblings"]
-            ):
-                raise ValueError(
-                    "Quote verbatim from the new draft and the named other section."
-                )
-        if self.repeats:
-            pairs = [
-                f"“{pair.new_clause}” repeats “{pair.existing_clause}” in {pair.other_heading}."
-                for pair in self.repeats
-            ]
-            self.reason = " ".join([self.reason, *pairs])
-        return self
-
-    @property
-    def score(self) -> float:
-        return float(not self.repeats)
 
 
 async def _grade(output, prompt, model, system, schema=BriefVerdict):
@@ -313,6 +279,24 @@ def _brief_grade_request(template, output, kind, rubric):
     )
 
 
+async def _grade_criterion(template, output, kind, assertion, model, schema):
+    if not output["written"]:
+        return (0.0, "No section was written.", "")
+    issue, system, prompt = _brief_grade_request(
+        template, output, kind, assertion.get("rubric", "")
+    )
+    if issue:
+        return (0.0, issue, "")
+    verdict, prompt = await _grade(output, prompt, model, system, schema)
+    decision = (verdict.score, verdict.reason, system + "\n\n" + prompt)
+    if isinstance(verdict, OverlapVerdict):
+        return (
+            *decision,
+            {"repetitions": [p.evidence(output) for p in verdict.repeats]},
+        )
+    return decision
+
+
 async def judge_brief(output, assertions, model):
     template = assistant_prompt_templates.get_template("brief_experiment_judge.j2")
     decisions = {}
@@ -343,21 +327,7 @@ async def judge_brief(output, assertions, model):
         )
         if key in decisions:
             continue
-        if not output["written"]:
-            decisions[key] = (0.0, "No section was written.", "")
-            continue
-        issue, system, prompt = _brief_grade_request(
-            template, output, kind, assertion.get("rubric", "")
+        decisions[key] = await _grade_criterion(
+            template, output, kind, assertion, model, schemas[kind]
         )
-        if issue:
-            decisions[key] = (0.0, issue, "")
-            continue
-        verdict, prompt = await _grade(
-            output,
-            prompt,
-            model,
-            system,
-            schemas[kind],
-        )
-        decisions[key] = (verdict.score, verdict.reason, system + "\n\n" + prompt)
     return lambda _draft, rubric: decisions[rubric]

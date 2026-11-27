@@ -19,7 +19,8 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import column, func, select
+from sqlalchemy.dialects.postgresql import JSONB, aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ui.backend.auth.db import get_async_session
@@ -369,6 +370,24 @@ async def evaluation_templates(
     admin: User = Depends(current_superuser),
     session: AsyncSession = Depends(get_async_session),
 ):
+    from ui.backend.services.brief_outline_numbers import outline_numbers
+
+    entries = (
+        func.jsonb_array_elements(BriefTemplate.headings)
+        .table_valued(column("value", JSONB), with_ordinality="position")
+        .render_derived()
+    )
+    entry = func.jsonb_build_array(
+        entries.c.value["title"].astext, entries.c.value["sub"].as_boolean()
+    )
+    sections = (
+        select(
+            func.jsonb_agg(aggregate_order_by(entry, entries.c.position), type_=JSONB)
+        )
+        .select_from(entries)
+        .correlate(BriefTemplate)
+        .scalar_subquery()
+    )
     rows = (
         await session.execute(
             select(
@@ -376,7 +395,7 @@ async def evaluation_templates(
                 BriefTemplate.name,
                 BriefTemplate.description,
                 BriefTemplate.user_id,
-                func.jsonb_array_length(BriefTemplate.headings).label("section_count"),
+                sections.label("sections"),
             ).order_by(BriefTemplate.name, BriefTemplate.id)
         )
     ).all()
@@ -386,7 +405,9 @@ async def evaluation_templates(
             id=t.id,
             name=t.name,
             description=t.description,
-            section_count=t.section_count,
+            section_count=len(t.sections),
+            sections=[title for title, _ in t.sections],
+            heading_numbers=outline_numbers(sub for _, sub in t.sections),
             owner_name=names.get(t.user_id),
             can_delete=t.user_id == admin.id,
         )

@@ -679,6 +679,8 @@ class EvaluationTemplateRead(BaseModel):
     description: str | None
     owner_name: str | None
     section_count: int
+    sections: list[str]
+    heading_numbers: list[str]
     can_delete: bool
 
 

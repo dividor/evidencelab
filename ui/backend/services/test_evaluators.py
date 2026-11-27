@@ -314,6 +314,8 @@ def eval_llm_judge(
     result["rubric"] = rubric
     if a.get("label"):
         result["label"] = a["label"]
+    if rubric == "brief_overlap" and isinstance(verdict, tuple) and len(verdict) == 4:
+        result["repetitions"] = verdict[3]["repetitions"]
     if prompt:
         result["judge_prompt"] = prompt
     return result

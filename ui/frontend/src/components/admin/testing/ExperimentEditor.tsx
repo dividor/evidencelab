@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../../config';
 import type {
+  Assertion,
   AssertionMatrix as MatrixValue,
   CaseRowState,
   TestCase,
@@ -175,7 +176,6 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
     toMatrix(experiment?.case_expectations),
   );
 
-  const [topic, setTopic] = useState(stringField(experiment?.config?.brief_topic));
   const [cases, setCases] = useState<Pick<TestCase, 'id' | 'input'>[]>([]);
   const [modelCombos, setModelCombos] = useState<string[]>([]);
   const [groups, setGroups] = useState<GroupOption[]>([]);
@@ -257,7 +257,22 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
     if (!datasetId || !capability) return;
     setCasesLoading(true);
     const request = capability === 'brief'
-      ? axios.get<EvaluationTemplate[]>(evaluationTemplatesUrl).then(({ data }) => data.map(t => ({ id: t.id, input: { query: t.name } })))
+      ? Promise.all([
+        axios.get<EvaluationTemplate[]>(evaluationTemplatesUrl),
+        axios.get<Assertion[]>(`${API_BASE_URL}/testing/brief-expectations`),
+      ]).then(([templates, defaults]) => {
+        const rows = templates.data.map(t => ({ id: t.id, input: { query: t.name, sections: t.sections, heading_numbers: t.heading_numbers } }));
+        if (active) setMatrix(previous => {
+          const columns = previous.columns.length ? previous.columns : defaults.data;
+          const cases = Object.fromEntries(rows.map(row => {
+            const saved = previous.cases[row.id];
+            const checks = saved && previous.columns.length ? saved.cols : columns.map(() => true);
+            return [row.id, { ...saved, active: saved?.active ?? false, cols: checks }];
+          }));
+          return { columns, cases };
+        });
+        return rows;
+      })
       : axios.get<TestCase[]>(`${API_BASE_URL}/testing/datasets/${datasetId}/cases`).then(({ data }) => data);
     request.then(rows => { if (active) setCases(rows); })
       .catch(() => { if (active) setError('Could not load experiment inputs.'); })
@@ -277,7 +292,7 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
   const buildBody = () => ({
     dataset_id: datasetId,
     name: name.trim(),
-    config: { ...draftToConfig(config), ...(brief ? { brief_topic: topic.trim() } : {}) },
+    config: draftToConfig(config),
     case_expectations: normalizeMatrix(matrix, cases, !brief),
   });
 
@@ -291,8 +306,12 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
       setError('Please select a dataset');
       return null;
     }
-    if (brief && (!topic.trim() || !cases.some(c => matrix.cases[c.id]?.active))) {
-      setError('Enter a brief topic and select at least one template.');
+    if (brief && !cases.some(c => matrix.cases[c.id]?.active)) {
+      setError('Select at least one Brief template.');
+      return null;
+    }
+    if (brief && cases.some(c => matrix.cases[c.id]?.active && !matrix.cases[c.id]?.cols.some(Boolean))) {
+      setError('Select at least one expectation for every selected Brief template.');
       return null;
     }
     setSaving(true);
@@ -380,13 +399,9 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
       </div>
 
       <div className="admin-section" style={{ marginTop: 0 }}>
-        {brief && <div className="form-group">
-          <label htmlFor="evaluation-brief-topic">Brief topic</label>
-          <textarea id="evaluation-brief-topic" value={topic} maxLength={5000} onChange={e => setTopic(e.target.value)} />
-        </div>}
         <h4>{brief ? 'Templates and expectations' : 'Expectations per test case'}</h4>
         <p className="text-muted" style={{ marginTop: 0 }}>
-          {brief ? 'Select the templates to run on this topic. Each selected check applies to its relevant sections.'
+          {brief ? 'Select the Brief templates to evaluate. Each template supplies its subject, section headings and research instructions. The standard checks are selected for every template. Use + Expectation to add your own.'
             : 'Choose the cases and expectations to run. Use a column checkbox to apply an expectation to all cases.'}
         </p>
         {!selectedDataset && (

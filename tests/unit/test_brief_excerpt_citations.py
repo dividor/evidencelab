@@ -19,7 +19,12 @@ async def test_missing_references_keep_the_supported_opening_in_its_own_paragrap
         assert "Battery log" in prompt
         return schema.validate_json(
             json.dumps(
-                [{"sentence": 1, "excerpts": [1]}, {"sentence": 2, "excerpts": []}]
+                {
+                    "matches": [
+                        {"sentence": 1, "excerpts": [1]},
+                        {"sentence": 2, "excerpts": []},
+                    ]
+                }
             )
         )
 
@@ -39,7 +44,7 @@ async def test_missing_references_keep_the_supported_opening_in_its_own_paragrap
 )
 async def test_rejects_invalid_reference_assignments(rows):
     async def identify(system, prompt, history, config, schema):
-        return schema.validate_python(rows)
+        return schema.validate_python({"matches": rows})
 
     with pytest.raises(InvalidAssistantResponse):
         await cite_missing_excerpts(
@@ -53,7 +58,9 @@ async def test_incorrect_sentence_number_gets_corrected_before_applying_citation
     async def identify(system, prompt, history, config, schema):
         prompts.append(prompt)
         number = 8 if len(prompts) == 1 else 1
-        return schema.validate_python([{"sentence": number, "excerpts": [8]}])
+        return schema.validate_python(
+            {"matches": [{"sentence": number, "excerpts": [8]}]}
+        )
 
     draft = await cite_missing_excerpts(
         "Pressure fell.", "[8] Pressure fell.", {8}, {}, identify

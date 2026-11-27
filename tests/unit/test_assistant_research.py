@@ -65,7 +65,7 @@ async def run_research(
                 }
                 for i, txt in missing.items()
             ]
-            return AIMessage(content=json.dumps(rows))
+            return AIMessage(content=json.dumps({"matches": rows}))
         if messages[0].content.startswith("Edit a report section for repetition"):
             prompt = messages[-1].content
             rows = [
@@ -127,7 +127,11 @@ async def run_research(
             )
         if messages[0].content.startswith("Review whether this proposed Brief"):
             issues = prose(messages[-1].content) if prose is not None else []
-            return AIMessage(content=json.dumps({"issues": issues}))
+            return AIMessage(
+                content=json.dumps(
+                    issues if isinstance(issues, dict) else {"issues": issues}
+                )
+            )
         if messages[0].content.startswith("Check whether the proposed answer"):
             prompt = messages[-1].content
             if check is not None:
@@ -571,6 +575,33 @@ async def test_complete_section_can_pass_final_review_after_an_optional_edit():
         finding + " [1]."
     )
     assert events[-1]["section_written"] is True
+
+
+@pytest.mark.asyncio
+async def test_localised_final_defect_keeps_only_sentences_that_pass_the_new_review():
+    main = "Operators checked the valve"
+    dangling = "They also inspected the sensor"
+    finding = _brief_draft((main, 1, main), (dangling, 1, dangling))
+    reviews = iter(
+        [
+            ["Clarify the second sentence."],
+            {
+                "issues": ["The second sentence has no identifiable actor."],
+                "removable_sentences": [2],
+            },
+            [],
+        ]
+    )
+    events, _, _ = await run_research(
+        ['{"queries":[]}', finding, finding],
+        [[point(1, main + ". " + dangling + ".")]],
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": "Valve inspection"}], current=0
+        ),
+        prose=lambda _: next(reviews),
+    )
+    assert next(e["token"] for e in events if e["type"] == "token") == main + " [1]."
+    assert events[-1]["section_written"]
 
 
 @pytest.mark.asyncio
@@ -1268,6 +1299,29 @@ async def test_brief_recovers_the_opening_citation_in_its_original_paragraph():
 
 
 @pytest.mark.asyncio
+async def test_writer_repairs_missing_citations_when_matcher_cannot_return_valid_json():
+    from ui.backend.services.assistant_grounding import InvalidAssistantResponse
+
+    opening = "The inspection found a leak"
+    detail = "The seal had cracked at the joint"
+    raw = opening + ". " + _brief_draft((detail, 2, detail))
+    corrected = _brief_draft((opening, 1, opening), (detail, 2, detail))
+
+    def invalid_reply(_sentence):
+        raise InvalidAssistantResponse("The citation matcher could not return JSON")
+
+    events, _, _ = await run_research(
+        ['{"queries":[]}', raw, corrected],
+        [[point(1, opening + "."), point(2, detail + ".")]],
+        match_excerpts=invalid_reply,
+        brief_section=BriefSectionPrompt(outline=[{"title": "Inspection"}], current=0),
+    )
+    assert next(e["token"] for e in events if e["type"] == "token") == (
+        f"{opening} [1]. {detail} [2]."
+    )
+
+
+@pytest.mark.asyncio
 async def test_brief_excludes_a_midterm_finding_misattributed_to_endline():
     source = point(1, "Students reported improved hygiene at midterm.")
     source.payload["map_title"] = "Mid-Term Evaluation of school meals in Laos"
@@ -1708,6 +1762,23 @@ async def test_retrieval_failure_returns_an_error_without_synthesis():
         "error": "The Assistant could not complete this request.",
     }
     llm.ainvoke.assert_not_awaited()
+
+
+def test_recognised_research_errors_explain_the_failure_without_provider_details():
+    from ui.backend.services.assistant_grounding import InvalidAssistantResponse
+    from ui.backend.services.assistant_service import research_error_message
+
+    original = RuntimeError("private request details")
+    setattr(original, "code", "content_filter")
+    wrapped = RuntimeError("private response")
+    wrapped.__cause__ = original
+    assert "content policy" in research_error_message(wrapped)
+    assert "could not be verified" in research_error_message(
+        InvalidAssistantResponse("internal")
+    )
+    assert "private" not in research_error_message(
+        RuntimeError("private request details")
+    )
 
 
 @pytest.mark.asyncio

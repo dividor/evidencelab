@@ -43,6 +43,7 @@ from ui.backend.auth.testing_models import (
 from ui.backend.services.brief_template_evaluation import (
     TemplateSection,
     TemplateSelectionError,
+    grade_template_checks,
     template_plan,
 )
 from ui.backend.services.citations import render_reference_lines
@@ -797,6 +798,26 @@ def _case_usage_totals(output: Any) -> Dict[str, Any]:
         return dict(_NO_CASE_USAGE)
 
 
+def _missing_brief_result(output, expectations, started):
+    message = "No Brief section was generated."
+    return {
+        "status": RESULT_ERROR,
+        "score": None,
+        "error_message": message,
+        "actual_output": output,
+        "assertion_results": [
+            {
+                **check,
+                "not_run": True,
+                "message": "There was no generated section to grade.",
+            }
+            for check in expectations
+        ],
+        "latency_ms": int((time.time() - started) * 1000),
+        **_case_usage_totals(output),
+    }
+
+
 async def evaluate_case(
     case_input: Any,
     expectations: List[Dict[str, Any]],
@@ -808,14 +829,24 @@ async def evaluate_case(
     output = None
     try:
         output = await runner(case_input)
-        if output.get("capability") == CAPABILITY_BRIEF and not output["written"]:
-            if not any(a.get("type") == "brief_structure" for a in expectations):
-                expectations = [*expectations, {"type": "brief_structure"}]
+        if output.get("capability") == CAPABILITY_BRIEF and (
+            not output.get("written") or not (output.get("summary") or "").strip()
+        ):
+            return _missing_brief_result(output, expectations, started)
         latency_ms = int((time.time() - started) * 1000)
-        judge_fn = await judge_factory(output, expectations) if judge_factory else None
-        assertion_results, passed, score = evaluate_assertions(
-            expectations, output, judge_fn=judge_fn
-        )
+        if isinstance(case_input, TemplateSection):
+            assertion_results = await grade_template_checks(
+                output, expectations, judge_factory
+            )
+            passed = all(r.get("passed") for r in assertion_results)
+            score = min((r.get("score", 0.0) for r in assertion_results), default=1.0)
+        else:
+            judge_fn = (
+                await judge_factory(output, expectations) if judge_factory else None
+            )
+            assertion_results, passed, score = evaluate_assertions(
+                expectations, output, judge_fn=judge_fn
+            )
     except Exception as exc:
         logger.exception("Evaluation case errored")
         return {
@@ -831,13 +862,18 @@ async def evaluate_case(
             ),
             **_case_usage_totals(output),
         }
+    grading_error = any(r.get("error") for r in assertion_results)
     return {
-        "status": RESULT_PASS if passed else RESULT_FAIL,
-        "score": score,
+        "status": (
+            RESULT_ERROR if grading_error else (RESULT_PASS if passed else RESULT_FAIL)
+        ),
+        "score": None if grading_error else score,
         "actual_output": output,
         "assertion_results": assertion_results,
         "latency_ms": latency_ms,
-        "error_message": None,
+        "error_message": (
+            "An expectation could not be graded." if grading_error else None
+        ),
         # Judge usage is stashed on the output by the judge factory, so the
         # totals must be computed after the judge has run.
         **_case_usage_totals(output),
@@ -950,14 +986,17 @@ async def _mark_failed(session, experiment: TestExperiment, message: str) -> Non
     await session.commit()
 
 
-def _progress_stats(completed: int, total: int) -> Dict[str, Any]:
+def _progress_stats(completed: int, total: int, sections=None) -> Dict[str, Any]:
     """A lightweight progress marker stored in a run's ``summary_stats`` while it
     is in flight, so the polling UI can show "completed of total cases".
 
     It is replaced by the real aggregate stats (``compute_summary_stats``) once
     the run finishes, so a running run never carries pass/score numbers.
     """
-    return {"progress": {"completed": completed, "total": total}}
+    progress = {"completed": completed, "total": total}
+    if sections is not None:
+        progress["remaining_sections"] = sections[completed:]
+    return {"progress": progress}
 
 
 def _active_case_plan(
@@ -1084,6 +1123,7 @@ async def _execute(
         from pipeline.db.config import UI_MODEL_COMBOS, get_default_model_combo
         from ui.backend.services.brief_experiment import configure_brief
 
+        requested.pop("brief_topic", None)  # Older experiments stored a separate topic.
         requested["capability"] = CAPABILITY_BRIEF
         requested["model_combo"] = (
             requested.get("model_combo") or get_default_model_combo()
@@ -1113,33 +1153,41 @@ async def _execute(
     # progress (and stream each result) as the run advances. Committing per case
     # — safe because the session is created with expire_on_commit=False — lets
     # the polling UI report how far along the run is instead of a blind "running".
-    if dataset.capability == CAPABILITY_BRIEF and "brief_topic" in requested:
+    if dataset.capability == CAPABILITY_BRIEF:
         try:
             plan = await template_plan(session, config, matrix)
         except TemplateSelectionError as exc:
             await _fail_run(session, experiment, run, str(exc))
             return
-        run.config = {**run.config, "brief_topic": requested["brief_topic"]}
     else:
         plan = _active_case_plan(
             matrix, await _load_cases(session, dataset.id), dataset.capability
         )
     total = len(plan)
-    run.summary_stats = _progress_stats(0, total)
+    sections = (
+        [
+            {
+                "template": case.template.name,
+                "heading": case.headings[case.position].title,
+                "number": case.number,
+            }
+            for case, _ in plan
+        ]
+        if dataset.capability == CAPABILITY_BRIEF
+        else None
+    )
+    run.summary_stats = _progress_stats(0, total, sections)
     await session.commit()
 
     case_results: List[Dict[str, Any]] = []
     for completed, (case, assertions) in enumerate(plan, start=1):
         if isinstance(case, TemplateSection):
-            outcome = await evaluate_case(
-                case, case.applicable_checks(assertions), runner, judge_factory
-            )
-            case.record(outcome)
+            outcome = await case.evaluate(assertions, runner, judge_factory)
         else:
             outcome = await evaluate_case(case.input, assertions, runner, judge_factory)
         case_results.append(outcome)
         session.add(_build_result_row(experiment, run, case, outcome))
-        run.summary_stats = _progress_stats(completed, total)
+        run.summary_stats = _progress_stats(completed, total, sections)
         await session.commit()
 
     run.summary_stats = compute_summary_stats(

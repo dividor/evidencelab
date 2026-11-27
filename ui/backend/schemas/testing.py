@@ -25,6 +25,7 @@ from ui.backend.services.brief_experiment_claims import (
     brief_claim_evidence,
     link_assessment_claims,
 )
+from ui.backend.services.brief_experiment_overlap import link_saved_repetitions
 
 # ---------------------------------------------------------------------------
 # Datasets
@@ -176,6 +177,14 @@ class TestResultRead(BaseModel):
         if self.brief_evidence and self.assertion_results:
             self.assertion_results = link_assessment_claims(
                 self.assertion_results, self.brief_evidence
+            )
+        if (
+            self.actual_output
+            and self.actual_output.get("capability") == "brief"
+            and self.assertion_results
+        ):
+            self.assertion_results = link_saved_repetitions(
+                self.assertion_results, self.actual_output
             )
         return self
 

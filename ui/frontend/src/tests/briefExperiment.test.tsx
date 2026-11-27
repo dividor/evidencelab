@@ -1,6 +1,7 @@
 import React from 'react';
 import axios from 'axios';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import ExperimentEditor from '../components/admin/testing/ExperimentEditor';
 import BriefEvaluationTemplates from '../components/admin/testing/BriefEvaluationTemplates';
 import { getAssertionSpecs } from '../components/admin/testing/assertionSpecs';
 
@@ -17,6 +18,7 @@ test('lists actual templates and opens the shared editor on the original, with i
   api.get.mockImplementation(async url => ({data:url.endsWith('/voices') ? voices : url.endsWith('/t') ? template : [template]}));
   api.put.mockResolvedValue({data:template});
   show();
+  expect(screen.getByRole('link', {name: 'How to create and use Brief templates'})).toHaveAttribute('href', expect.stringContaining('brief.md#7-templates'));
   fireEvent.click(await screen.findByRole('button',{name:'Edit Maintenance'}));
   const name = await screen.findByLabelText('Template name');
   expect(name).toHaveValue('Maintenance');
@@ -50,4 +52,33 @@ test('owners see a deletion confirmation naming the original template', async ()
   expect(screen.getByText(/Delete “Maintenance” from Brief Central/)).toBeVisible();
   fireEvent.click(screen.getByRole('button',{name:'Cancel'}));
   expect(api.delete).not.toHaveBeenCalled();
+});
+
+test('saves a template-only experiment with the default checks and an extra expectation', async () => {
+  jest.clearAllMocks();
+  const columns = [{type: 'brief_structure'}, {type: 'brief_voice'}];
+  api.get.mockImplementation(async url => {
+    if (url.endsWith('/testing/datasets')) return {data: [dataset]};
+    if (url.endsWith('/testing/brief-expectations')) return {data: columns};
+    if (url.endsWith('/testing/brief-templates')) return {data: [{ ...template, sections: ['Service history'] }]};
+    return {data: []};
+  });
+  api.post.mockResolvedValue({data: {id: 'saved'}});
+  const saved = jest.fn();
+  render(<ExperimentEditor initialDatasetId="d" onBack={jest.fn()} onSaved={saved} />);
+  fireEvent.change(await screen.findByLabelText('Experiment name'), {target: {value: 'Maintenance review'}});
+  fireEvent.click(await screen.findByRole('checkbox', {name: 'Maintenance'}));
+  expect(screen.queryByLabelText('Brief topic')).toBeNull();
+  fireEvent.click(screen.getByText('1 section'));
+  expect(screen.getByText('Service history')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', {name: '+ Expectation'}));
+  const modal = document.querySelector('.testing-assertion-modal')!;
+  fireEvent.change(modal.querySelector('select')!, {target: {value: 'brief_length'}});
+  fireEvent.click(screen.getByRole('button', {name: 'Add column'}));
+  fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+  await waitFor(() => expect(saved).toHaveBeenCalledWith('saved'));
+  const posted = api.post.mock.calls[0][1] as {config: object; case_expectations: {columns: object[]; cases: {t: {cols: boolean[]}}}};
+  expect(posted.config).not.toHaveProperty('brief_topic');
+  expect(posted.case_expectations.columns).toEqual([...columns,{type:'brief_length'}]);
+  expect(posted.case_expectations.cases.t.cols).toEqual([true,true,true]);
 });

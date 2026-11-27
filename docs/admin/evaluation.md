@@ -14,7 +14,7 @@ Open the **Admin** panel. **Testing (Experiments)** has two sub‑views, **Datas
 
 ![Admin → Testing tab](../images/admin/eval/testing-datasets.png)
 
-For Brief, choose templates and a topic when you create your experiment. See [Compare generated Brief sections](#compare-generated-brief-sections).
+For Brief, choose Brief templates when you create your experiment. See [Compare generated Brief sections](#compare-generated-brief-sections).
 
 For Search and AI Summary, follow these steps.
 
@@ -223,24 +223,28 @@ Once a check has completed, everyone who can open the brief sees a **Fact Checke
 
 ### Compare generated Brief sections
 
-A Brief evaluation runs the templates you choose against a topic and document library. You create the dataset and the experiment yourself.
+A Brief evaluation runs every section of your chosen templates against the selected document library. You create the dataset and the experiment yourself.
 
 1. Open **Admin → Testing (Experiments) → Datasets → New dataset**. Choose **brief**, select the data source, and save. Open the dataset to see all Brief Central templates. Every Brief dataset uses this same template library. Its data source determines which documents the writer searches.
 2. Select **Create template** to add a record or **Edit template** to change an original. Both open the Brief Central template editor. Set the headings and subheadings, brief-wide research instructions, voice and tone profile, and word targets. Expand a heading to enter its own instructions or override the profile and length. Evaluation admins can edit another owner's original from this screen. The change reaches everyone who uses that template. Owners can also delete their own template here. **Save template** saves and returns to the list. **Back to brief evaluation** returns without saving.
-3. Select **View experiments**, then create an experiment. Choose the dataset, enter the **Brief topic**, and select one or more templates. Add expectation columns and check the ones to apply to each template. Choose the model combo and group settings, save, then select **Run**.
-4. Open the run to review a result for each section. The writer follows the outline in order. It receives the brief-wide instructions, the current section's prompt, and the text of other sections already written. A section profile overrides the template profile. A section length overrides the template length. Introductions use the configured shorter target unless the heading sets its own length. The writer researches each section against the selected library. Generation and model-based grading incur model usage, which the run records.
+3. Select **View experiments**, then create an experiment. Choose the dataset and select one or more [Brief templates](../using-evidence-lab/brief.md#7-templates). Expand the section count to preview the headings. The template name supplies the subject, and its saved prompts guide the research. Nine standard expectations are already selected. Keep the checks you want and use **+ Expectation** to add your own. Choose the model combo and group settings, save, then select **Run**.
+4. Open the run to see every heading immediately, including sections still in the queue. Each row shows its numbered heading above the template name. For example, 2.1 is the first subheading under heading 2. Hover over the heading for the full text. Open a completed section to see its grades. When a check does not apply, the row explains why. The writer follows the outline in order. It receives the brief-wide instructions, the current section's prompt, and the text of other sections already written. A section profile overrides the template profile. A section length overrides the template length. Introductions use the configured shorter target unless the heading sets its own length. The writer researches each section against the selected library. Generation and model-based grading incur model usage, which the run records.
 
 ![Brief evaluation lists the original templates, their owners and section counts, with actions to edit each template.](../images/admin/eval/brief-evaluation-templates.png)
 
 The experiment reads the selected templates at the start of each run. Template edits affect later runs. Previous results retain their own headings, prompts, voice instructions, grades and cited evidence. Older experiments that used individual cases keep their run history. Editing their setup lets you choose templates for future runs.
 
-A case can finish research without producing a publishable section. For example, a revised opening might still refer to an action that no sentence explains. Such a case fails the structure check, which shows the editor’s reason. Its searches and reported token usage are kept with the result. A service or grading exception appears as an error.
+A case can finish research without producing a publishable section. For example, a revised opening might still refer to an action that no sentence explains. A missing section is an **Error**. There is no score, and the expectations show **Not graded**. Expand **Generated section** to see any reason reported by the editor. A **Fail** means a section was written and missed a selected expectation. Its searches and reported token usage are kept with the result. A service or grading exception appears as an error.
 
 Expand a case, then open **Generated section** below the query to read its paragraphs and see the word count. Each expectation shows what it tested. When adding a custom judge criterion, use **Check name** to give it a short title. **Full prompt sent to the LLM** shows the actual grading input for that run. The Brief judge receives the numbered passages with their text, titles, pages and headings. The document viewer uses the bounding boxes to highlight those passages on a page.
 
 Click a citation in a sentence to read all the passages that sentence cites. Click it again to close them. **References** at the end lists each cited passage once. Expand an entry to read the full excerpt saved with that run. You can review earlier runs this way, even if the library has since changed.
 
 Open **Factual support from citations** to read the claims in order. Each claim shows its own assessment, score and pass or fail. Expand a reference below the claim to read the excerpt. The section receives the lowest claim score. The configured threshold applies to each claim and to the section. The grading criterion and full prompt are at the bottom. Earlier runs retain their original section-level assessment.
+
+Open **Cross-section repetition** to compare each match. **Source** shows the passage from the other section. **Target** shows the passage from the draft being graded. Expand either side to see the matching words highlighted in the full section saved with the run. The judge explains what finding the passages share. Older runs keep the original section-level assessment.
+
+![Two repetitions with quoted source and target passages and a separate judge assessment for each.](../images/admin/eval/brief-cross-section-repetition.png)
 
 Open another expectation to inspect its reasoning and the section’s claims. When the assessment quotes a claim, that claim appears first. Each claim lists its references with the excerpts closed. Expand a reference to compare the claim with the complete saved passage.
 
@@ -251,7 +255,7 @@ The writer and voice check use the same selected profile instructions. With no p
 | Selected voice and tone profile | The judge compares wording in the draft with the instructions from the selected profile. |
 | Section format and citations | The section opens with a cited paragraph, uses prose without extra headings or lists, and its numbered citations resolve to the returned sources. |
 | Word count meets target | The actual word count falls within 15% of the case target. A short, carefully supported section can pass grounding and fail length. |
-| Findings are distinct across sections | A judge compares the draft with the text of every supplied section. A paraphrase of the same finding fails. Related findings about distinct measures or populations can pass. A repetition verdict must quote matching clauses from the new draft and the named section. You can read both in the result. |
+| Findings are distinct across sections | A judge compares the draft with the text of every supplied section. A paraphrase of the same finding fails. Related findings about distinct measures or populations can pass. A repetition verdict must quote matching clauses from the new draft and the named section. |
 | Introduction leaves details to subheadings | The judge reads the introduction and the titles of its children. An introduction may name their subjects. It fails if it supplies their detailed findings or examples, even if those children are still blank. |
 | Limit one-sentence paragraphs | For sections with three or more paragraphs, the default allows up to half to contain one sentence. Change the percentage to match your publication or turn this check off for a case. |
 | Paragraph development | Add a writing criterion to check whether each paragraph develops an idea with related evidence. The writing judge reads the assignment, the section in its original paragraphs, and the measured word count. It can assess voice or flow without the factual reference answers. It considers the middle and end of the section as well as its opening. It can fail a sequence of disconnected observations even when every citation resolves. A short introduction can pass. |

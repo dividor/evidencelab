@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import API_BASE_URL from '../../../config';
+import API_BASE_URL, { APP_BASE_PATH } from '../../../config';
+import { docsArticleUrl } from '../../../utils/docsLocation';
 import type { TestDataset } from '../../../types/testing';
 import { BriefTemplate, VoiceProfile } from '../../brief/briefTypes';
 import {
@@ -11,7 +12,7 @@ import { deleteTemplate, createTemplate, listVoiceProfiles, templateBody } from 
 import '../../brief/brief.css';
 
 export type EvaluationTemplate = Pick<BriefTemplate, 'id' | 'name' | 'description' | 'owner_name'> & {
-  can_delete: boolean; section_count: number;
+  can_delete: boolean; section_count: number; sections: string[]; heading_numbers: string[];
 };
 
 export const evaluationTemplatesUrl = `${API_BASE_URL}/testing/brief-templates`;
@@ -64,7 +65,10 @@ export default function BriefEvaluationTemplates({ dataset, onBack, onViewExperi
       <button type="button" className="btn-sm" onClick={onBack}>← Back to datasets</button>
       <h3>{dataset.name}</h3>
     </div>
-    <p>Create a Brief template to add a record here. Edit a template to change its sections, research instructions, length, or voice and tone.</p>
+    <h4>Brief templates</h4>
+    <p>Each record is a Brief Central template. Create a Brief template to add a record here, or edit one to change the sections and instructions your experiment will use.{' '}
+      <a href={docsArticleUrl(APP_BASE_PATH, 'using-evidence-lab/brief.md', '7-templates')} target="_blank" rel="noreferrer">How to create and use Brief templates</a>.
+    </p>
     <div className="testing-controls">
       <button className="btn-sm btn-primary" onClick={() => void open()}>Create template</button>
       <button className="btn-sm" onClick={() => onViewExperiments(dataset)}>View experiments</button>

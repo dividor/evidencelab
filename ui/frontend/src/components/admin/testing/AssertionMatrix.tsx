@@ -216,6 +216,13 @@ const AssertionMatrix: React.FC<AssertionMatrixProps> = ({
                     />{' '}
                     <span title={caseTitle(c)}>{caseTitle(c)}</span>
                   </label>
+                  {capability === 'brief' && Array.isArray(c.input.sections) && (
+                    <details><summary>{c.input.sections.length} {c.input.sections.length === 1 ? 'section' : 'sections'}</summary>
+                      <ul className="testing-template-outline">{c.input.sections.map((title, index) => <li key={index}>
+                        {Array.isArray(c.input.heading_numbers) && <b>{c.input.heading_numbers[index]} </b>}{title}
+                      </li>)}</ul>
+                    </details>
+                  )}
                 </td>
                 {columns.map((col, i) => (
                   <td key={i} className="testing-matrix-cell">

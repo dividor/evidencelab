@@ -590,7 +590,9 @@ async def test_evaluation_admin_edits_original_and_keeps_owner_voice_permissions
     listed = await brief_library.evaluation_templates(admin, session)
     assert any(
         t.id == template.id
+        and t.heading_numbers == ["1", "2"]
         and t.section_count == 2
+        and t.sections == [h.title for h in template.headings]
         and not t.can_delete
         and t.owner_name
         for t in listed
@@ -665,7 +667,7 @@ async def test_template_experiment_records_each_section_and_reloads_current_temp
         dataset_id=ds.id,
         name="Templates",
         status="draft",
-        config={"brief_topic": "Depot operations"},
+        config={},
         case_expectations={
             "columns": [{"type": "brief_structure"}],
             "cases": {
@@ -688,6 +690,11 @@ async def test_template_experiment_records_each_section_and_reloads_current_temp
     monkeypatch.setattr("ui.backend.utils.app_state.get_pg_for_source", lambda _: None)
     await test_runner._execute(session, experiment)
     assert [a["query"] for a in observed] == ["Overview", "Costs", "Availability"]
+    assert [a["brief_section"].topic for a in observed] == [
+        "Maintenance",
+        "Maintenance",
+        "Separate review",
+    ]
     assert [a["target_words"] for a in observed] == [120, 80, None]
     assert observed[0]["introduces_sub_sections"] == ["Costs"]
     assert (
@@ -712,6 +719,11 @@ async def test_template_experiment_records_each_section_and_reloads_current_temp
         )
     ).all()
     assert len(saved) == 6 and all(r.test_case_id is None for r in saved)
+    assert [r.actual_output["assignment"]["heading_number"] for r in saved] == [
+        "1",
+        "1.1",
+        "1",
+    ] * 2
     assert [r.actual_output["assignment"]["template_name"] for r in saved] == [
         "Maintenance",
         "Maintenance",

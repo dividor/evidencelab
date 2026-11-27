@@ -53,13 +53,25 @@ export interface TestCase {
   updated_at: string;
 }
 
+export interface RepeatedPassage {
+  source_index: number;
+  source_quote: string;
+  target_quote: string;
+  assessment?: string;
+}
+
 export interface AssertionResult {
+  repetitions?: RepeatedPassage[];
+  section_assessment?: string;
   type: string;
   label?: string;
   quoted_claims?: number[];
   factual_support?: boolean;
   claim_grades?: { claim: number; reason: string; score: number; passed: boolean }[];
-  passed: boolean;
+  error?: boolean;
+  not_run?: boolean;
+  applicable?: boolean;
+  passed?: boolean;
   message: string;
   score?: number;
   // For llm_judge: the rubric and the exact prompt sent to the judge LLM.
@@ -70,6 +82,7 @@ export interface AssertionResult {
 // Emitted only while a run is in flight, so the UI can show how far it has
 // progressed. Replaced by the aggregate fields below once the run completes.
 export interface RunProgress {
+  remaining_sections?: { template: string; heading: string; number?: string }[];
   completed: number;
   total: number;
 }

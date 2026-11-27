@@ -74,6 +74,15 @@ beforeEach(() => {
 const noop = () => undefined;
 
 describe('ExperimentDetail run progress', () => {
+  test('shows the running template section and the whole queue before any draft is saved', async () => {
+    mockGet({ ...runningDetail, runs: [{ ...runningDetail.runs[0], summary_stats: {
+      progress: {completed: 0, total: 2, remaining_sections: [{template: 'Review', heading: 'Costs'}, {template: 'Review', heading: 'Access'}]},
+    } }] });
+    render(<ExperimentDetail experimentId="e1" onBack={noop} onEdit={noop} />);
+    expect(await screen.findByRole('row', { name: /Costs.*Review.*Running/ })).toBeVisible();
+    expect(screen.getByRole('row', { name: /Access.*Review.*Queued/ })).toBeVisible();
+  });
+
   test('explains why an editorial rejection has no generated section', () => {
     const reason = 'The opening does not identify the equipment being discussed.';
     render(<GeneratedSection result={{
