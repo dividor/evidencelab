@@ -39,6 +39,11 @@ cloudfront_enabled = false
 #   "amazon.rerank-v1:0"         = { region = "us-west-2", invocations_per_hour = 5000 }
 # }
 
+# Bedrock's call log (bedrock_logging.tf), on by default: who called which
+# model and how many tokens, without the text, kept 365 days.
+# bedrock_call_log                = true
+# bedrock_call_log_retention_days = 365
+
 # Qdrant Cloud cluster in the same region. Leave empty to run Qdrant on EC2.
 qdrant_url = ""
 

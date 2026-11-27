@@ -353,7 +353,7 @@ variable "alert_emails" {
 }
 
 variable "bedrock_alarms" {
-  description = "Email alerts on Amazon Bedrock use, keyed by the model's ModelId as CloudWatch shows it (aws cloudwatch list-metrics --namespace AWS/Bedrock; an inference profile shows as its own ID, such as eu.amazon.nova-2-lite-v1:0). Each sets one or more levels for a rolling hour: input_tokens_per_hour, output_tokens_per_hour, invocations_per_hour. region is where the model is called, if not the deployment's region (rerank models are offered in only some). Base the levels on the busiest hour of normal use. Needs alert_emails. Empty sets no alarms."
+  description = "Email alerts on Amazon Bedrock use, keyed by the model's ModelId as CloudWatch shows it (aws cloudwatch list-metrics --namespace AWS/Bedrock; an inference profile shows as its own ID, such as us.amazon.nova-2-lite-v1:0). Each sets one or more levels for a rolling hour: input_tokens_per_hour, output_tokens_per_hour, invocations_per_hour. region is where the model is called, if not the deployment's region (rerank models are offered in only some). Base the levels on the busiest hour of normal use. Needs alert_emails. Empty sets no alarms."
   type = map(object({
     region                 = optional(string)
     input_tokens_per_hour  = optional(number)
@@ -383,5 +383,24 @@ variable "bedrock_alarms" {
   validation {
     condition     = length(var.bedrock_alarms) == 0 || length(var.alert_emails) > 0
     error_message = "bedrock_alarms needs at least one address in alert_emails, or no one would hear of them."
+  }
+}
+
+variable "bedrock_call_log" {
+  description = "Amazon Bedrock's call log (bedrock_logging.tf): in each region the app calls Bedrock in, every call's caller, model and token counts go to the log group /aws/bedrock/<name>/model-invocations, without the text of prompts and answers. It is a setting of the whole AWS account in each region, so it records every caller, and only one deployment in an account should turn it on. false: off."
+  type        = bool
+  default     = true
+  nullable    = false
+}
+
+variable "bedrock_call_log_retention_days" {
+  description = "Days to keep the Bedrock call log."
+  type        = number
+  default     = 365
+  nullable    = false
+
+  validation {
+    condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653], var.bedrock_call_log_retention_days)
+    error_message = "bedrock_call_log_retention_days must be one CloudWatch Logs offers: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288 or 3653."
   }
 }
