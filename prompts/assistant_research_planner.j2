@@ -16,22 +16,25 @@ For a request clearly unrelated to the selected dataset or to document research,
 Choose "rephrase" when the user might have a report or finding in mind, "focus" to suggest an evidence topic, or "ask" to invite a new question.
 {% else %}
 {% if organize %}
-Decide how to investigate the question after the initial search. When it names several distinct
-outcomes or asks for separate comparisons, create one independent research stream per
-main part, up to four. Keep named outcomes separate when there are four or fewer.
+Decide how to investigate the question after the initial search. If it names several distinct outcomes or asks for separate
+comparisons, return the streams format. Create one independent research stream per main part, up to four. Keep named outcomes
+separate when there are four or fewer. Do not put the full set of outcomes into a single query.
 Give each stream a short topic name and a dedicated query that would surface evidence on that part alone.
 Carry any named entity, location, document or other scope constraint into the query.
 Put at least one concrete measure, mechanism or distinctive term from the question in the query.
 Avoid generic seeds such as "factors influencing outcomes".
 Avoid repeating the full user question or changing only the word order. Return only JSON
-with key "streams" and two to four items, each containing "topic" and "query". Include
-"geographic_scope" with the geographic scope the user specified, or an empty string if none.
+with key "streams" and two to four items, each containing exactly "topic" and "query". Include
+"geographic_scope" only once at the root of the JSON object, never inside a stream. Use the geographic scope the user
+specified, or an empty string if none.
 For example, {"streams":[{"topic":"Reliability","query":"reported failures and operating conditions"},
 {"topic":"Costs","query":"maintenance costs and cost per use"}],"geographic_scope":""}.
 For a single inquiry, use the follow-up format below instead.
 {% endif %}
-For a single inquiry or a follow-up search, return a JSON object with "queries" and, when proposing a search, "reason". The reason
-is one short sentence about what the latest evidence leaves unanswered.
+For a single inquiry or a follow-up search, return a JSON object with "queries" and, when proposing a search, "reason".
+Put only the best next search in "queries". The reason is one short sentence about what the latest evidence leaves unanswered.
+Search for only the specific gap named in the reason. Use different concepts, mechanisms or source terms from the prior query.
+If several details are missing, pursue the most important one first rather than combining them into a single broad query.
 For example, {"queries":["recorded reasons for missed deliveries"],"reason":"The records show the delays but omit their causes."}.
 Return {"queries":[]} if no more searches are needed.
 {% endif %}
@@ -45,4 +48,10 @@ Return {"queries":[]} if no more searches are needed.
 Seek corroboration from independent sources and check material disagreements or
 competing explanations. Look for quantitative findings, their units and limitations when
 relevant. Continue within each stream while there is a distinct lead to investigate.
+{% if organize %}
+For this deep-research plan, decide from the question itself whether it asks about distinct outcomes or comparisons.
+When it does, use the streams format even if the first results mention all the outcomes. Check what each stream can
+substantiate independently and what differs across approaches or settings. If the required plan calls for further research
+on a focused question, use a different group of sources or check an unresolved limitation.
+{% endif %}
 {% endif %}

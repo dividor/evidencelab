@@ -309,6 +309,24 @@ class TestRoutesUseGroupChoice:
         )
 
     @pytest.mark.asyncio
+    async def test_brief_stream_when_no_request_model_uses_site_configuration(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(assistant_routes, "user_group_choice", _choice(None))
+        monkeypatch.setattr(
+            assistant_routes, "config_defaults", lambda: {"brief": "site-writer"}
+        )
+        body = AssistantChatRequest(query="q", usage_context="brief")
+        assert (
+            await assistant_routes._purpose_model_key(body, None, None, None)
+            == "site-writer"
+        )
+        assert (
+            await assistant_routes._purpose_model_key(body, "chosen", None, None)
+            == "chosen"
+        )
+
+    @pytest.mark.asyncio
     async def test_assistant_when_not_brief_then_request_model(self, monkeypatch):
         monkeypatch.setattr(assistant_routes, "user_group_choice", _choice("sonnet"))
         body = AssistantChatRequest(query="q")

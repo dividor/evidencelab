@@ -4,6 +4,7 @@ import logging
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
+from pipeline.db.config import get_default_filter_fields
 from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.auth.schemas import BriefSectionPrompt
 from ui.backend.services.assistant_research import (
@@ -15,12 +16,15 @@ from ui.backend.services.assistant_settings import (
     assistant_prompt_templates,
     assistant_search_defaults,
 )
+from ui.backend.services.brief_section_prompt import brief_section_prompt_default
 from ui.backend.services.search import map_field_to_storage, search_chunks
 
 logger = logging.getLogger(__name__)
 
 
-def _format_search_result(r: Any) -> Dict[str, Any]:
+def _format_search_result(
+    r: Any, fields: Optional[Dict[str, str]] = None
+) -> Dict[str, Any]:
     """Format a Qdrant ScoredPoint into a plain dict."""
     payload = r.payload if hasattr(r, "payload") else r
     # Qdrant payloads use "map_title"; fall back to "title" for tests/dicts
@@ -33,6 +37,11 @@ def _format_search_result(r: Any) -> Dict[str, Any]:
         "doc_id": payload.get("doc_id", ""),
         "title": title,
         "country": payload.get("map_country"),
+        "document_fields": {
+            label: payload[key]
+            for key, label in (fields or {}).items()
+            if payload.get(key) not in (None, "", [])
+        },
         "text": payload.get("text", ""),
         "score": getattr(r, "score", payload.get("score", 0.0)),
         "page": page,
@@ -301,8 +310,14 @@ class SearchTracker:
         )
         if kwargs.get("wide_search"):
             points = _spread_across_documents(points, self.RESULTS_PER_SEARCH)
+        fields = {
+            map_field_to_storage(key): label
+            for key, label in get_default_filter_fields(self.data_source or "").items()
+            if key != "title"
+        }
         formatted = [
-            _format_search_result(r) for r in self._apply_field_boost(points, query)
+            _format_search_result(r, fields)
+            for r in self._apply_field_boost(points, query)
         ]
         self._enrich_from_postgres(formatted, self.data_source)
         self._enrich_doc_links(formatted, self.data_source)
@@ -406,7 +421,7 @@ def build_research_agent(
     )
     opening = template.render(
         deep_research=deep_research,
-        organize=brief_section is None,
+        organize=brief_section is None or brief_section.mode == "generate",
         group_instructions=settings.planningPrompt,
         instructions=settings.planningInstructions,
     )
@@ -416,19 +431,22 @@ def build_research_agent(
         group_instructions=settings.planningPrompt,
         instructions=settings.planningInstructions,
     )
-    writer = assistant_prompt_templates.get_template("assistant_system.j2").render(
-        data_source=data_source,
-        target_words=target_words,
-        intro_sub_sections=introduces_sub_sections,
-        group_instructions=(
-            (settings.answerPrompt or system_prompt_override)
-            if not settings.answerInstructions and brief_section_prompt is None
-            else None
-        ),
-        instructions=settings.answerInstructions,
-        brief_section_prompt=brief_section_prompt,
-        deep_research=deep_research,
-    )
+    if brief_section and brief_section.mode == "generate":
+        writer = brief_section_prompt or brief_section_prompt_default()
+    else:
+        writer = assistant_prompt_templates.get_template("assistant_system.j2").render(
+            data_source=data_source,
+            target_words=target_words,
+            intro_sub_sections=introduces_sub_sections,
+            group_instructions=(
+                (settings.answerPrompt or system_prompt_override)
+                if not settings.answerInstructions and brief_section_prompt is None
+                else None
+            ),
+            instructions=settings.answerInstructions,
+            brief_section_prompt=brief_section_prompt,
+            deep_research=deep_research,
+        )
     limits = ResearchLimits(
         searches=max_queries,
         searches_per_stream=per_stream or default_per_stream,

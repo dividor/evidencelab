@@ -18,25 +18,26 @@ import { summarizeAssertion } from './assertionFields';
 
 interface AssertionMatrixProps {
   capability: TestCapability;
-  cases: TestCase[];
+  cases: Pick<TestCase, 'id' | 'input'>[];
   value: MatrixValue;
   onChange: (value: MatrixValue) => void;
 }
 
-const caseTitle = (testCase: TestCase): string => {
+const caseTitle = (testCase: Pick<TestCase, 'id' | 'input'>): string => {
   const query = (testCase.input as { query?: unknown }).query;
   if (typeof query === 'string' && query.trim()) return query;
   return `Case ${testCase.id.slice(0, 8)}`;
 };
 
 // Build a fully-populated row state for a case, padding cols/ovr to `ncols`.
-const normalizedRow = (prev: CaseRowState | undefined, ncols: number): CaseRowState => ({
-  active: prev ? prev.active : true,
+const normalizedRow = (prev: CaseRowState | undefined, ncols: number, defaultActive = true): CaseRowState => ({
+  active: prev ? prev.active : defaultActive,
   cols: Array.from({ length: ncols }, (_, i) => Boolean(prev?.cols?.[i])),
   ovr: Array.from({ length: ncols }, (_, i) => prev?.ovr?.[i] ?? ''),
 });
 
-const isLlmJudge = (assertion: Assertion): boolean => assertion.type === 'llm_judge';
+const isLlmJudge = (assertion: Assertion): boolean =>
+  assertion.type === 'llm_judge' || assertion.type === 'brief_writing' || assertion.type === 'brief_factual';
 
 const AssertionMatrix: React.FC<AssertionMatrixProps> = ({
   capability,
@@ -51,7 +52,7 @@ const AssertionMatrix: React.FC<AssertionMatrixProps> = ({
   const [editIndex, setEditIndex] = useState<number | null>(null);
 
   const rowOf = (caseId: string): CaseRowState =>
-    normalizedRow(safeCases[caseId], columns.length);
+    normalizedRow(safeCases[caseId], columns.length, capability !== 'brief');
 
   // Rebuild every row's state over the current columns, applying `fn`.
   const mutateRows = (fn: (caseId: string, row: CaseRowState) => CaseRowState) => {
@@ -98,7 +99,7 @@ const AssertionMatrix: React.FC<AssertionMatrixProps> = ({
     const last = nextColumns.length - 1;
     const next: Record<string, CaseRowState> = {};
     cases.forEach((c) => {
-      const row = normalizedRow(safeCases[c.id], nextColumns.length);
+      const row = normalizedRow(safeCases[c.id], nextColumns.length, capability !== 'brief');
       row.cols[last] = true; // default: applies to all cases (select-all on)
       next[c.id] = row;
     });
@@ -134,7 +135,7 @@ const AssertionMatrix: React.FC<AssertionMatrixProps> = ({
   if (cases.length === 0) {
     return (
       <p className="text-muted">
-        This dataset has no test cases yet. Add input rows in the dataset editor first.
+        {capability === 'brief' ? 'Create a Brief template to use it in an experiment.' : 'This dataset has no test cases yet. Add input rows in the dataset editor first.'}
       </p>
     );
   }
@@ -151,7 +152,7 @@ const AssertionMatrix: React.FC<AssertionMatrixProps> = ({
                   checked={allRowsActive}
                   onChange={(e) => setAllRows(e.target.checked)}
                 />{' '}
-                Test case
+                {capability === 'brief' ? 'Template' : 'Test case'}
               </label>
             </th>
             {columns.map((col, i) => (
@@ -215,6 +216,13 @@ const AssertionMatrix: React.FC<AssertionMatrixProps> = ({
                     />{' '}
                     <span title={caseTitle(c)}>{caseTitle(c)}</span>
                   </label>
+                  {capability === 'brief' && Array.isArray(c.input.sections) && (
+                    <details><summary>{c.input.sections.length} {c.input.sections.length === 1 ? 'section' : 'sections'}</summary>
+                      <ul className="testing-template-outline">{c.input.sections.map((title, index) => <li key={index}>
+                        {Array.isArray(c.input.heading_numbers) && <b>{c.input.heading_numbers[index]} </b>}{title}
+                      </li>)}</ul>
+                    </details>
+                  )}
                 </td>
                 {columns.map((col, i) => (
                   <td key={i} className="testing-matrix-cell">

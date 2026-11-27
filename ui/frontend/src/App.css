@@ -12731,6 +12731,37 @@ a.admin-citation-clickable:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.testing-template-outline { list-style: none; padding-inline-start: 1rem; }
+.testing-heading-number { font-variant-numeric: tabular-nums; }
+.testing-row-toggle {
+  background: transparent;
+  color: inherit;
+  border: 0;
+  cursor: pointer;
+  padding: 0.35rem;
+}
+.testing-disclosure-arrow {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+}
+.testing-brief-assertion > summary { list-style: none; }
+.testing-brief-assertion > summary::-webkit-details-marker { display: none; }
+.testing-run-header[aria-expanded="true"] .testing-disclosure-arrow,
+.testing-brief-assertion[open] > summary > .testing-disclosure-arrow,
+.testing-row-toggle[aria-expanded="true"] > .testing-disclosure-arrow { transform: rotate(45deg); }
+.testing-brief-section-title {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.testing-brief-section-title small {
+  display: block;
+  color: var(--color-text-muted);
+}
 .testing-result-status {
   min-width: 4.5rem;
   text-align: center;
@@ -13681,3 +13712,88 @@ fieldset.group-assistant-options {
 .group-assistant-options label {
   align-content: space-between;
 }
+
+.brief-experiment-case,
+.brief-experiment-case fieldset,
+.brief-experiment-case label {
+  display: grid;
+  gap: 0.5rem;
+}
+.brief-experiment-case { gap: 1rem; }
+.brief-experiment-case textarea { min-height: 4rem; }
+.brief-experiment-case button { justify-self: start; }
+
+.testing-brief-prose {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 4px;
+}
+
+.testing-generated-section > summary {
+  display: list-item;
+  cursor: pointer;
+}
+
+.testing-claim-paragraph + .testing-claim-paragraph,
+.testing-section-references {
+  margin-top: 0.85rem;
+}
+
+.testing-claim-citation {
+  display: inline;
+  padding: 0 0.12em;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary, #315e7b);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.testing-claim-evidence {
+  margin: 0.55rem 0;
+  padding: 0.65rem 0.85rem;
+  background: var(--color-bg-secondary, #f5f7f8);
+  border-radius: 4px;
+}
+
+.testing-claim-source + .testing-claim-source { margin-top: 0.7rem; }
+.testing-section-reference { margin-top: 0.35rem; }
+.testing-section-reference > summary { cursor: pointer; }
+.testing-cited-excerpt { margin-top: 0.3rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.testing-brief-assertion { padding: 0.45rem 0; border-bottom: 1px solid var(--color-border, #d0d7de); }
+.testing-brief-assertion summary { cursor: pointer; }
+.testing-brief-assertion > summary > span { margin-right: 0.5rem; }
+.testing-assertion-body { padding: 0.5rem 0.8rem; }
+.testing-assertion-body > details { margin: 0.35rem 0; }
+.testing-assessment-claims { margin-top: 0.8rem; }
+.testing-evidence-claim { padding: 0.55rem 0; }
+
+.testing-claim-heading { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.25rem; }
+.testing-claim-reason { margin: 0.35rem 0; }
+.testing-factual-claims .testing-evidence-claim + .testing-evidence-claim { border-top: 1px solid var(--color-border, #d0d7de); }
+
+.testing-repetition-list { padding: 0; margin: 0; list-style: none; }
+.testing-repetition-list > li + li { border-top: 1px solid var(--color-border); margin-top: 1rem; }
+.testing-repetition-list h4 { margin: 0.8rem 0; }
+.testing-repetition-passages {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+  gap: 0.75rem 1.5rem;
+}
+.testing-repetition-passage { min-width: 0; }
+.testing-repetition-passage p { margin: 0; }
+.testing-repetition-passage blockquote {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  margin: 0.25rem 0;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.testing-repetition-passage details { font-size: 0.93em; }

@@ -74,6 +74,17 @@ const SECTIONS: Array<{ section: string; rows: Array<[string, string, Formatter?
     ],
   },
   {
+    section: 'Brief',
+    rows: [
+      ['brief_model', 'Brief writer'],
+      ['brief_temperature', 'Writer temperature'],
+      ['brief_max_tokens', 'Writer max tokens'],
+      ['brief_citation_check', 'Automatic citation check', onOff],
+      ['citation_model', 'Citation checker'],
+      ['brief_prompt', 'Section prompt'],
+    ],
+  },
+  {
     section: 'Summary',
     rows: [
       ['summary_limit_results', 'Cap results', onOff],
@@ -123,7 +134,8 @@ export const runConfigHeadline = (config: RunConfig | null | undefined): string 
   const parts: string[] = [];
   if (config.model_combo) parts.push(String(config.model_combo));
   if (config.group_name) parts.push(`group ${String(config.group_name)}`);
-  if (config.summary_model) parts.push(`summary ${String(config.summary_model)}`);
+  if (config.brief_model) parts.push(`Brief writer ${String(config.brief_model)}`);
+  else if (config.summary_model) parts.push(`summary ${String(config.summary_model)}`);
   if (config.rerank === true && config.rerank_model) {
     parts.push(`rerank ${String(config.rerank_model)} (${rerankCap(config.max_rerank_candidates)})`);
   } else if (config.rerank === false) {
