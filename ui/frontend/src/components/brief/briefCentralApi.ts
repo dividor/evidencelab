@@ -132,7 +132,7 @@ export interface TemplatePayload {
   targetWords: number | null;
 }
 
-const templateBody = (args: TemplatePayload) => ({
+export const templateBody = (args: TemplatePayload) => ({
   name: args.name,
   description: args.description,
   headings: args.headings,

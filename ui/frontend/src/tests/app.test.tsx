@@ -50,6 +50,13 @@ describe('App', () => {
     cleanup();
   });
 
+  test('shows the shared loading animation on Brief while research settings are pending', () => {
+    mockedAxios.get.mockImplementation(() => new Promise(() => {}));
+    window.history.pushState(null, '', '/brief');
+    render(<App />);
+    expect(screen.getByRole('status', { name: 'Loading' })).toHaveClass('search-loading-wandering');
+  });
+
   test('loads config and navigates tabs', async () => {
     mockedAxios.get.mockImplementation((url) => {
       if (url.includes('/config/datasources')) {

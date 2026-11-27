@@ -36,7 +36,7 @@ const generate = async (instructions: string) => {
   await act(async () => {
     await hook.result.current.generateOutline();
   });
-  return mockStream.mock.calls[0][0];
+  return { request: mockStream.mock.calls[0][0], error: hook.result.current.error };
 };
 
 describe('the library survey before an outline', () => {
@@ -49,13 +49,23 @@ describe('the library survey before an outline', () => {
 
   test('instructions at the limit go in their own field, so the question stays short', async () => {
     const instructions = 'x'.repeat(PROMPT_MAX_CHARS);
-    const request = await generate(instructions);
+    const { request } = await generate(instructions);
     expect(request.query).toBe(TOPIC);
     expect(request.briefSurvey).toEqual({ topic: TOPIC, instructions });
   });
 
   test('no instructions are sent when there are none', async () => {
-    const request = await generate('');
+    const { request } = await generate('');
     expect(request.briefSurvey).toEqual({ topic: TOPIC });
+  });
+
+  test('a failed survey is reported before the outline writer can run', async () => {
+    const message = 'The library survey failed.';
+    mockStream.mockImplementationOnce(async ({ handlers }) => handlers.onError(message));
+
+    const { error } = await generate('');
+
+    expect(error).toBe(message);
+    expect(mockOutline).not.toHaveBeenCalled();
   });
 });

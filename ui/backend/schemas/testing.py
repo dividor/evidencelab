@@ -9,17 +9,66 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from ui.backend.auth.schemas import (
+    BRIEF_HEADING_MAX_CHARS,
+    BRIEF_MAX_SECTIONS,
+    BRIEF_PROMPT_MAX_CHARS,
+    BRIEF_TOPIC_MAX_CHARS,
+    TARGET_WORDS_MAX,
+    TARGET_WORDS_MIN,
+    VOICE_INSTRUCTIONS_MAX_CHARS,
+    BriefOutlineSection,
+)
+from ui.backend.services.brief_experiment_claims import (
+    brief_claim_evidence,
+    link_assessment_claims,
+)
+from ui.backend.services.brief_experiment_overlap import link_saved_repetitions
+from ui.backend.services.brief_grading_errors import brief_grading_error
 
 # ---------------------------------------------------------------------------
 # Datasets
 # ---------------------------------------------------------------------------
 
 
+class BriefCaseVoice(BaseModel):
+    """The selected profile as it was saved in the evaluation case."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+    id: uuid.UUID
+    name: str = Field(min_length=1, max_length=255)
+    instructions: str = Field(min_length=1, max_length=VOICE_INSTRUCTIONS_MAX_CHARS)
+
+
+class BriefCase(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    query: str = Field(min_length=1, max_length=BRIEF_TOPIC_MAX_CHARS)
+    heading: str = Field(min_length=1, max_length=BRIEF_HEADING_MAX_CHARS)
+    guidance: str = Field("", max_length=BRIEF_PROMPT_MAX_CHARS)
+    voice: str = Field("", max_length=VOICE_INSTRUCTIONS_MAX_CHARS)
+    voice_profile: BriefCaseVoice | None = None
+    target_words: int | None = Field(None, ge=TARGET_WORDS_MIN, le=TARGET_WORDS_MAX)
+    siblings: list[BriefOutlineSection] = Field(
+        default_factory=list, max_length=BRIEF_MAX_SECTIONS - 1
+    )
+    children: list[BriefOutlineSection] = Field(
+        default_factory=list, max_length=BRIEF_MAX_SECTIONS - 1
+    )
+    reference_standard: dict = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_outline_size(self):
+        if len(self.siblings) + len(self.children) >= BRIEF_MAX_SECTIONS:
+            raise ValueError("The brief outline has too many sections.")
+        return self
+
+
 class TestDatasetCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: Optional[str] = None
-    capability: str = Field(description="search | ai_summary")
+    capability: str = Field(description="search | ai_summary | brief")
     data_source: str = Field(min_length=1, max_length=255)
 
 
@@ -109,10 +158,11 @@ class TestResultRead(BaseModel):
     id: uuid.UUID
     experiment_id: uuid.UUID
     run_id: Optional[uuid.UUID] = None
-    test_case_id: uuid.UUID
+    test_case_id: uuid.UUID | None
     status: str
     score: Optional[float] = None
     actual_output: Optional[Dict[str, Any]] = None
+    brief_evidence: Optional[Dict[str, Any]] = None
     assertion_results: Optional[List[Dict[str, Any]]] = None
     latency_ms: Optional[int] = None
     error_message: Optional[str] = None
@@ -121,6 +171,30 @@ class TestResultRead(BaseModel):
     completion_tokens: Optional[int] = None
     cost_usd: Optional[float] = None
     created_at: datetime
+
+    @model_validator(mode="after")
+    def attach_saved_brief_evidence(self):
+        self.brief_evidence = brief_claim_evidence(self.actual_output)
+        if self.brief_evidence and self.assertion_results:
+            self.assertion_results = link_assessment_claims(
+                self.assertion_results, self.brief_evidence
+            )
+        if (
+            self.actual_output
+            and self.actual_output.get("capability") == "brief"
+            and self.assertion_results
+        ):
+            if (
+                self.status == "error"
+                and self.error_message == "An expectation could not be graded."
+            ):
+                self.error_message = (
+                    brief_grading_error(self.assertion_results) or self.error_message
+                )
+            self.assertion_results = link_saved_repetitions(
+                self.assertion_results, self.actual_output
+            )
+        return self
 
 
 class TestRunRead(BaseModel):

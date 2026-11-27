@@ -1,3 +1,4 @@
+import { openAdminLocation, useAdminLocation } from '../../utils/adminLocation';
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../config';
@@ -280,9 +281,19 @@ const SettingsPanel: React.FC<{
   </div>
 ) : null;
 
+function useGroupLocation(groups: UserGroup[]) {
+  const { group, settings } = useAdminLocation();
+  const selectedGroupId = group ?? groups.find(item => item.is_default)?.id ?? '';
+  const activeTab = SETTINGS_TABS.find(tab => tab.key === settings)?.key ?? 'search';
+  const groupUnavailable = Boolean(group && !groups.some(item => item.id === group));
+  const selectGroupTab = (id: string, tab: SettingsTab) =>
+    openAdminLocation({ page: 'group-settings', group: id, settings: tab });
+  return { selectedGroupId, activeTab, selectGroupTab, groupUnavailable };
+}
+
 const GroupSettingsManager: React.FC<{ assistantModelConfig?: SummaryModelConfig | null }> = ({ assistantModelConfig }) => {
   const [groups, setGroups] = useState<UserGroup[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const { selectedGroupId, activeTab, selectGroupTab, groupUnavailable } = useGroupLocation(groups);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -292,8 +303,6 @@ const GroupSettingsManager: React.FC<{ assistantModelConfig?: SummaryModelConfig
   const [overrides, setOverrides] = useState<Set<keyof SearchSettings>>(new Set());
   // Current values for all settings (overridden or system default)
   const [values, setValues] = useState<Required<SearchSettings>>({ ...SYSTEM_DEFAULTS });
-
-  const [activeTab, setActiveTab] = useState<SettingsTab>('search');
 
   // Per-group feature-tab visibility/labels (stored under search_settings.tabs).
   // `tabsOverride` off => this group doesn't constrain tabs (contributes nothing
@@ -327,16 +336,6 @@ const GroupSettingsManager: React.FC<{ assistantModelConfig?: SummaryModelConfig
   useEffect(() => {
     fetchGroups();
   }, [fetchGroups]);
-
-  // Auto-select the default group on initial load
-  useEffect(() => {
-    if (groups.length > 0 && !selectedGroupId) {
-      const defaultGroup = groups.find((g) => g.is_default);
-      if (defaultGroup) {
-        setSelectedGroupId(defaultGroup.id);
-      }
-    }
-  }, [groups, selectedGroupId]);
 
   // When a group is selected, load its search_settings
   useEffect(() => {
@@ -514,13 +513,15 @@ const GroupSettingsManager: React.FC<{ assistantModelConfig?: SummaryModelConfig
                 name="group-select"
                 value={g.id}
                 checked={selectedGroupId === g.id}
-                onChange={() => { setSelectedGroupId(g.id); setSuccess(''); }}
+                onChange={() => { selectGroupTab(g.id, activeTab); setSuccess(''); }}
                 style={{ display: 'none' }}
               />
               {g.name}{g.is_default ? ' (Default)' : ''}
             </label>
           ))}
         </div>
+
+        {groupUnavailable && <p role="alert">This group is unavailable. Select another group.</p>}
 
         {selectedGroup && (
           <>
@@ -529,7 +530,7 @@ const GroupSettingsManager: React.FC<{ assistantModelConfig?: SummaryModelConfig
               settings are saved per group. Save Settings saves every tab.
             </p>
 
-            <SettingsTabs active={activeTab} onSelect={setActiveTab} />
+            <SettingsTabs active={activeTab} onSelect={tab => selectGroupTab(selectedGroupId, tab)} />
 
             <div className="group-settings-panels">
               {/* Search Settings */}
