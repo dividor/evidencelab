@@ -3,7 +3,7 @@
 import re
 
 from langchain_core.runnables import RunnableConfig
-from pydantic import BaseModel, ConfigDict, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from ui.backend.services.assistant_grounding import (
     InvalidAssistantResponse,
@@ -12,11 +12,55 @@ from ui.backend.services.assistant_grounding import (
     retain_supported_sentences,
 )
 from ui.backend.services.assistant_settings import assistant_prompt_templates
+from ui.backend.services.citation_fidelity import match_key, strip_citation_markers
+
+
+def _words(text: str) -> str:
+    return match_key(strip_citation_markers(text))
+
+
+class RepeatedClause(BaseModel):
+    new_clause: str = Field(min_length=1)
+    existing_clause: str = Field(min_length=1)
+
+
+class RepeatedSentence(BaseModel):
+    id: int = Field(ge=1)
+    pairs: list[RepeatedClause] = Field(min_length=1)
+
+    def covers(self, sentence: str, earlier: list[str]) -> bool:
+        quoted = _words(" ".join(pair.new_clause for pair in self.pairs))
+        if not quoted or quoted != _words(sentence):
+            return False
+        for pair in self.pairs:
+            existing = _words(pair.existing_clause)
+            if not existing or not any(
+                f" {existing} " in f" {row} " for row in earlier
+            ):
+                return False
+        return True
 
 
 class BriefRepetitionCheck(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    duplicates: list[int]
+    duplicates: list[RepeatedSentence]
+
+    def confirmed(self, findings: list[dict], siblings: list[dict]) -> set[int]:
+        eligible = {row["id"] for row in (findings if siblings else findings[1:])}
+        if any(repeat.id not in eligible for repeat in self.duplicates):
+            raise InvalidAssistantResponse(
+                "The Brief repetition check returned invalid finding labels"
+            )
+        proposed = {repeat.id: repeat for repeat in self.duplicates}
+        earlier = [_words(row["finding"]) for row in siblings]
+        confirmed = set()
+        for row in findings:
+            repeat = proposed.get(row["id"])
+            if repeat and repeat.covers(row["text"], earlier):
+                confirmed.add(row["id"])
+            else:
+                earlier.append(_words(row["text"]))
+        return confirmed
 
 
 _BRIEF_REPETITION_CHECK = TypeAdapter(BriefRepetitionCheck)
@@ -57,17 +101,15 @@ async def remove_repeated_brief_findings(
     for batch in _sibling_batches(siblings) if siblings else [[]]:
         result: BriefRepetitionCheck = await request_json(
             template.render(system=True),
-            template.render(findings=findings, siblings=batch),
+            template.render(
+                findings=[(row["id"], row["text"]) for row in findings],
+                siblings=[row["finding"] for row in batch],
+            ),
             [],
             config,
             _BRIEF_REPETITION_CHECK,
         )
-        eligible = {row["id"] for row in (findings if batch else findings[1:])}
-        if set(result.duplicates) - eligible:
-            raise InvalidAssistantResponse(
-                "The Brief repetition check returned invalid finding labels"
-            )
-        duplicates.update(result.duplicates)
+        duplicates.update(result.confirmed(findings, batch))
     if all(row["id"] in duplicates for row in findings):
         return ""
     kept = retain_supported_sentences(

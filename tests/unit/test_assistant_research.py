@@ -52,11 +52,12 @@ async def run_research(
     replies = None if callable(responses) else iter(responses)
 
     def model(messages, **kwargs):
-        if messages[0].content.startswith("Find repeated factual statements"):
+        if messages[0].content.startswith("Edit a report section for repetition"):
             prompt = messages[-1].content
-            rows = json.loads(
-                prompt.split("Findings in the order shown to the reader: ", 1)[1]
-            )
+            rows = [
+                {"id": label, "text": text}
+                for label, text in json.loads(prompt)["new_section"]
+            ]
             duplicates = find_duplicates(rows) if find_duplicates else []
             return AIMessage(content=json.dumps({"duplicates": duplicates}))
         if messages[0].content.startswith("Select passages that directly support"):
@@ -1878,7 +1879,12 @@ async def test_brief_removes_a_repeated_finding_without_dropping_a_distinct_meas
         assert [row["text"] for row in rows] == [
             f"{finding} [1]." for finding in (first, repeated, distinct)
         ]
-        return [rows[1]["id"]]
+        return [
+            {
+                "id": rows[1]["id"],
+                "pairs": [{"new_clause": repeated, "existing_clause": first}],
+            }
+        ]
 
     events, _, _ = await run_research(
         [

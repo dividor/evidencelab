@@ -255,11 +255,67 @@ async def test_invalid_judge_response_is_not_a_numeric_pass(monkeypatch):
         )
 
 
+def _repeat(label, *pairs):
+    return BriefRepetitionCheck.model_validate(
+        {
+            "duplicates": [
+                {
+                    "id": label,
+                    "pairs": [
+                        {"new_clause": new, "existing_clause": earlier}
+                        for new, earlier in pairs
+                    ],
+                }
+            ]
+        }
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pairs",
+    [
+        [("Four units participated", "Four units took part")],
+        [("Four units participated and eight later joined", "eight additional units")],
+        [("Four units participated and eight later joined", "eight later joined")],
+    ],
+)
+async def test_unproven_repeat_keeps_the_entire_paragraph(pairs):
+    paragraph = (
+        "Four units took part [1]. Four units participated and eight later joined [2]."
+    )
+    text = paragraph + "\n\nThe final count included the eight later joined units [3]."
+    result = await remove_repeated_brief_findings(
+        text, {}, AsyncMock(return_value=_repeat(2, *pairs))
+    )
+    assert result == text
+
+
+@pytest.mark.asyncio
+async def test_each_part_of_a_repeated_sentence_can_match_a_different_earlier_finding():
+    text = (
+        "One unit failed [1]. Two units recovered [2]. "
+        "A single unit failed and two recovered [3]."
+    )
+    result = await remove_repeated_brief_findings(
+        text,
+        {},
+        AsyncMock(
+            return_value=_repeat(
+                3,
+                ("A single unit failed", "One unit failed"),
+                ("and two recovered", "Two units recovered"),
+            )
+        ),
+    )
+    assert result == "One unit failed [1]. Two units recovered [2]."
+
+
 @pytest.mark.asyncio
 async def test_manual_sibling_can_duplicate_first_claim_and_distinct_finding_survives():
     async def check(system, prompt, *args):
         assert "It took two days." in prompt
-        return BriefRepetitionCheck(duplicates=[1])
+        return _repeat(1, ("The work took 48 hours", "It took two days"))
 
     result = await remove_repeated_brief_findings(
         "The work took 48 hours [7]. It cost five dollars [3].",
@@ -275,7 +331,9 @@ async def test_manual_sibling_can_duplicate_first_claim_and_distinct_finding_sur
         await remove_repeated_brief_findings(
             "First [7]. Second [8].",
             {},
-            AsyncMock(return_value=BriefRepetitionCheck(duplicates=[1])),
+            AsyncMock(
+                return_value=_repeat(1, ("The work took 48 hours", "It took two days"))
+            ),
         )
 
 
