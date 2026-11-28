@@ -27,6 +27,9 @@ jest.mock('axios', () => ({
 }));
 
 // Keep the real helpers (isLikelyNonAnswer etc.); stub only the network calls.
+const SECTION_LENGTH = 'Section length';
+const SECTION_CONTENT = '.brief-doc-content';
+
 const mockRequestOutline = jest.fn();
 const mockResearchSection = jest.fn();
 const mockRunDeepResearch = jest.fn();
@@ -71,7 +74,7 @@ describe('Brief section length target', () => {
 
   const startManualBriefWithShortTarget = () => {
     render(<BriefTab dataSource="wfp" />);
-    fireEvent.change(screen.getByLabelText('Section length'), { target: { value: SHORT_OPTION } });
+    fireEvent.change(screen.getByLabelText(SECTION_LENGTH), { target: { value: SHORT_OPTION } });
     fireEvent.click(screen.getByText(MANUAL));
   };
 
@@ -79,7 +82,7 @@ describe('Brief section length target', () => {
   // is pre-filled with the brief's target; submitting it starts the run.
   const runDeepResearch = () => {
     fireEvent.click(screen.getByText(START));
-    expect(screen.getByLabelText('Section length')).toHaveValue(SHORT_OPTION);
+    expect(screen.getByLabelText(SECTION_LENGTH)).toHaveValue(SHORT_OPTION);
     fireEvent.click(screen.getByRole('button', { name: /Regenerate all sections/ }));
   };
 
@@ -117,7 +120,7 @@ describe('Brief section length target', () => {
     render(<BriefTab dataSource="wfp" />);
     fireEvent.click(screen.getByText(MANUAL));
     fireEvent.click(screen.getByText(START));
-    expect(screen.getByLabelText('Section length')).toHaveValue('none');
+    expect(screen.getByLabelText(SECTION_LENGTH)).toHaveValue('none');
     fireEvent.click(screen.getByRole('button', { name: /Regenerate all sections/ }));
     await waitFor(() => expect(screen.getAllByText('270 words').length).toBeGreaterThan(0));
     mockResearchSection.mock.calls.forEach(([args]) => expect(args.targetWords).toBeNull());
@@ -142,7 +145,7 @@ describe('Brief section length target', () => {
     const [askAi] = await screen.findAllByRole('button', { name: /^Ask AI for (?!the whole brief)/ });
     const section = askAi.closest('section');
     if (!section) throw new Error('The regenerate button must belong to a section');
-    const originalText = section.querySelector('.brief-doc-content')?.textContent;
+    const originalText = section.querySelector(SECTION_CONTENT)?.textContent;
     expect(originalText).toContain('The programme raised enrolment');
 
     let fail = () => { throw new Error('The regression run did not start'); };
@@ -154,19 +157,19 @@ describe('Brief section length target', () => {
       };
     }));
     fireEvent.click(askAi);
-    fireEvent.click(within(section).getByRole('button', { name: 'Regenerate' }));
+    fireEvent.click(within(section).getByRole('button', { name: 'AI Regenerate' }));
     fireEvent.click(within(section).getByRole('button', { name: 'Re-research section' }));
     await waitFor(() => expect(section.querySelector('.brief-researching')).toBeInTheDocument());
-    expect(section.querySelector('.brief-doc-content')?.textContent).toEqual(originalText);
+    expect(section.querySelector(SECTION_CONTENT)?.textContent).toEqual(originalText);
     expect(within(section).queryByText('Unsaved replacement')).toBeNull();
 
     await act(async () => fail());
     expect(await within(section).findByText('The research could not be completed.')).toBeInTheDocument();
     expect(within(section).getByText('You’re viewing the previous draft.')).toBeInTheDocument();
-    expect(section.querySelector('.brief-doc-content')?.textContent).toEqual(originalText);
+    expect(section.querySelector(SECTION_CONTENT)?.textContent).toEqual(originalText);
     expect(section.querySelector('.brief-researching')).toBeNull();
     fireEvent.click(within(section).getByRole('button', { name: /^Ask AI for / }));
-    fireEvent.click(within(section).getByRole('button', { name: 'Research settings' }));
+    fireEvent.click(within(section).getByRole('button', { name: 'AI Research Settings' }));
     expect(within(section).getByRole('button', { name: 'Re-research section' })).toBeInTheDocument();
     fireEvent.click(within(section).getByRole('button', { name: 'Cancel' }));
     mockResearchSection.mockClear();
@@ -196,7 +199,7 @@ describe('Brief section length target', () => {
       };
     }));
     fireEvent.click(screen.getByRole('button', { name: 'Ask AI for the whole brief' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Regenerate All', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'AI Regenerate All Sections', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: 'Regenerate all sections' }));
     const updated = await screen.findByText(`0 of ${total} updated`);
     const floating = updated.closest('[role="status"]');

@@ -88,9 +88,10 @@ const VersionSection: React.FC<{ row: BriefVersionSection; first: boolean }> = (
 
 const VersionDetail: React.FC<{
   detail: BriefVersionRead;
+  readOnly?: boolean;
   onRestore: () => void;
   restoring: boolean;
-}> = ({ detail, onRestore, restoring }) => (
+}> = ({ detail, onRestore, restoring, readOnly }) => (
   <div className="brief-version-detail">
     <div className="brief-version-detail-head">
       <div>
@@ -110,7 +111,7 @@ const VersionDetail: React.FC<{
         </div>
       </div>
       {detail.can_restore && (
-        <button className="brief-btn brief-btn-primary" onClick={onRestore} disabled={restoring}>
+        <button className="brief-btn brief-btn-primary" onClick={onRestore} disabled={restoring || readOnly}>
           {restoring ? 'Restoring…' : 'Restore this version'}
         </button>
       )}
@@ -139,11 +140,12 @@ const VersionDetail: React.FC<{
 
 interface Props {
   briefId: string | null;
+  readOnly?: boolean;
   onRestore: (number: number) => Promise<void>;
   onClose: () => void;
 }
 
-export const BriefVersionsModal: React.FC<Props> = ({ briefId, onRestore, onClose }) => {
+export const BriefVersionsModal: React.FC<Props> = ({ briefId, onRestore, onClose, readOnly }) => {
   const [versions, setVersions] = useState<BriefVersionItem[] | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [detail, setDetail] = useState<BriefVersionRead | null>(null);
@@ -247,7 +249,7 @@ export const BriefVersionsModal: React.FC<Props> = ({ briefId, onRestore, onClos
             </div>
             <div className="brief-versions-pane">
               {detail ? (
-                <VersionDetail detail={detail} onRestore={restore} restoring={restoring} />
+                <VersionDetail detail={detail} onRestore={restore} restoring={restoring} readOnly={readOnly} />
               ) : (
                 <div className="brief-modal-empty">Loading…</div>
               )}

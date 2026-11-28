@@ -72,6 +72,7 @@ def section_inputs(content, profiles):
             heading=section["title"],
             heading_number=numbers[i],
             child_headings=[s["title"] for s in children],
+            outline_headings=[s["title"] for s in outline],
             instructions=content.get("instructions"),
             guidance=section.get("guidance") or "",
             target_words=section_word_target(

@@ -286,6 +286,10 @@ async def test_writing_and_grounding_with_same_rubric_get_independent_inputs(
     monkeypatch,
 ):
     output = draft()
+    output["assignment"]["outline_headings"] = [
+        "Timeliness",
+        "Unrelated sibling heading",
+    ]
     output["sources"][0].update(
         title="Operations review",
         page=12,
@@ -308,6 +312,7 @@ async def test_writing_and_grounding_with_same_rubric_get_independent_inputs(
     results = [evaluate_assertion(a, output, cb) for a in criteria]
     assert [r["score"] for r in results] == [0.4, 1]
     assert [r["label"] for r in results] == ["Evidence", "Audience"]
+    assert "Unrelated sibling heading" not in results[1]["judge_prompt"]
     prompt = results[0]["judge_prompt"]
     assert all(
         text in prompt
@@ -672,6 +677,7 @@ async def test_parent_case_passes_child_outline_to_writer_and_grader(monkeypatch
         )
     )
     monkeypatch.setattr(runner, "_judge_call", call)
+    assert output["assignment"]["outline_headings"] == ["Overview", "Duration", "Cost"]
     overlap = {"type": "brief_intro_scope"}
     callback = await brief.judge_brief(output, [overlap], "grader")
     assert not evaluate_assertion(overlap, output, callback)["passed"]
@@ -791,6 +797,7 @@ async def test_relevance_can_give_full_credit_to_an_on_topic_qualitative_answer(
         if a.get("label") == "Relevance to the template and section"
     )
     output = draft("Technicians described faster repairs [7].")
+    output["assignment"]["outline_headings"] = ["Repair time", "Operating costs"]
     call = AsyncMock(
         return_value=(
             '{"negatives":[],"positives":["Reports the requested experience."],"score":1}',
@@ -801,4 +808,5 @@ async def test_relevance_can_give_full_credit_to_an_on_topic_qualitative_answer(
     grade = await brief.judge_brief(output, [assertion], "grader")
     result = evaluate_assertion(assertion, output, grade)
     assert result["passed"] and result["relevance"]["negatives"] == []
+    assert '"outline": ["Repair time", "Operating costs"]' in result["judge_prompt"]
     call.assert_awaited_once()

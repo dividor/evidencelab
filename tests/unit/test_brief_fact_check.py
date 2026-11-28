@@ -216,10 +216,12 @@ class FakeSession:
                 if row.passage_id == params["passage_id_1"]
             ]
         elif "FROM brief_citation_checks" in text:
-            assert "status" in text, "only completed checks are candidates"
-            assert "LIMIT" in text, "only the newest completed check is read"
+            assert "status" in text
+            assert "LIMIT" in text
+            wanted = statement.compile().params["status_1"]
+            statuses = wanted if isinstance(wanted, list) else [wanted]
             rows = sorted(
-                (c for c in self.checks if c.status == "completed"),
+                (c for c in self.checks if c.status in statuses),
                 key=lambda c: c.created_at,
                 reverse=True,
             )

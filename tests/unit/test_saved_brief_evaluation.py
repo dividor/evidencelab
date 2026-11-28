@@ -63,6 +63,11 @@ def test_saved_snapshot_uses_section_overrides_children_and_complete_outline():
         content, {}
     )
     assert intro["assignment"]["child_headings"] == ["Meter"]
+    assert child["assignment"]["outline_headings"] == [
+        "Results",
+        "Meter",
+        "Limitations",
+    ]
     assert intro["assignment"]["target_words"] == saved.introduction_word_target()
     assert child["assignment"]["target_words"] == 200 and missing
     assert child["assignment"]["instructions"] == "Use SI units."

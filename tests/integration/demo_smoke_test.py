@@ -6,8 +6,8 @@ Checks the UI, API, MCP, A2A, search, Assistant and Brief generation after a dem
 Exits non-zero on any failure.
 
 Usage:
-    python scripts/demo/smoke_test.py
-    API_URL=http://localhost:8000 MCP_URL=http://localhost:8001 python scripts/demo/smoke_test.py
+    python -m tests.integration.demo_smoke_test
+    python tests/integration/demo_smoke_test.py
 """
 
 import json
@@ -17,6 +17,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
 MCP_URL = os.environ.get("MCP_URL", "http://localhost:8001")
@@ -194,6 +195,8 @@ def check_brief_generation(combo, auth):
 
 
 def _check_brief_section(combo, auth, heading, target, section):
+    from ui.backend.services.test_evaluators import eval_brief_length
+
     events = _research_events(
         combo,
         auth,
@@ -205,15 +208,19 @@ def _check_brief_section(combo, auth, heading, target, section):
     draft, markers, citations = _cited_answer(events)
     words = len(re.sub(r"\s*\[\d+(?:,\s*\d+)*\]", "", draft).split())
     phases = [event.get("phase") for event in events if event["type"] == "phase"]
-    check(
-        f"{heading} produced a reviewed draft within the section length",
-        _stream_completed(events)
-        and any(event.get("section_written") is True for event in events)
-        and "checking_citations" in phases
-        and target * 0.4 <= words <= target
-        and not re.search(r"(?m)^#{1,6}\s", draft),
-        f"words={words}, target={target}, phases={phases}",
+    written = any(event.get("section_written") is True for event in events)
+    length = eval_brief_length(
+        {}, {"written": written, "assignment": {"target_words": target}, "words": words}
     )
+    check(
+        f"{heading} produced reviewed prose without extra headings",
+        _stream_completed(events)
+        and written
+        and "checking_citations" in phases
+        and not re.search(r"(?m)^#{1,6}\s", draft),
+        f"phases={phases}, section_written={written}",
+    )
+    check(f"{heading} meets the Brief word target", length["passed"], length["message"])
     check(f"{heading} cites real sources", bool(markers) and markers == citations)
 
 
@@ -353,4 +360,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if not __package__:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     main()
