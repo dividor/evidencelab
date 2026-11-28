@@ -5,7 +5,7 @@ from botocore.exceptions import ClientError
 from langchain_core.messages import AIMessage
 from pydantic import TypeAdapter
 
-from ui.backend.services.assistant_grounding import InvalidAssistantResponse
+from ui.backend.services.assistant_grounding import MalformedAssistantToolResponse
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.assistant_structured_response import (
     request_structured_response,
@@ -60,12 +60,25 @@ async def test_bedrock_rejected_tool_use_gets_the_format_correction(rejected_too
 
 
 @pytest.mark.asyncio
-async def test_bedrock_rejects_tool_use_twice_then_reports_invalid_response(
+async def test_bedrock_rejects_tool_use_twice_then_reports_malformed_tool_call(
     rejected_tool,
 ):
     model, invoke = _model(rejected_tool, rejected_tool)
 
-    with pytest.raises(InvalidAssistantResponse):
+    with pytest.raises(MalformedAssistantToolResponse):
+        await _request(model)
+
+    assert invoke.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_bedrock_malformed_tool_stop_then_reports_malformed_tool_call():
+    rejected = AIMessage(
+        content="", response_metadata={"stopReason": "malformed_tool_use"}
+    )
+    model, invoke = _model(rejected, rejected)
+
+    with pytest.raises(MalformedAssistantToolResponse):
         await _request(model)
 
     assert invoke.await_count == 2

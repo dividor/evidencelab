@@ -84,6 +84,10 @@ class TruncatedAssistantResponse(InvalidAssistantResponse):
     """The structured reply exhausted its output budget."""
 
 
+class MalformedAssistantToolResponse(InvalidAssistantResponse):
+    """The model provider could not return a valid tool invocation."""
+
+
 class ReviewRequest(Protocol):
     def __call__(
         self,

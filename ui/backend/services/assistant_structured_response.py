@@ -9,6 +9,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from ui.backend.services.assistant_grounding import (
     InvalidAssistantResponse,
+    MalformedAssistantToolResponse,
     TruncatedAssistantResponse,
 )
 
@@ -130,6 +131,8 @@ async def request_structured_response(
         raise TruncatedAssistantResponse(
             "The structured response reached its output limit"
         )
+    if stop_reason == "malformed_tool_use":
+        raise MalformedAssistantToolResponse("The model returned a malformed tool call")
     raise InvalidAssistantResponse(
         "The Assistant model could not produce a valid structured response"
     )

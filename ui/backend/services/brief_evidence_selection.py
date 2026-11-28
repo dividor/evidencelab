@@ -12,6 +12,7 @@ from ui.backend.services.agent_passages import (
 )
 from ui.backend.services.assistant_grounding import (
     InvalidAssistantResponse,
+    MalformedAssistantToolResponse,
     Passage,
     ReviewRequest,
     TruncatedAssistantResponse,
@@ -126,9 +127,14 @@ async def select_brief_evidence(
                 template,
                 system,
             )
-        except TruncatedAssistantResponse:
+        except (TruncatedAssistantResponse, MalformedAssistantToolResponse) as error:
             if len(group) <= 1:
                 raise
+            logger.info(
+                "Retrying Brief evidence selection for %d passages in smaller batches (%s)",
+                len(group),
+                type(error).__name__,
+            )
             items = list(group.items())
             middle = len(items) // 2
             left, left_subject = await select_group(dict(items[:middle]))
