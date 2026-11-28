@@ -50,8 +50,9 @@ from ui.backend.services.brief_template_evaluation import (
 )
 from ui.backend.services.citations import render_reference_lines
 from ui.backend.services.evaluation_metrics import compute_summary_stats
-from ui.backend.services.job_liveness import progress_stats, write_while
-from ui.backend.services.llm_choice import JUDGE, group_choice
+from ui.backend.services.evaluation_metrics import progress_stats as _progress_stats
+from ui.backend.services.job_liveness import write_while
+from ui.backend.services.llm_choice import CITATION_CHECK, JUDGE, group_choice
 from ui.backend.services.search_defaults import (
     SYSTEM_SEARCH_DEFAULTS,
     default_section_types,
@@ -511,7 +512,14 @@ async def _apply_judge_choice(
     from ui.backend.services.group_settings import user_groups
 
     try:
-        choice = group_choice(await user_groups(session, user_id), JUDGE)
+        groups = await user_groups(session, user_id)
+        choice = group_choice(groups, JUDGE)
+        if config.get("capability") == CAPABILITY_BRIEF and config.get(
+            "brief_citation_check"
+        ):
+            checker = group_choice(groups, CITATION_CHECK)
+            if checker:
+                config["citation_model"] = checker
     except HTTPException as exc:
         return str(exc.detail)
     if choice:
@@ -551,6 +559,10 @@ def run_config_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
         snapshot.get("summary_model") or _default_summary_model()
     )
     snapshot["judge_model"] = snapshot.get("judge_model") or snapshot["summary_model"]
+    if snapshot.get("capability") == CAPABILITY_BRIEF and not snapshot.get(
+        "citation_model"
+    ):
+        snapshot["citation_model"] = snapshot["judge_model"]
     return _json_safe(snapshot)
 
 
@@ -923,7 +935,8 @@ def _resolve_case_plan(
         assertion = columns[i]
         override = overrides[i] if i < len(overrides) else None
         if (
-            assertion.get("type") in ("llm_judge", "brief_writing", "brief_factual")
+            assertion.get("type")
+            in ("llm_judge", "brief_writing", "brief_factual", "brief_relevance")
             and isinstance(override, str)
             and override.strip()
         ):
@@ -1015,20 +1028,6 @@ async def _mark_failed(session, experiment: TestExperiment, message: str) -> Non
         .execution_options(synchronize_session=False)
     )
     await session.commit()
-
-
-def _progress_stats(completed: int, total: int, sections=None) -> Dict[str, Any]:
-    """A lightweight progress marker stored in a run's ``summary_stats`` while it
-    is in flight, so the polling UI can show "completed of total cases". Its
-    ``at`` stamp is the run's heartbeat (``job_liveness``).
-
-    It is replaced by the real aggregate stats (``compute_summary_stats``) once
-    the run finishes, so a running run never carries pass/score numbers.
-    """
-    stats = progress_stats(completed, total)
-    if sections is not None:
-        stats["progress"]["remaining_sections"] = sections[completed:]
-    return stats
 
 
 async def _publish_progress(
@@ -1237,7 +1236,7 @@ async def _execute(
         if not await _publish_progress(session, run, completed, total, sections):
             return
 
-    stats = compute_summary_stats(case_results, int((time.time() - started) * 1000))
+    stats = _final_stats(dataset, case_results, started)
     if await _complete_run(session, run, experiment_id, stats):
         await _record_run_usage(experiment, run, dataset, config, stats)
 
@@ -1286,6 +1285,19 @@ async def _evaluate_planned(case, assertions, runner, judge_factory) -> Dict[str
     if isinstance(case, TemplateSection):
         return await case.evaluate(assertions, runner, judge_factory)
     return await evaluate_case(case.input, assertions, runner, judge_factory)
+
+
+def _final_stats(
+    dataset: TestDataset, case_results: List[Dict[str, Any]], started: float
+) -> Dict[str, Any]:
+    """The run's aggregate stats; a Brief run also carries its factual-claim
+    metrics."""
+    stats = compute_summary_stats(case_results, int((time.time() - started) * 1000))
+    if dataset.capability == CAPABILITY_BRIEF:
+        from ui.backend.services.brief_score_metrics import factual_claim_metrics
+
+        stats = {**stats, **factual_claim_metrics(case_results)}
+    return stats
 
 
 async def _complete_run(

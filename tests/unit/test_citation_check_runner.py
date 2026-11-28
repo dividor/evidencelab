@@ -1,11 +1,12 @@
 """Unit tests for the brief citation check runner (judge and DB faked)."""
 
-import asyncio
+import json
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from openpyxl import load_workbook
@@ -14,6 +15,7 @@ from sqlalchemy import Select
 from ui.backend.services import citation_check_runner as runner
 from ui.backend.services.brief_citations_convert import convert_legacy
 from ui.backend.services.citation_fidelity import CitedPassage
+from ui.backend.services.job_liveness import progress_stats
 
 pytestmark = pytest.mark.unit
 
@@ -72,16 +74,10 @@ class TestPassagesAndPrompts:
         assert passages[1].missing_indices == [2]
         assert runner.count_cited_passages(BRIEF) == 2
 
-    def test_judge_prompts_when_rendered_then_excerpt_and_quotes_unescaped(self):
-        system, user = runner.judge_prompts(_passage(passage='Dropout "fell" [1].'))
-        assert system.startswith("You are a meticulous fact-checker")
-        assert 'Dropout "fell"' in user and "&quot;" not in user
-        assert EXCERPT in user and '[1] document: "Kenya evaluation", p. 4' in user
-
 
 class TestPassageRecord:
     def test_record_when_reply_valid_then_verdict_and_quote_verified(self):
-        judgement = runner.judgement_or_error(_passage(), GOOD_REPLY)
+        judgement = json.loads(GOOD_REPLY)
         record = runner.passage_record(
             1, _passage(), judgement, {"prompt_tokens": 10, "completion_tokens": 5}
         )
@@ -98,52 +94,9 @@ class TestPassageRecord:
         reply = GOOD_REPLY.replace(
             "Dropout fell from 12 to 7 percent", "enrolment doubled overnight"
         )
-        record = runner.passage_record(
-            1, _passage(), runner.judgement_or_error(_passage(), reply)
-        )
+        record = runner.passage_record(1, _passage(), json.loads(reply))
         assert record["quote_not_in_source"] is True
         assert record["supporting_quotes"][0]["status"] == "missing"
-
-    def test_record_when_reply_malformed_then_cannot_assess_with_visible_error(self):
-        judgement = runner.judgement_or_error(_passage(), "not json at all")
-        record = runner.passage_record(
-            1, _passage(), judgement, error=judgement["problems"][0]
-        )
-        assert record["verdict"] == "cannot_assess" and record["flagged"] is True
-        assert record["error_message"].startswith("JUDGE ERROR")
-
-    def test_record_when_dangling_citation_then_problem_added(self):
-        passage = _passage(citation_indices=[1, 2], missing_indices=[2])
-        judgement = runner.judgement_or_error(passage, GOOD_REPLY)
-        record = runner.passage_record(1, passage, judgement)
-        assert record["dangling_citations"] == "2"
-        assert any("Dangling citation(s) [2]" in p for p in record["problems"])
-
-
-class TestJudgePassage:
-    @pytest.mark.asyncio
-    async def test_judge_when_no_sources_then_not_sent_to_judge(self):
-        calls = []
-
-        async def judge(system, user):
-            calls.append(user)
-            return GOOD_REPLY, {}
-
-        passage = _passage(sources=[], missing_indices=[1])
-        record = await runner.judge_passage(1, passage, judge, asyncio.Semaphore(1))
-        assert calls == []
-        assert record["verdict"] == "cannot_assess"
-        assert "No source stored for citation(s) [1]" in record["error_message"]
-
-    @pytest.mark.asyncio
-    async def test_judge_when_call_raises_then_error_row_not_exception(self):
-        async def judge(system, user):
-            raise RuntimeError("provider down")
-
-        record = await runner.judge_passage(1, _passage(), judge, asyncio.Semaphore(1))
-        assert record["verdict"] == "cannot_assess"
-        assert record["error_message"] == "JUDGE ERROR: the model call failed"
-        assert "provider down" not in record["error_message"]
 
 
 class TestSummary:
@@ -252,10 +205,9 @@ class FakeSession:
     ``rowcount`` says whether they did. Rows added since the last commit are
     dropped by a rollback, as in SQLAlchemy."""
 
-    def __init__(self, check, brief, checks=(), versions=()):
+    def __init__(self, check, brief, checks=()):
         self.brief = brief
         self.checks = [check, *checks]
-        self.versions = list(versions)
         self.added, self.pending = [], []
         self.commits = self.rollbacks = 0
 
@@ -277,13 +229,6 @@ class FakeSession:
         self.pending = []
 
     async def execute(self, statement):
-        if "FROM brief_versions" in str(statement):
-            latest = sorted(self.versions, key=lambda v: -v.number)
-            return SimpleNamespace(
-                scalars=lambda: SimpleNamespace(
-                    first=lambda: latest[0] if latest else None
-                )
-            )
         if isinstance(statement, Select):
             rows = list(self.checks)
             return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: rows))
@@ -312,6 +257,7 @@ def _check_and_brief(status="pending", **over):
         data_source="wfp",
         created_by_user_id=uuid.uuid4(),
         judge_model="judge-x",
+        check_kind="full",
         brief_version_id=None,
         brief_version_number=None,
         status=status,
@@ -323,153 +269,74 @@ def _check_and_brief(status="pending", **over):
     return SimpleNamespace(**{**fields, **over}), brief
 
 
-def _version(brief, number):
-    return SimpleNamespace(id=uuid.uuid4(), brief_id=brief.id, number=number)
-
-
-async def _no_usage(**kwargs):
-    pass
-
-
 class TestRunCheck:
     @pytest.mark.asyncio
-    async def test_run_when_judge_answers_then_rows_committed_and_completed(
-        self, monkeypatch
-    ):
-        recorded = []
-
-        async def fake_record(**kwargs):
-            recorded.append(kwargs)
-
-        monkeypatch.setattr(
-            "ui.backend.services.usage_recorder.record_llm_usage", fake_record
-        )
-        monkeypatch.setattr(
-            "ui.backend.utils.llm_costs.compute_cost", lambda m, p, c: None
-        )
-        check, brief = _check_and_brief()
+    @pytest.mark.parametrize("status", ["completed", "failed", "running"])
+    async def test_retry_leaves_existing_check_alone(self, status):
+        """Only a pending check is run: a completed one is history, a failed
+        one was cancelled (or failed as orphaned on another api copy) while
+        queued, and a running one belongs to another api copy."""
+        check, brief = _check_and_brief(status=status, summary_stats={"error": "x"})
         session = FakeSession(check, brief)
-
-        async def judge(system, user):
-            return GOOD_REPLY, {"prompt_tokens": 7, "completion_tokens": 3}
-
-        await runner.run_check(check.id, session_factory=lambda: session, judge=judge)
-        assert check.status == "completed"
-        assert check.started_at is not None and check.finished_at is not None
-        assert [
-            r.passage_id for r in sorted(session.added, key=lambda r: r.passage_id)
-        ] == [1, 2]
-        by_id = {r.passage_id: r for r in session.added}
-        assert by_id[1].verdict == "supported"
-        assert by_id[2].verdict == "cannot_assess"  # no source stored for [2]
-        stats = check.summary_stats
-        assert (
-            stats["total"] == 2
-            and stats["flagged"] == 1
-            and stats["prompt_tokens"] == 7
-        )
-        assert stats["reference_lines_skipped"] == 0
-        assert recorded and recorded[0]["activity_type"] == "evaluation"
-        assert recorded[0]["search_id"] == check.id
-        assert session.rollbacks == 0
-
-    @pytest.mark.asyncio
-    async def test_run_when_progress_written_then_each_write_carries_heartbeat(self):
-        check, brief = _check_and_brief()
-        session = FakeSession(check, brief)
-        seen = []
-
-        async def judge(system, user):
-            seen.append(check.summary_stats["progress"])
-            return GOOD_REPLY, {}
-
-        await runner.run_check(check.id, session_factory=lambda: session, judge=judge)
-        # The claim wrote 0 of 2 with a stamp before the first judge call.
-        assert seen[0]["completed"] == 0 and seen[0]["total"] == 2
-        assert datetime.fromisoformat(seen[0]["at"]).tzinfo is not None
-
-    @pytest.mark.asyncio
-    async def test_run_when_brief_missing_then_failed_with_message(self):
-        check, brief = _check_and_brief()
-        session = FakeSession(check, brief)
-        session.brief = None
         await runner.run_check(check.id, session_factory=lambda: session)
-        assert check.status == "failed"
-        assert check.summary_stats == {"error": "Brief not found"}
-
-    @pytest.mark.asyncio
-    async def test_run_when_brief_still_at_pinned_version_then_runs(self, monkeypatch):
-        monkeypatch.setattr(
-            "ui.backend.services.usage_recorder.record_llm_usage", _no_usage
-        )
-        monkeypatch.setattr(
-            "ui.backend.utils.llm_costs.compute_cost", lambda m, p, c: None
-        )
-        check, brief = _check_and_brief()
-        pinned = _version(brief, 2)
-        check.brief_version_id, check.brief_version_number = pinned.id, 2
-        session = FakeSession(check, brief, versions=[_version(brief, 1), pinned])
-
-        async def judge(system, user):
-            return GOOD_REPLY, {}
-
-        await runner.run_check(check.id, session_factory=lambda: session, judge=judge)
-        assert check.status == "completed"
-
-    @pytest.mark.asyncio
-    async def test_run_when_brief_moved_on_before_start_then_failed_with_message(
-        self,
-    ):
-        check, brief = _check_and_brief()
-        pinned = _version(brief, 2)
-        check.brief_version_id, check.brief_version_number = pinned.id, 2
-        session = FakeSession(check, brief, versions=[pinned, _version(brief, 3)])
-        await runner.run_check(check.id, session_factory=lambda: session)
-        assert check.status == "failed"
-        assert check.summary_stats == {"error": runner.CHANGED_BEFORE_RUN}
-        assert session.added == []
-
-    @pytest.mark.asyncio
-    async def test_run_when_cancelled_midway_then_stops_and_keeps_cancel_record(
-        self,
-    ):
-        check, brief = _check_and_brief()
-        session = FakeSession(check, brief)
-
-        async def judge(system, user):
-            # The cancel route (or orphan recovery on another api copy) flips
-            # the row while the judge is out.
-            check.status = "failed"
-            check.summary_stats = {"error": "Cancelled by user"}
-            return GOOD_REPLY, {}
-
-        await runner.run_check(check.id, session_factory=lambda: session, judge=judge)
-        assert check.status == "failed"
-        assert check.summary_stats == {"error": "Cancelled by user"}
-        assert session.added == [] and session.rollbacks >= 1
-
-    @pytest.mark.asyncio
-    async def test_run_when_no_longer_pending_then_not_started(self):
-        check, brief = _check_and_brief(status="failed", summary_stats={"error": "x"})
-        session = FakeSession(check, brief)
-        calls = []
-
-        async def judge(system, user):
-            calls.append(user)
-            return GOOD_REPLY, {}
-
-        await runner.run_check(check.id, session_factory=lambda: session, judge=judge)
-        assert calls == [] and session.added == [] and session.commits == 0
+        assert check.status == status and session.commits == 0
         assert check.summary_stats == {"error": "x"}
 
     @pytest.mark.asyncio
-    async def test_run_when_execution_raises_then_generic_failure(self, monkeypatch):
+    async def test_pending_legacy_check_explains_how_to_start_a_new_check(self):
+        check, brief = _check_and_brief(check_kind="citation")
+        session = FakeSession(check, brief)
+        await runner.run_check(check.id, session_factory=lambda: session)
+        assert (
+            check.status == "failed" and "Start a new" in check.summary_stats["error"]
+        )
+        assert check.finished_at is not None
+
+    @pytest.mark.asyncio
+    async def test_full_check_uses_shared_grader_and_reports_failure(self, monkeypatch):
         check, brief = _check_and_brief()
         session = FakeSession(check, brief)
-        monkeypatch.setattr(runner, "brief_passages", lambda content: 1 / 0)
+        grade = AsyncMock(side_effect=RuntimeError("internal detail"))
+        monkeypatch.setattr(
+            "ui.backend.services.saved_brief_check_runner.run_full_check", grade
+        )
         await runner.run_check(check.id, session_factory=lambda: session)
-        assert check.status == "failed"
+        grade.assert_awaited_once_with(session, check)
+        # The failed flush may have left a dead transaction: rolled back first.
+        assert session.rollbacks == 1
         assert check.summary_stats == {"error": "Check failed"}
+
+    @pytest.mark.asyncio
+    async def test_full_check_when_cancelled_before_failing_then_cancel_kept(
+        self, monkeypatch
+    ):
+        check, brief = _check_and_brief()
+        session = FakeSession(check, brief)
+
+        async def grade(session_, check_):
+            # The cancel route (or orphan recovery on another api copy) flips
+            # the row while the grader is out, then the grader fails.
+            check_.status = "failed"
+            check_.summary_stats = {"error": "Cancelled by user"}
+            raise RuntimeError("judge gone")
+
+        monkeypatch.setattr(
+            "ui.backend.services.saved_brief_check_runner.run_full_check", grade
+        )
+        await runner.run_check(check.id, session_factory=lambda: session)
+        assert check.summary_stats == {"error": "Cancelled by user"}
+
+    @pytest.mark.asyncio
+    async def test_usage_is_recorded_for_the_same_check(self, monkeypatch):
+        record = AsyncMock()
+        monkeypatch.setattr(
+            "ui.backend.services.usage_recorder.record_llm_usage", record
+        )
+        check, _ = _check_and_brief()
+        check.summary_stats = {"prompt_tokens": 12, "total": 2}
+        await runner._record_check_usage(check)
+        assert record.await_args.kwargs["search_id"] == check.id
+        assert record.await_args.kwargs["usage"]["prompt_tokens"] == 12
 
 
 class TestStaleChecks:
@@ -480,13 +347,13 @@ class TestStaleChecks:
             status="running",
             started_at=old,
             created_at=old,
-            summary_stats=runner.progress_stats(4, 9, now=old),
+            summary_stats=progress_stats(4, 9, now=old),
         )
         alive, _ = _check_and_brief(
             status="running",
             started_at=old,
             created_at=old,
-            summary_stats=runner.progress_stats(4, 9, now=NOW - timedelta(minutes=1)),
+            summary_stats=progress_stats(4, 9, now=NOW - timedelta(minutes=1)),
         )
         stuck, _ = _check_and_brief(status="pending", created_at=old)
         done, _ = _check_and_brief(status="completed", created_at=old)
@@ -549,5 +416,6 @@ class TestResolveJudgeModel:
         monkeypatch.setattr(
             "ui.backend.services.test_runner._default_summary_model", lambda: "default"
         )
+        monkeypatch.setattr("ui.backend.services.llm_choice.default_combo", lambda: {})
         assert runner.resolve_judge_model("X") == "combo-model"
         assert runner.resolve_judge_model(None) == "default"

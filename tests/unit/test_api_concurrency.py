@@ -151,8 +151,8 @@ def test_pool_when_built_from_many_threads_then_only_one_pool_is_created():
         barrier.wait()
         client._get_pool()
 
-    original = base.ThreadedConnectionPool
-    base.ThreadedConnectionPool = _FakePool
+    original = base.QueueingConnectionPool
+    base.QueueingConnectionPool = _FakePool
     base.close_all_pools()
     try:
         threads = [threading.Thread(target=race, args=(None,)) for _ in range(8)]
@@ -162,7 +162,7 @@ def test_pool_when_built_from_many_threads_then_only_one_pool_is_created():
             thread.join()
     finally:
         base._POOL_REGISTRY.clear()
-        base.ThreadedConnectionPool = original
+        base.QueueingConnectionPool = original
 
     assert len(built) == 1, (
         f"{len(built)} connection pools were created by 8 concurrent threads; "

@@ -73,6 +73,45 @@ def is_factual_criterion(assertion):
     )
 
 
+def factual_verdict(score, missing_source=False):
+    if missing_source or score is None:
+        return "cannot_assess"
+    if score == 1:
+        return "supported"
+    return "partially_supported" if score > 0 else "unsupported"
+
+
+def with_claim_verdicts(assessment, evidence):
+    grades = assessment.get("claim_grades")
+    if not grades or not evidence:
+        return assessment
+    references = evidence["references"]
+    unavailable = {
+        i
+        for i, claim in enumerate(
+            (c for paragraph in evidence["paragraphs"] for c in paragraph), start=1
+        )
+        if claim["references"]
+        and all(references[r]["source_position"] is None for r in claim["references"])
+    }
+    return {
+        **assessment,
+        "claim_grades": [
+            (
+                g
+                if "verdict" in g
+                else {
+                    **g,
+                    "verdict": factual_verdict(
+                        g.get("score"), g["claim"] in unavailable
+                    ),
+                }
+            )
+            for g in grades
+        ],
+    }
+
+
 def link_assessment_claims(assertions, evidence):
     """Identify literal quotations of the saved draft, without inferring a judge's intent."""
     claims = [
@@ -98,6 +137,7 @@ def link_assessment_claims(assertions, evidence):
         ]
         result = {**assertion, "quoted_claims": mentioned}
         if is_factual_criterion(assertion):
+            result = with_claim_verdicts(result, evidence)
             result["factual_support"] = True
         linked.append(result)
     return linked

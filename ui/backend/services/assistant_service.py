@@ -34,6 +34,10 @@ def research_error_message(error: Exception) -> str:
     if isinstance(error, InvalidAssistantResponse):
         return "The model returned a response that could not be verified."
     for cause in (error, error.__cause__):
+        if getattr(cause, "status_code", None) == 429:
+            return (
+                "The model provider is rate-limiting requests. Please try again later."
+            )
         if getattr(cause, "code", None) == "content_filter":
             return "The model provider blocked this request under its content policy."
     return "The Assistant could not complete this request."

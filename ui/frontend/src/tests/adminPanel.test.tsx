@@ -39,6 +39,8 @@ jest.mock('../components/admin/TestingManager', () => {
   };
 });
 
+jest.mock('../components/admin/BriefTestingManager', () => () => <div>Saved brief checks</div>);
+
 import { restoreAdminPath } from '../utils/adminLocation';
 import AdminPanel from '../components/admin/AdminPanel';
 
@@ -117,7 +119,8 @@ describe('AdminPanel', () => {
 
   test('switches to Testing tab on click (admin-only harness)', () => {
     render(<AdminPanel isActive={true} />);
-    fireEvent.click(screen.getByText('Testing (Experiments)'));
+    fireEvent.click(screen.getByRole('button', {name:'Testing'}));
+    fireEvent.click(screen.getByRole('button', {name:'Experiments'}));
     expect(screen.getByTestId('testing-manager')).toBeInTheDocument();
     expect(screen.queryByTestId('user-manager')).not.toBeInTheDocument();
   });
@@ -146,8 +149,28 @@ test('refresh and history restore the Admin page while preserving other URL sett
   screenBeforeRefresh.unmount();
   render(<AdminPanel isActive />);
   expect(screen.getByTestId('group-settings-manager')).toBeVisible();
-  fireEvent.click(screen.getByText('Testing (Experiments)'));
+  fireEvent.click(screen.getByRole('button', {name:'Testing'}));
+  fireEvent.click(screen.getByRole('button', {name:'Experiments'}));
   window.history.replaceState(null, '', saved);
   fireEvent.popState(window);
   expect(screen.getByTestId('group-settings-manager')).toBeVisible();
+});
+
+test('the Testing menu opens saved briefs, closes on Escape and returns focus to Testing', () => {
+  mockUseAuth.mockReturnValue({ user: { is_superuser: true } });
+  window.history.replaceState(null, '', '/admin?admin_page=testing');
+  render(<AdminPanel isActive />);
+  const trigger = screen.getByRole('button', {name: 'Testing'});
+  fireEvent.click(trigger);
+  fireEvent.scroll(trigger.parentElement!);
+  const saved = screen.getByRole('button', {name: 'Saved Briefs'});
+  saved.focus();
+  fireEvent.keyDown(saved, {key: 'Escape'});
+  expect(trigger).toHaveFocus();
+  expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(trigger);
+  fireEvent.click(screen.getByRole('button', {name: 'Saved Briefs'}));
+  expect(new URLSearchParams(window.location.search).get('admin_page')).toBe('testing-brief');
+  expect(trigger).toHaveClass('admin-tab-active');
+  expect(screen.getByText('Saved brief checks')).toBeVisible();
 });

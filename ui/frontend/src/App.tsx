@@ -3086,6 +3086,7 @@ function App() {
             modelsReady={searchModelsReady}
             defaultDeepResearch={groupDefaults?.assistantDeepResearchByDefault}
             dataSource={dataSource}
+            modelCombo={selectedModelCombo}
             assistantModelConfig={assistantModelConfig}
             rerankerModel={rerankModel}
             searchSettings={{
@@ -3112,6 +3113,7 @@ function App() {
           <BriefTab
             isActive={activeTab === 'brief'}
             dataSource={dataSource}
+            modelCombo={selectedModelCombo}
             assistantModelConfig={assistantModelConfig}
             semanticModelConfig={semanticHighlightModelConfig}
             rerankerModel={rerankModel}

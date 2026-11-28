@@ -28,6 +28,7 @@ TUNABLES = {
     "MAX_CONCURRENT_REMOTE_RERANKS": "ui/backend/services/search_models.py",
     "POSTGRES_POOL_MIN": "pipeline/db/postgres_client_base.py",
     "POSTGRES_POOL_MAX": "pipeline/db/postgres_client_base.py",
+    "POSTGRES_POOL_TIMEOUT": "pipeline/db/postgres_client_base.py",
     "AUTH_DB_POOL_SIZE": "ui/backend/auth/db.py",
     "AUTH_DB_MAX_OVERFLOW": "ui/backend/auth/db.py",
     "PRELOAD_RERANK_MODEL": "ui/backend/main.py",

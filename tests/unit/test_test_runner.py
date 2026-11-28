@@ -951,7 +951,7 @@ async def test_execute_when_run_cancelled_midway_then_stops_keeping_cancel(monke
 
 
 def _stamp(at):
-    return test_runner.progress_stats(2, 5, now=at)
+    return _progress_stats(2, 5, now=at)
 
 
 async def test_fail_stale_runs_when_no_heartbeat_then_run_and_experiment_failed():

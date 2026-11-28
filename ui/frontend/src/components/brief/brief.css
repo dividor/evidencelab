@@ -3730,14 +3730,13 @@
    The same classes colour the card's badge and the legend's swatches. */
 .brief-fact-mark {
   border-bottom: 2px solid transparent;
-  cursor: help;
+  cursor: pointer;
 }
 .brief-fact-mark-unsupported {
   background: rgba(239, 68, 68, 0.16);
   background: color-mix(in srgb, var(--brand-error) 16%, transparent);
 }
 .brief-fact-mark.brief-fact-mark-unsupported,
-.brief-fact-badge.brief-fact-mark-unsupported,
 .brief-fact-swatch.brief-fact-mark-unsupported {
   border-bottom-color: var(--brand-error);
 }
@@ -3746,7 +3745,6 @@
   background: color-mix(in srgb, var(--brand-warning) 18%, transparent);
 }
 .brief-fact-mark.brief-fact-mark-partially_supported,
-.brief-fact-badge.brief-fact-mark-partially_supported,
 .brief-fact-swatch.brief-fact-mark-partially_supported {
   border-bottom-color: var(--brand-warning);
 }
@@ -3755,7 +3753,6 @@
   background: color-mix(in srgb, var(--brand-text-tertiary) 16%, transparent);
 }
 .brief-fact-mark.brief-fact-mark-cannot_assess,
-.brief-fact-badge.brief-fact-mark-cannot_assess,
 .brief-fact-swatch.brief-fact-mark-cannot_assess {
   border-bottom-color: var(--brand-text-tertiary);
 }
@@ -3764,7 +3761,6 @@
   background: color-mix(in srgb, var(--brand-success) 14%, transparent);
 }
 .brief-fact-mark.brief-fact-mark-supported,
-.brief-fact-badge.brief-fact-mark-supported,
 .brief-fact-swatch.brief-fact-mark-supported {
   border-bottom-color: var(--brand-success);
 }
@@ -3837,122 +3833,11 @@
   color: var(--brand-text-tertiary);
 }
 
-/* The card for the passage under the pointer: verdict badge, reason, then
-   the cited excerpts with the judge's quotes marked. It stays while the
-   pointer is on it, so its excerpts scroll and its sources open. */
-.brief-fact-card {
-  position: fixed;
-  z-index: 400;
-  width: 440px;
-  max-width: calc(100vw - 16px);
-  overflow-y: auto;
-  padding: 10px 12px 10px;
-  background: var(--brand-surface);
-  border: 1px solid var(--brand-border);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--brand-text-primary);
-}
-.brief-fact-card-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-  margin-bottom: 8px;
-}
-.brief-fact-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  font-family: var(--font-heading);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  border-bottom-width: 2px;
-  border-bottom-style: solid;
-}
-.brief-fact-card-meta {
-  font-size: 11.5px;
-  color: var(--brand-text-tertiary);
-}
-.brief-fact-card-reason {
-  margin: 0 0 10px;
-}
-.brief-fact-card-warning {
-  margin: 0 0 10px;
-  padding: 6px 8px;
-  font-size: 12px;
-  color: var(--brand-text-secondary);
-  background: rgba(245, 158, 11, 0.12);
-  background: color-mix(in srgb, var(--brand-warning) 12%, transparent);
-}
-.brief-fact-evidence {
-  margin-top: 8px;
-  padding: 8px 10px;
-  background: rgba(91, 143, 168, 0.06);
-  background: color-mix(in srgb, var(--brand-accent) 6%, transparent);
-}
-.brief-fact-evidence-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 8px;
-  margin-bottom: 4px;
-  font-size: 11px;
-  color: var(--brand-text-tertiary);
-}
-.brief-fact-evidence-kicker {
-  font-family: var(--font-heading);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.brief-fact-evidence-label {
-  color: var(--brand-text-secondary);
-  font-weight: 600;
-}
-.brief-fact-evidence-open {
-  padding: 0;
-  border: none;
-  background: none;
-  font: inherit;
-  font-weight: 600;
-  color: var(--brand-accent);
-  text-decoration: underline;
-  cursor: pointer;
-}
-.brief-fact-evidence-note {
-  margin-bottom: 4px;
-  font-size: 11.5px;
-  font-style: italic;
-  color: var(--brand-text-tertiary);
-}
-.brief-fact-excerpt {
-  max-height: 160px;
-  overflow-y: auto;
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--brand-text-secondary);
-  white-space: pre-wrap;
-}
-.brief-fact-evidence-unquoted .brief-fact-excerpt {
-  max-height: 80px;
-}
 .brief-fact-quote {
   color: var(--brand-text-primary);
   background: rgba(245, 158, 11, 0.28);
   background: color-mix(in srgb, var(--brand-warning) 28%, transparent);
 }
-.brief-fact-evidence-status {
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--brand-text-tertiary);
-}
-.brief-fact-evidence-failed {
-  color: var(--brand-error);
-}
-
 /* ---------- Brief log (whole-brief versions) ---------- */
 .brief-title-row {
   display: flex;
@@ -4139,4 +4024,55 @@
   .brief-version-detail-head {
     flex-direction: column;
   }
+}
+
+.brief-fact-claim-number {
+  margin-inline: .1em .4em;
+  padding: .12em .55em;
+  border: 0;
+  border-radius: 1em;
+  background: var(--brand-surface);
+  color: var(--brand-accent);
+  font: 600 .78em var(--font-heading);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.brief-fact-claim-number:is(:hover, :focus-visible) { text-decoration: underline; }
+.brief-modal.brief-claim-dialog {
+  box-sizing: border-box;
+  width: min(40rem, calc(100vw - 2rem));
+  max-width: none;
+  max-height: 82dvh;
+  margin: auto;
+  padding: 1.25rem 1.5rem;
+  color: var(--brand-text-primary);
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.55;
+}
+.brief-claim-dialog::backdrop { background: rgba(0, 0, 0, .35); }
+.brief-claim-dialog .testing-claim-heading { margin-bottom: .8rem; font-size: 1rem; }
+.brief-claim-dialog .testing-claim-heading strong, .brief-claim-dialog h3 {
+  font: 600 1.05rem var(--font-heading);
+}
+.brief-claim-dialog h3 { margin: 1rem 0 .5rem; }
+.brief-claim-dialog .testing-section-reference { font-size: 1rem; }
+.brief-claim-dialog .testing-section-reference summary { line-height: 1.45; padding-block: .4rem; }
+.brief-claim-close { float: right; margin-inline-start: .5rem; min-width: 2rem; min-height: 2rem; }
+.brief-fact-excerpt {
+  max-height: min(14rem, 32dvh);
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+.brief-fact-excerpt.expanded { max-height: none; }
+.brief-claim-source-actions { display: flex; gap: 1rem; margin-block: .5rem; }
+.brief-claim-source-actions button {
+  border: 0;
+  padding: .25rem 0;
+  color: var(--brand-accent);
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
 }

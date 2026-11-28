@@ -1,55 +1,34 @@
-"""Run a brief citation check: judge every cited passage of a saved brief.
-
-The Evaluation Harness "Brief" type. For each passage of the brief that
-carries ``[n]`` markers, the LLM judge sees the passage and the exact source
-excerpts it cites, and answers with a verdict; its supporting quotes are then
-checked mechanically against those excerpts (``citation_fidelity``). One
-passage row is committed at a time so the UI can show progress, and the
-check's token usage is mirrored into ``user_activity`` like an experiment run.
-
-The judge runs through ``utils.llm_factory.get_llm`` so any configured
-provider works and every call is cost-tracked. Prompts live in
-``prompts/citation_judge_*.j2``.
+"""Present saved Brief checks, export their results, and dispatch new checks.
 
 Several api copies may share the database (every cloud layout runs two or
-more). The runner therefore owns its row only while the row still says
-``running``: every write is conditional on that status, so a check that was
-cancelled, or failed as orphaned by another copy, keeps that record and the
-runner stops. See ``job_liveness`` for how an orphaned check is recognised.
+more). A check runs inside one of them: ``run_check`` hands a pending check to
+``saved_brief_check_runner``, which writes progress with a heartbeat, and
+``fail_stale_checks`` fails only the checks whose heartbeat stopped
+(``job_liveness``), so another copy starting up leaves a live check alone.
 """
 
-import asyncio
 import logging
-import time
 import uuid
 from datetime import datetime
 from io import BytesIO
-from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy import select
 
 from ui.backend.auth.db import async_session_factory
-from ui.backend.auth.models import Brief
 from ui.backend.auth.testing_models import (
-    CHECK_COMPLETED,
     CHECK_FAILED,
     CHECK_PENDING,
     CHECK_RUNNING,
     BriefCitationCheck,
-    BriefCitationCheckPassage,
 )
-from ui.backend.services.brief_version_store import latest_version
 from ui.backend.services.citation_fidelity import (
     FLAGGED_VERDICTS,
     JUDGE_VERDICTS,
     CitedPassage,
     count_reference_lines,
     extract_cited_passages,
-    format_excerpts,
     judgement_row,
-    parse_judge_response,
     researched_sections,
     source_body,
     source_section,
@@ -59,37 +38,13 @@ from ui.backend.services.citation_fidelity import (
 from ui.backend.services.job_liveness import (
     is_stale,
     orphan_message,
-    progress_stats,
     utcnow,
     write_while,
 )
 
 logger = logging.getLogger(__name__)
 
-# Parallel judge requests, as in the notebook.
-JUDGE_CONCURRENCY = 6
-JUDGE_MAX_OUTPUT_TOKENS = 900
-
-# Prompts are plain text for a model, not HTML: escaping would alter the
-# excerpts the judge must quote character for character.
-_PROMPTS_DIR = Path(__file__).resolve().parents[3] / "prompts"
-_prompt_env = Environment(
-    loader=FileSystemLoader(str(_PROMPTS_DIR)),
-    autoescape=select_autoescape(enabled_extensions=("html",)),
-)
-
-# (verdict, confidence, quotes, problems, explanation) for a passage that
-# could not be judged, mirroring the notebook's placeholders.
-_NOT_JUDGED = {
-    "verdict": "cannot_assess",
-    "confidence": 0.0,
-    "supporting_quotes": [],
-}
-
 _ACTIVE = (CHECK_RUNNING, CHECK_PENDING)
-
-# Async judge: (system prompt, user prompt) -> (raw reply, usage payload).
-JudgeFn = Callable[[str, str], Awaitable[Tuple[str, Dict[str, Any]]]]
 
 
 def _utcnow() -> datetime:
@@ -120,48 +75,6 @@ def count_skipped_reference_lines(content: Dict[str, Any]) -> int:
         count_reference_lines(section.get("content") or "")
         for section in researched_sections(content)
     )
-
-
-def judge_prompts(passage: CitedPassage) -> Tuple[str, str]:
-    """(system, user) prompts for one passage, from the .j2 templates."""
-    system = _prompt_env.get_template("citation_judge_system.j2").render()
-    user = _prompt_env.get_template("citation_judge_user.j2").render(
-        brief_section=passage.section_title,
-        passage=passage.passage_clean,
-        citations=", ".join(f"[{i}]" for i in passage.citation_indices),
-        excerpts=format_excerpts(passage),
-    )
-    return system.strip(), user.strip()
-
-
-def _dangling_problem(passage: CitedPassage) -> str:
-    numbers = ", ".join(f"[{i}]" for i in passage.missing_indices)
-    return f"Dangling citation(s) {numbers}: no source stored for these numbers."
-
-
-def not_judged(passage: CitedPassage, reason: str) -> Dict[str, Any]:
-    """Placeholder judgement for a passage the judge did not (or could not)
-    assess, so it still appears in the table as ``cannot_assess``."""
-    problems = [reason]
-    if passage.missing_indices:
-        problems.append(_dangling_problem(passage))
-    return {
-        **_NOT_JUDGED,
-        "problems": problems,
-        "explanation": "Not judged: " + reason,
-    }
-
-
-def judgement_or_error(passage: CitedPassage, raw: str) -> Dict[str, Any]:
-    """Parse the judge reply; a malformed reply becomes a visible error row
-    rather than a silent verdict (as the notebook does)."""
-    try:
-        judgement = parse_judge_response(raw)
-    except ValueError as exc:
-        return not_judged(passage, f"JUDGE ERROR: {exc}")
-    if passage.missing_indices:
-        judgement["problems"].append(_dangling_problem(passage))
-    return judgement
 
 
 def source_rows(passage: CitedPassage) -> List[Dict[str, Any]]:
@@ -302,6 +215,15 @@ _SHEET_COLUMNS = (
 
 def _sheet_row(record: Dict[str, Any]) -> Dict[str, Any]:
     row = {column: record.get(column) for column in _SHEET_COLUMNS}
+    if record.get("claim_number") is not None:
+        row.update(
+            claim_id=str(record["id"]),
+            section_id=record["section_id"],
+            claim_number=record["claim_number"],
+            outcome=record["outcome"],
+            score=record["score"],
+            passed=record["passed"],
+        )
     row["problems"] = "\n".join(record.get("problems") or [])
     row["supporting_quotes"] = "\n".join(
         f"[{q.get('citation')}] {q.get('quote')} ({q.get('status')})"
@@ -311,7 +233,7 @@ def _sheet_row(record: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def build_review_workbook(
-    passages: List[Dict[str, Any]], by_section: List[Dict[str, Any]]
+    passages: List[Dict[str, Any]], by_section: List[Dict[str, Any]], sections=None
 ) -> bytes:
     """The notebook's review workbook — Flagged / All judgements / Summary —
     from stored passage rows and the check's per-section summary."""
@@ -322,71 +244,22 @@ def build_review_workbook(
         key=lambda r: (severity.get(r["verdict"], 3), -(r["confidence"] or 0.0)),
     )
     buffer = BytesIO()
-    write_review_workbook(
-        {"Flagged": flagged, "All judgements": rows, "Summary": by_section}, buffer
-    )
+    sheets = {"Flagged": flagged, "All judgements": rows, "Summary": by_section}
+    if sections is not None:
+        sheets["Section checks"] = [
+            {
+                "section": section["heading"],
+                "number": section["number"],
+                "expectation": check.get("label") or check["type"],
+                "passed": check.get("passed"),
+                "score": check.get("score"),
+                "assessment": check.get("message"),
+            }
+            for section in sections
+            for check in section["assertion_results"]
+        ]
+    write_review_workbook(sheets, buffer)
     return buffer.getvalue()
-
-
-# ---------------------------------------------------------------------------
-# Judge call
-# ---------------------------------------------------------------------------
-
-
-async def llm_judge(
-    system_prompt: str, user_prompt: str, model_key: Optional[str]
-) -> Tuple[str, Dict[str, Any]]:
-    """Raw judge completion via the app's model factory, cost-tracked."""
-    from langchain_core.callbacks import UsageMetadataCallbackHandler
-    from langchain_core.messages import HumanMessage, SystemMessage
-    from langchain_core.runnables import RunnableConfig
-
-    from ui.backend.services.llm_service import summarize_usage_metadata
-    from utils.llm_factory import get_llm, message_text
-
-    llm = get_llm(model=model_key, temperature=0.0, max_tokens=JUDGE_MAX_OUTPUT_TOKENS)
-    usage_handler = UsageMetadataCallbackHandler()
-    response = await llm.ainvoke(
-        [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)],
-        config=RunnableConfig(callbacks=[usage_handler]),
-    )
-    return message_text(response), summarize_usage_metadata(usage_handler, model_key)
-
-
-def make_judge(model_key: Optional[str]) -> JudgeFn:
-    async def judge(system_prompt: str, user_prompt: str) -> Tuple[str, Dict[str, Any]]:
-        return await llm_judge(system_prompt, user_prompt, model_key)
-
-    return judge
-
-
-async def judge_passage(
-    pid: int, passage: CitedPassage, judge: JudgeFn, semaphore: asyncio.Semaphore
-) -> Dict[str, Any]:
-    """Judge one passage; never raises — a failed call becomes an error row."""
-    if not passage.sources:
-        reason = "No source stored for citation(s) " + ", ".join(
-            f"[{i}]" for i in passage.missing_indices
-        )
-        return passage_record(pid, passage, not_judged(passage, reason), error=reason)
-    system_prompt, user_prompt = judge_prompts(passage)
-    try:
-        async with semaphore:
-            raw, usage = await judge(system_prompt, user_prompt)
-    except Exception as exc:
-        logger.warning("Judge call failed for passage %s: %s", pid, exc, exc_info=True)
-        reason = "JUDGE ERROR: the model call failed"
-        return passage_record(pid, passage, not_judged(passage, reason), error=reason)
-    judgement = judgement_or_error(passage, raw)
-    error = next(
-        (p for p in judgement["problems"] if p.startswith("JUDGE ERROR")), None
-    )
-    return passage_record(pid, passage, judgement, usage, error)
-
-
-# ---------------------------------------------------------------------------
-# Run orchestration
-# ---------------------------------------------------------------------------
 
 
 def resolve_judge_model(model_combo: Optional[str]) -> Optional[str]:
@@ -406,7 +279,7 @@ def resolve_judge_model(model_combo: Optional[str]) -> Optional[str]:
     )
 
 
-async def _record_check_usage(check: BriefCitationCheck, stats: Dict[str, Any]) -> None:
+async def _record_check_usage(check: BriefCitationCheck) -> None:
     """Mirror the finished check's token totals into ``user_activity``
     (type ``evaluation``, one row keyed by the check id). Monitoring only:
     errors are logged and swallowed."""
@@ -415,6 +288,7 @@ async def _record_check_usage(check: BriefCitationCheck, stats: Dict[str, Any]) 
     from ui.backend.services.usage_recorder import record_llm_usage
 
     try:
+        stats = check.summary_stats or {}
         cost = stats.get("cost_usd")
         await record_llm_usage(
             usage={
@@ -439,22 +313,6 @@ async def _record_check_usage(check: BriefCitationCheck, stats: Dict[str, Any]) 
         logger.warning("Failed to record brief check usage", exc_info=True)
 
 
-CHANGED_BEFORE_RUN = (
-    "The brief changed between starting the check and running it; run the "
-    "check again"
-)
-
-
-async def _at_pinned_version(session: Any, check: BriefCitationCheck) -> bool:
-    """Whether the brief is still at the version the check pinned when it
-    was started, so the rows describe that version. A check made before
-    versions were linked has nothing to compare."""
-    if check.brief_version_id is None:
-        return True
-    latest = await latest_version(session, check.brief_id)
-    return latest is not None and latest.id == check.brief_version_id
-
-
 async def _write_while(
     session: Any, check_id: uuid.UUID, statuses: Tuple[str, ...], **values: Any
 ) -> bool:
@@ -475,97 +333,29 @@ async def _fail(session: Any, check_id: uuid.UUID, message: str) -> None:
     )
 
 
-async def _execute(
-    session: Any, check: BriefCitationCheck, judge: JudgeFn, concurrency: int
-) -> None:
-    started = time.time()
-    # A rolled-back write expires the row's attributes, so keep what the loop
-    # needs in locals and never read ``check`` after a write that failed.
-    check_id = check.id
-    brief = await session.get(Brief, check.brief_id)
-    if brief is None:
-        await _fail(session, check_id, "Brief not found")
-        return
-    if not await _at_pinned_version(session, check):
-        await _fail(session, check_id, CHANGED_BEFORE_RUN)
-        return
-    content = brief.content or {}
-    passages = brief_passages(content)
-    total = len(passages)
-    # The row is ours only while it still says pending: a cancel, or orphan
-    # recovery on another api copy, may have failed it meanwhile.
-    claimed = await _write_while(
-        session,
-        check_id,
-        (CHECK_PENDING,),
-        status=CHECK_RUNNING,
-        started_at=_utcnow(),
-        summary_stats=progress_stats(0, total),
-    )
-    if not claimed:
-        logger.info("Brief citation check %s is no longer pending; not run", check_id)
-        return
-
-    semaphore = asyncio.Semaphore(concurrency)
-    tasks = [
-        asyncio.ensure_future(judge_passage(pid, p, judge, semaphore))
-        for pid, p in enumerate(passages, start=1)
-    ]
-    rows: List[Dict[str, Any]] = []
-    for completed, task in enumerate(asyncio.as_completed(tasks), start=1):
-        record = await task
-        rows.append(record)
-        session.add(BriefCitationCheckPassage(check_id=check_id, **record))
-        if not await _write_while(
-            session,
-            check_id,
-            (CHECK_RUNNING,),
-            summary_stats=progress_stats(completed, total),
-        ):
-            logger.info(
-                "Brief citation check %s was stopped by another writer", check_id
-            )
-            for pending in tasks:
-                pending.cancel()
-            return
-
-    rows.sort(key=lambda r: r["passage_id"])
-    stats = summarise(
-        rows,
-        int((time.time() - started) * 1000),
-        check.judge_model,
-        count_skipped_reference_lines(content),
-    )
-    finished = await _write_while(
-        session,
-        check_id,
-        (CHECK_RUNNING,),
-        status=CHECK_COMPLETED,
-        finished_at=_utcnow(),
-        summary_stats=stats,
-    )
-    if finished:
-        await _record_check_usage(check, stats)
-
-
 async def run_check(
     check_id: uuid.UUID,
     session_factory: Any = None,
-    judge: Optional[JudgeFn] = None,
-    concurrency: int = JUDGE_CONCURRENCY,
 ) -> None:
-    """Background entrypoint: execute one check. ``judge`` is injectable for
-    tests; by default the check's stored judge model is used."""
     factory = session_factory or async_session_factory
     async with factory() as session:
         check = await session.get(BriefCitationCheck, check_id)
         if check is None:
             logger.error("run_check: check %s not found", check_id)
             return
-        try:
-            await _execute(
-                session, check, judge or make_judge(check.judge_model), concurrency
+        if check.status != CHECK_PENDING:
+            return
+        if check.check_kind != "full":
+            await _fail(
+                session,
+                check.id,
+                "Start a new saved Brief check to assess this version.",
             )
+            return
+        from ui.backend.services.saved_brief_check_runner import run_full_check
+
+        try:
+            await run_full_check(session, check)
         except Exception:
             logger.exception("Brief citation check %s failed unexpectedly", check_id)
             await _fail(session, check_id, "Check failed")
@@ -620,9 +410,7 @@ __all__ = [
     "count_cited_passages",
     "count_skipped_reference_lines",
     "fail_stale_checks",
-    "judge_prompts",
     "passage_record",
-    "progress_stats",
     "recover_orphaned_checks",
     "resolve_judge_model",
     "run_check",

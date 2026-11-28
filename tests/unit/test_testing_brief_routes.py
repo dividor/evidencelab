@@ -172,6 +172,7 @@ def _check(brief, status="completed", **over):
         model_combo=None,
         brief_version_id=uuid.uuid4(),
         brief_version_number=3,
+        section_results=None,
         status=status,
         summary_stats={
             "total": 2,
@@ -359,6 +360,7 @@ class TestCreateCheck:
         assert (
             check.status == "pending" and check.judge_model == "judge-for-Azure Foundry"
         )
+        assert check.check_kind == "full"
         assert check.created_by_user_id == me.id and check.brief_title == brief.title
         assert len(tasks.tasks) == 1 and tasks.tasks[0].args == (check.id,)
         # A brief with no version yet gets its baseline version, which the
@@ -446,7 +448,9 @@ class TestCheckAccess:
         check = _check(brief)
         check.passages = []
         monkeypatch.setattr(
-            routes, "build_review_workbook", lambda passages, by_section: b"PK-fake"
+            routes,
+            "build_review_workbook",
+            lambda passages, by_section, sections: b"PK-fake",
         )
         session = FakeSession([brief], [], [check])
         resp = await routes.export_brief_check(
