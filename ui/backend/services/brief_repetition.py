@@ -1,6 +1,7 @@
 """Review the findings of a new section against previously written sections."""
 
 import re
+from decimal import Decimal
 
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
@@ -19,10 +20,24 @@ def _words(text: str) -> str:
     return match_key(strip_citation_markers(text))
 
 
+def _figures(text: str) -> set[Decimal]:
+    """Read figures from the prose, excluding source numbers and grouping commas."""
+    prose = strip_citation_markers(text)
+    numbers = re.findall(r"(?<![\w.])\d+(?:,\d{3})*(?:\.\d+)?", prose)
+    return {Decimal(number.replace(",", "")) for number in numbers}
+
+
 class RepeatedClause(BaseModel):
     new_clause: str = Field(min_length=1)
     # An empty quote supplies no evidence for removing the new clause.
     existing_clause: str
+    equivalent_amount: str = ""
+
+    def accounts_for_figures(self) -> bool:
+        if _figures(self.new_clause) <= _figures(self.existing_clause):
+            return True
+        amount = _words(self.equivalent_amount)
+        return bool(amount) and f" {amount} " in f" {_words(self.existing_clause)} "
 
 
 class RepeatedSentence(BaseModel):
@@ -34,6 +49,8 @@ class RepeatedSentence(BaseModel):
         if not quoted or quoted != _words(sentence):
             return False
         for pair in self.pairs:
+            if not pair.accounts_for_figures():
+                return False
             existing = _words(pair.existing_clause)
             if not existing or not any(
                 f" {existing} " in f" {row} " for row in earlier

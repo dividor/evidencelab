@@ -48,6 +48,7 @@ async def run_research(
     check_citations=True,
     system_prompt_override=None,
     target_words=None,
+    continuation="",
 ):
     llm = MagicMock()
     replies = None if callable(responses) else iter(responses)
@@ -155,6 +156,10 @@ async def run_research(
             ]
             return AIMessage(
                 content=json.dumps({"scope_issues": [], "sentences": checks})
+            )
+        if messages[0].content.startswith("Develop one additional paragraph"):
+            return AIMessage(
+                content=_fixture_excerpt_labels(continuation, messages[-1].content)
             )
         reply = responses(messages) if replies is None else next(replies)
         if messages[0].content.startswith("Write the prose of one section"):
@@ -1023,6 +1028,47 @@ async def test_brief_keeps_the_checked_draft_when_revision_yields_less_evidence(
     )
     answer = next(event["token"] for event in events if event["type"] == "token")
     assert answer == f"{first} [1]. {second} [1]."
+
+
+@pytest.mark.asyncio
+async def test_brief_develops_a_reviewed_paragraph_without_replacing_its_findings():
+    first = "The pressure dropped during the overnight test"
+    detail = "The log showed a steady decline over three hours"
+    final = "The morning readings confirmed the loss persisted"
+    events, _, model = await run_research(
+        [
+            '{"queries":[]}',
+            _brief_draft((first, 1, first)),
+            _brief_draft((first, 1, first)),
+        ],
+        [[point(1, f"{first}. {detail}. {final}.")]],
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": "Test results"}], current=0
+        ),
+        target_words=25,
+        continuation=_brief_draft(
+            (first, 1, first), (detail, 1, detail), (final, 1, final)
+        ),
+    )
+    answer = next(e["token"] for e in events if e["type"] == "token")
+    assert answer == f"{first} [1].\n\n{detail} [1]. {final} [1]."
+    requests = [call.args[0] for call in model.ainvoke.await_args_list]
+    selections = [
+        r[-1].content for r in requests if r[0].content.startswith("Select passages")
+    ]
+    assert (
+        len(selections) == 2
+        and f'Already covered in the section: "{first}."' in selections[-1]
+    )
+    addition = [
+        r for r in requests if r[0].content.startswith("Develop one additional")
+    ]
+    assert len(addition) == 1 and first in addition[0][-1].content
+    assert "18 words of additional supported prose" in addition[0][-1].content
+    assert any(
+        r[0].content.startswith("Review whether") and final in r[-1].content
+        for r in requests
+    )
 
 
 @pytest.mark.asyncio
@@ -1949,6 +1995,9 @@ async def test_brief_selects_direct_evidence_even_when_citation_checking_is_off(
             and relevant in prompt
             and remedies in prompt
         )
+        if "Already covered in the section:" in prompt:
+            assert relevant in prompt and "addition aims for about" in prompt
+            return []
         assert "about 150 words" in prompt
         assert labels == [1, 2]
         if "previous selection" in prompt:
@@ -1992,7 +2041,11 @@ async def test_brief_selects_direct_evidence_even_when_citation_checking_is_off(
         check_citations=False,
         target_words=150,
     )
-    draft_prompt = llm.ainvoke.await_args_list[-1].args[0][-1].content
+    draft_prompt = next(
+        call.args[0][-1].content
+        for call in llm.ainvoke.await_args_list
+        if call.args[0][0].content.startswith("Write the prose of one section")
+    )
     assert relevant in draft_prompt and earlier not in draft_prompt
     assert remedies not in draft_prompt
     assert next(event["token"] for event in events if event["type"] == "token") == (

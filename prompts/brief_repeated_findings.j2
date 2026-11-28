@@ -7,11 +7,12 @@ A finding that extends the scope, explains a mechanism or adds an observed detai
 Before proposing a deletion, ask whether a reader who has seen only the earlier wording could know this particular finding. A broad statement of a problem does not establish its specific effects. Naming a measure does not establish how far it was used. Treat every substantive detail as new unless the earlier wording entails it.
 Provide proof for each deletion.
 In 'pairs' quote each clause of the candidate in order, and the exact earlier wording that establishes its complete meaning.
+If a new clause reports a figure, its earlier quote must establish the same amount. When the same amount was written in words or another unit, also quote that amount and unit verbatim in "equivalent_amount". A qualitative description cannot establish a number. Keep the finding if any figure is new.
 The candidate quotes together must reproduce the whole candidate sentence, ignoring citation markers and punctuation.
 Without a matching earlier clause for any part, keep the entire sentence.
 Never use the same sentence as its own proof.
 Omit the entire finding from duplicates if any clause lacks an earlier quotation.
-Return JSON with 'duplicates', a list of {id,pairs:[{new_clause,existing_clause}]}.
+Return JSON with 'duplicates', a list of {id,pairs:[{new_clause,existing_clause,equivalent_amount}]}.
 Return an empty list if there are no fully repeated findings.
 {%- else -%}
 {{ {"new_section": findings, "previous_sections": siblings} | tojson }}

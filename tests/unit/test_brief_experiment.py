@@ -446,7 +446,9 @@ async def test_each_part_of_a_repeated_sentence_can_match_a_different_earlier_fi
 async def test_manual_sibling_can_duplicate_first_claim_and_distinct_finding_survives():
     async def check(system, prompt, *args):
         assert "It took two days." in prompt
-        return _repeat(1, ("The work took 48 hours", "It took two days"))
+        verdict = _repeat(1, ("The work took 48 hours", "It took two days"))
+        verdict.duplicates[0].pairs[0].equivalent_amount = "two days"
+        return verdict
 
     result = await remove_repeated_brief_findings(
         "The work took 48 hours [7]. It cost five dollars [3].",

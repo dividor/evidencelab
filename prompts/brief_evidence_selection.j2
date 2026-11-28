@@ -22,10 +22,14 @@ If none directly support the assignment, return the section_subject with "passag
 {%- else -%}
 Assignment: {{ assignment | tojson }}
 {% if target_words %}
-The finished section aims for about {{ target_words }} words. Select enough distinct relevant evidence for this length
+The {% if focus and focus.covered %}addition{% else %}finished section{% endif %} aims for about {{ target_words }} words. Select enough distinct relevant evidence for this length
 when it is available.
 {% endif %}
 
+{% if focus and focus.covered %}
+Already covered in the section: {{ focus.covered | tojson }}
+Read these paragraphs first. Select only source lines that add a specific finding, example, condition or measurement missing from this text. An excerpt that merely confirms or rephrases an existing finding does not help this edit. Return an empty selection if all relevant findings are covered.
+{% endif %}
 {% if earlier_text %}
 The previous draft cites these passage numbers. Select the exact lines establishing its findings where they are available and relevant, alongside evidence for developing the section. The draft is a set of notes and cannot itself establish a fact.
 Previous draft: {{ earlier_text | tojson }}

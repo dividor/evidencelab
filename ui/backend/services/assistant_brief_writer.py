@@ -480,6 +480,34 @@ async def _match_draft_citations(
     return matched, False
 
 
+def _prior_paragraph_findings(text: str, heading: str) -> list[tuple[str, str]]:
+    return [
+        (heading, strip_citation_markers(sentence))
+        for sentence in split_sentences(text)
+    ]
+
+
+async def develop_short_brief(draft, target, evidence, write, review_prose):
+    """Develop a reviewed short section once, preserving the verified paragraphs."""
+    words = len(strip_citation_markers(draft).split())
+    if not words or not target or words >= target * 0.85:
+        return draft
+    addition = await write(
+        evidence=evidence, target_words=target - words, continuation=draft
+    )
+    if not addition:
+        return draft
+    if _exceeds_word_budget(
+        words + len(strip_citation_markers(addition).split()), target
+    ):
+        return draft
+    separator = " " if len(split_sentences(addition)) == 1 else "\n\n"
+    combined = f"{draft}{separator}{addition}"
+    if await review_prose(combined, final=True):
+        return draft
+    return combined
+
+
 async def write_grounded_brief(
     assignment: str,
     search_focus: str,
@@ -493,6 +521,7 @@ async def write_grounded_brief(
     review_scope: ReviewRequest,
     target_words: int | None = None,
     earlier_text: str = "",
+    continuation: str = "",
     editorial_issues: list[str] | None = None,
 ) -> str:
     """Write independently sourced findings and optionally check their support."""
@@ -501,6 +530,7 @@ async def write_grounded_brief(
     focus = {
         "heading": section.outline[section.current].title,
         "guidance": brief_section_research_focus(section),
+        "covered": strip_citation_markers(continuation),
     }
     evidence, (passages, quotes), subject = await select_brief_evidence(
         assignment,
@@ -516,7 +546,10 @@ async def write_grounded_brief(
     template = assistant_prompt_templates.get_template("brief_evidence_draft.j2")
     introduces = brief_child_headings(section)
     system = template.render(
-        system=True, target_words=target_words, introduces=introduces
+        system=True,
+        target_words=target_words,
+        introduces=introduces,
+        continuation=continuation,
     )
     stream = get_stream_writer()
     existing = _written_sibling_findings(section)
@@ -526,7 +559,10 @@ async def write_grounded_brief(
         else {}
     )
     selected_sources = {source for source, _ in quotes.values()}
-    other_claims = {match_key(finding) for _, finding in existing}
+    prior = _prior_paragraph_findings(
+        continuation, section.outline[section.current].title
+    )
+    other_claims = {match_key(finding) for _, finding in existing + prior}
     issues = list(editorial_issues or [])
     accepted = earlier_text
     # A known editorial defect may need a shorter correction.
@@ -536,12 +572,14 @@ async def write_grounded_brief(
     minimum_words = target_words * 0.85 if target_words else 1
     repair_draft = ""
     draft_words = 0
-    for attempt in range(2):
+    attempts = 1 if continuation else 2
+    for attempt in range(attempts):
         messages = [
             SystemMessage(content=system),
             HumanMessage(
                 content=template.render(
                     assignment=assignment,
+                    continuation=strip_citation_markers(continuation),
                     focus=focus,
                     subject=subject,
                     writing_guide=writing_guide,
@@ -565,7 +603,7 @@ async def write_grounded_brief(
             quotes,
             config,
             review_scope,
-            attempt == 1,
+            attempt + 1 == attempts,
             stream,
         )
         if retry_citations:
@@ -607,5 +645,8 @@ async def write_grounded_brief(
         if written_words >= minimum_words:
             break
     return await remove_repeated_brief_findings(
-        accepted, config, review_scope, existing
+        accepted,
+        config,
+        review_scope,
+        existing + prior,
     )

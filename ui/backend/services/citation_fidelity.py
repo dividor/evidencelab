@@ -38,6 +38,9 @@ CITATION_RE = re.compile(r"\[(\d+(?:,\s*\d+)*)\]")
 # `[?7]` — a marker the renumbering could not resolve to a source; it stays
 # visible in the text and is reported as dangling.
 UNRESOLVED_RE = re.compile(r"\[\?(\d+)\]")
+_ANY_MARKER = rf"(?:{CITATION_RE.pattern}|{UNRESOLVED_RE.pattern})"
+_MARKER_GROUP = re.compile(rf"{_ANY_MARKER}(?:[ \t]*[,;][ \t]*{_ANY_MARKER})*")
+
 
 # Sentences end at ./!/? followed by whitespace; newlines (headings, list
 # items) break sentences too — same as SENTENCE_SPLIT_RE in briefHighlights.ts.
@@ -83,7 +86,7 @@ def unresolved_numbers(text: str) -> List[int]:
 
 def strip_citation_markers(text: str) -> str:
     """Remove ``[n]`` / ``[n, m]`` / ``[?n]`` markers, collapsing the space they leave."""
-    stripped = UNRESOLVED_RE.sub("", CITATION_RE.sub("", text))
+    stripped = _MARKER_GROUP.sub("", text)
     stripped = re.sub(r"[ \t]+([.,;:!?])", r"\1", stripped)
     return re.sub(r"[ \t]{2,}", " ", stripped).strip()
 
