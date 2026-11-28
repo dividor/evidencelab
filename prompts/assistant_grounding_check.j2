@@ -15,7 +15,7 @@ refer to. Verify that the cited passage explains that same observation, includin
 The preceding sentence helps interpret the claim and supplies no evidence of its own. When the sentence
 explicitly introduces a different example, assess that example on its own terms.
 
-For each sentence, return its id and exactly one status:
+For each sentence, fill its required verdict field with exactly one status:
 - "supported" if every factual assertion follows from the cited evidence. From every cited excerpt, copy the shortest
   exact phrase that establishes the relevant finding and its subject. Prefer phrases of at most 20 words. Use one integer as "citation", for example 7. Each quote belongs
   to one citation. The quotes together must substantiate the sentence.
@@ -55,6 +55,6 @@ Imagine deleting every sentence marked "unsupported". List only relevance proble
 This batch may address only part of the question. Judge the relevance of these sentences without requiring the
 batch to address questions covered in other batches.
 {% endif -%}
-Return only JSON with one check per input sentence. Omit issue for supported and non-factual sentences. Report an unsupported
-issue in one short sentence. Use this shape:
-{"scope_issues":[],"sentences":[{"id":1,"status":"supported","quotes":[{"citation":7,"quote":"text copied from the excerpt"}]},{"id":2,"status":"unsupported","quotes":[],"issue":"The cited passage does not give the overall rate."}]}
+Fill scope_issues even when it is empty. Each required sentence field contains status and, where appropriate, quotes
+or issue. Do not add an id inside a verdict. Omit issue for supported and non-factual sentences. Report an unsupported
+issue in one short sentence.

@@ -1,14 +1,36 @@
 import pytest
+from pydantic import ValidationError
 
 from ui.backend.services.assistant_grounding import (
     CitationCheck,
     EvidenceQuote,
+    _citation_check_schema,
     citation_check_batches,
     citation_issues,
     numbered_sentences,
 )
 
 pytestmark = pytest.mark.unit
+
+
+def test_citation_tool_schema_requires_exact_sentence_fields_and_scope():
+    schema = _citation_check_schema([17, 18])
+    expected_fields = {"scope_issues", "sentence_17", "sentence_18"}
+    assert set(schema.json_schema()["required"]) == expected_fields
+    payload = {
+        "scope_issues": [],
+        "sentence_17": {"status": "supported"},
+        "sentence_18": {"status": "unsupported", "issue": "The source gives no rate."},
+    }
+    result = schema.validate_python(payload)
+    assert result.model_dump()["sentence_18"]["status"] == "unsupported"
+    for field in expected_fields:
+        with pytest.raises(ValidationError, match=field):
+            schema.validate_python(
+                {key: value for key, value in payload.items() if key != field}
+            )
+    with pytest.raises(ValidationError, match="sentence_19"):
+        schema.validate_python({**payload, "sentence_19": {"status": "non_factual"}})
 
 
 def test_citation_batches_limit_the_work_per_verdict_without_dropping_claims():
