@@ -542,7 +542,14 @@ class ResearchWorkflow:
             request=self._request_json,
         )
         draft = await self._reviewed_brief_draft(write, prose_issues, evidence, target)
-        result = await develop_short_brief(draft, target, evidence, write, prose_issues)
+        result = await develop_short_brief(
+            draft,
+            target,
+            evidence,
+            write,
+            prose_issues,
+            retrieved=self.tracker.all_results,
+        )
         logger.info(
             "Brief section words: target=%s reviewed=%d final=%d",
             target,

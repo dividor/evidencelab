@@ -30,7 +30,10 @@ from ui.backend.services.assistant_grounding import (
 )
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.brief_citation_model import cited_numbers_in_order
-from ui.backend.services.brief_evidence_selection import select_brief_evidence
+from ui.backend.services.brief_evidence_selection import (
+    brief_development_passages,
+    select_brief_evidence,
+)
 from ui.backend.services.brief_excerpt_citations import (
     cite_missing_excerpts,
     expand_excerpt_ranges,
@@ -499,13 +502,17 @@ def _prior_paragraph_findings(text: str, heading: str) -> list[tuple[str, str]]:
     ]
 
 
-async def develop_short_brief(draft, target, evidence, write, review_prose):
+async def develop_short_brief(
+    draft, target, evidence, write, review_prose, *, retrieved
+):
     """Develop a reviewed short section once, preserving the verified paragraphs."""
     words = len(strip_citation_markers(draft).split())
     if not words or not target or words >= target * 0.85:
         return draft
     addition = await write(
-        evidence=evidence, target_words=target - words, continuation=draft
+        evidence=brief_development_passages(draft, evidence, retrieved),
+        target_words=target - words,
+        continuation=draft,
     )
     if not addition:
         return draft
