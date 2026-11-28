@@ -233,6 +233,7 @@ interface BriefTabProps {
   isActive?: boolean;
   dataSource: string;
   // The configured chat / deep-research model, used for outline + section research.
+  modelCombo?: string | null;
   assistantModelConfig?: SummaryModelConfig | null;
   // The app's active reranker + search settings (group-seeded for logged-in
   // users). Applied to brief searches only when logged in.
@@ -382,6 +383,7 @@ function BriefLanding({ brief, loggedIn, central, onOpenBrief, onCreateBrief }: 
 export const BriefTab: React.FC<BriefTabProps> = ({
   isActive = true,
   dataSource,
+  modelCombo,
   assistantModelConfig,
   rerankerModel,
   searchSettings,
@@ -400,6 +402,7 @@ export const BriefTab: React.FC<BriefTabProps> = ({
   const brief = useBrief({
     apiBaseUrl: API_BASE_URL,
     dataSource,
+    modelCombo,
     assistantModelConfig,
     // Use the group's search settings only when logged in; anonymous briefs run
     // without reranking (the default cross-encoder is too slow for many queries).

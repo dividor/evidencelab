@@ -132,7 +132,7 @@ def test_empty_experiment_gets_all_standard_checks_and_custom_matrix_is_preserve
         "brief_overlap",
         "brief_intro_scope",
         "brief_factual",
-        "llm_judge",
+        "brief_relevance",
         "brief_voice",
         "brief_writing",
         "brief_paragraphs",

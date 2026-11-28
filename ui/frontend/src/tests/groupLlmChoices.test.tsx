@@ -66,7 +66,7 @@ describe('Group Settings > LLMs', () => {
       'sonnet-5.5 (ignores Response variability)',
     ]);
     expect(screen.getByText('Default from config (nova-pro)')).toBeInTheDocument();
-    expect(screen.getByLabelText('Automatic citation check')).toHaveValue('');
+    expect(screen.getByLabelText('Automatic citation check')).toHaveDisplayValue('Use evaluation judge (selected model combo)');
   });
 
   test('saves the chosen models with the group settings', async () => {

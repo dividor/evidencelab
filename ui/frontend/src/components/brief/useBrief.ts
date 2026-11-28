@@ -292,6 +292,7 @@ export interface UseBriefOptions {
   // The configured chat / deep-research model (combo.assistant_model). Used for
   // both outline generation and per-section research so the Brief tab uses the
   // same LLM as the rest of the system.
+  modelCombo?: string | null;
   assistantModelConfig?: SummaryModelConfig | null;
   // Group search settings to apply to brief searches (reranker + search
   // settings). Passed only for logged-in users so briefs search like the rest
@@ -391,6 +392,7 @@ const computeNumbers = (sections: BriefSection[]): string[] => {
 export const useBrief = ({
   apiBaseUrl,
   dataSource,
+  modelCombo,
   assistantModelConfig,
   rerankerModel,
   searchSettings,
@@ -1055,6 +1057,7 @@ export const useBrief = ({
         query: topic,
         briefSurvey: { topic, instructions: guidance || undefined },
         doneLabel: 'Document library surveyed',
+        modelCombo,
         assistantModelConfig,
         rerankerModel: rerankerModelRef.current,
         searchSettings: searchSettingsRef.current,
@@ -1110,7 +1113,7 @@ export const useBrief = ({
     } finally {
       setOutlineLoading(false);
     }
-  }, [apiBaseUrl, dataSource, query, instructions, numHeadings, assistantModelConfig, resetCitationState]);
+  }, [apiBaseUrl, dataSource, query, instructions, numHeadings, modelCombo, assistantModelConfig, resetCitationState]);
 
   const startManual = useCallback(() => {
     briefIdRef.current = uid();
@@ -1362,6 +1365,7 @@ export const useBrief = ({
         context,
         briefTopic,
         briefInstructions: instructionsRef.current.trim() || null,
+        modelCombo,
         assistantModelConfig,
         rerankerModel: rerankerModelRef.current,
         searchSettings: searchSettingsRef.current,
@@ -1490,6 +1494,7 @@ export const useBrief = ({
     [
       apiBaseUrl,
       dataSource,
+      modelCombo,
       assistantModelConfig,
       updateSection,
       pushActivity,
