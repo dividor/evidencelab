@@ -189,6 +189,33 @@ const SharedBriefsPanel: React.FC<{
   );
 };
 
+const SearchableBriefs: React.FC<{
+  briefs: BriefListItem[];
+  includeOwner?: boolean;
+  empty: string;
+  children: (brief: BriefListItem) => React.ReactNode;
+}> = ({ briefs, includeOwner = false, empty, children }) => {
+  const [search, setSearch] = useState('');
+  const shown = useMemo(() => filterBriefs(briefs, search, includeOwner), [briefs, search, includeOwner]);
+  return (
+    <>
+      <div className="bc-admin-bar">
+        <input
+          type="search"
+          className="bc-input bc-admin-search"
+          aria-label={includeOwner ? 'Search all briefs by name or user' : 'Search saved briefs'}
+          placeholder={includeOwner ? 'Search by brief name or user' : 'Search by brief name'}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <span className="bc-admin-count">{shown.length} of {briefs.length} briefs</span>
+      </div>
+      <div className="bc-grid">{shown.map(children)}</div>
+      {shown.length === 0 && <div className="bc-empty">{briefs.length ? 'No briefs match your search.' : empty}</div>}
+    </>
+  );
+};
+
 // The administrators' All Briefs tab: every brief in the system, searchable
 // by brief name or owner. Opening someone else's brief is read-only; Copy puts
 // a copy in the admin's own Saved Briefs.
@@ -196,28 +223,12 @@ const AllBriefsPanel: React.FC<{
   central: UseBriefCentralReturn;
   onOpenBrief: (id: string) => void;
 }> = ({ central, onOpenBrief }) => {
-  const [search, setSearch] = useState('');
   const { notice, copy } = useBriefCopy(central);
-  const shown = useMemo(() => filterBriefs(central.allBriefs, search), [central.allBriefs, search]);
-  const empty = central.allBriefs.length ? 'No briefs match your search.' : 'There are no briefs yet.';
   return (
     <>
-      <div className="bc-admin-bar">
-        <input
-          type="search"
-          className="bc-input bc-admin-search"
-          aria-label="Search all briefs by name or user"
-          placeholder="Search by brief name or user"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <span className="bc-admin-count">
-          {shown.length} of {central.allBriefs.length} briefs
-        </span>
-      </div>
       <CopyNotice notice={notice} />
-      <div className="bc-grid">
-        {shown.map((b) => (
+      <SearchableBriefs briefs={central.allBriefs} includeOwner empty="There are no briefs yet.">
+        {(b) => (
           <BriefCard
             key={b.id}
             brief={b}
@@ -226,9 +237,8 @@ const AllBriefsPanel: React.FC<{
             onOpen={() => onOpenBrief(b.id)}
             onCopy={() => copy(b)}
           />
-        ))}
-      </div>
-      {!shown.length && <div className="bc-empty">{empty}</div>}
+        )}
+      </SearchableBriefs>
     </>
   );
 };
@@ -394,21 +404,6 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
   };
 
   const gridFor = (tab: CentralTab): React.ReactNode => {
-    if (tab === 'mine') {
-      return central.myBriefs.map((b) => (
-        <BriefCard
-          key={b.id}
-          brief={b}
-          meta={briefMeta(b, central.voiceById(b.voice_profile_id)?.name || null, false)}
-          onOpen={() => onOpenBrief(b.id)}
-          onShare={() => {
-            setShareBrief(b);
-            setModal('share');
-          }}
-          onDelete={() => void central.removeBrief(b.id).catch(() => undefined)}
-        />
-      ));
-    }
     if (tab === 'templates') {
       return (
         <>
@@ -501,9 +496,24 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
         ))}
       </div>
 
-      <CentralTabBody central={central} onOpenBrief={onOpenBrief} grid={gridFor} />
-      {!central.loading && central.tab === 'mine' && central.myBriefs.length === 0 && (
-        <div className="bc-empty">No briefs yet — create your first with “New brief”.</div>
+      {!central.loading && central.tab === 'mine' ? (
+        <SearchableBriefs briefs={central.myBriefs} empty="No briefs yet — create your first with “New brief”.">
+          {(b) => (
+            <BriefCard
+              key={b.id}
+              brief={b}
+              meta={briefMeta(b, central.voiceById(b.voice_profile_id)?.name || null, false)}
+              onOpen={() => onOpenBrief(b.id)}
+              onShare={() => {
+                setShareBrief(b);
+                setModal('share');
+              }}
+              onDelete={() => void central.removeBrief(b.id).catch(() => undefined)}
+            />
+          )}
+        </SearchableBriefs>
+      ) : (
+        <CentralTabBody central={central} onOpenBrief={onOpenBrief} grid={gridFor} />
       )}
       {!central.loading && central.tab === 'shared' && central.sharedBriefs.length === 0 && (
         <div className="bc-empty">Nothing has been shared with you yet.</div>
