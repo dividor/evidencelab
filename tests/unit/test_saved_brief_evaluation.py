@@ -12,7 +12,11 @@ import pytest
 from ui.backend.services import saved_brief_evaluation as saved
 from ui.backend.services.brief_citations_convert import convert_legacy
 from ui.backend.services.brief_experiment import judge_brief
-from ui.backend.services.brief_fact_check import coverage, judged_passages
+from ui.backend.services.brief_fact_check import (
+    coverage,
+    fact_check_marks,
+    judged_passages,
+)
 from ui.backend.services.test_evaluators import evaluate_assertion
 
 pytestmark = pytest.mark.unit
@@ -122,7 +126,16 @@ async def test_factual_prompt_and_grade_match_experiment_and_marks_include_uncit
     pairs = judged_passages(
         content, [SimpleNamespace(**r) for r in rows], include_uncited=True
     )
-    assert len(coverage(content, pairs, include_uncited=True).covered[sid]) == 2
+    marks = fact_check_marks(coverage(content, pairs, include_uncited=True))
+    assert [m["grade"]["claim"] for m in marks] == [1, 2]
+    for mark, grade in zip(marks, checks[0]["claim_grades"]):
+        assert mark["grade"] == {
+            **grade,
+            "claim_id": mark["claim_id"],
+            "passage_id": mark["passage_id"],
+        }
+    assert marks[0]["claim_text"] == "The reading doubled [1]."
+    assert marks[1]["claim_text"] == "Losses tripled."
 
 
 @pytest.mark.asyncio

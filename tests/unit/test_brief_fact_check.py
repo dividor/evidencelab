@@ -400,6 +400,8 @@ class TestFactCheckMarks:
         assert marks[0] == {
             "passage_id": 1,
             "claim_id": None,
+            "grade": None,
+            "claim_text": None,
             "section_id": "s1",
             "section_title": "Findings",
             "passage": FACT,

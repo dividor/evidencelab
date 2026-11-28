@@ -89,7 +89,8 @@ def claim_passages(sections, passage_id=None):
 
     for section in sections:
         claims = {c["claim_id"]: c for c in _claims(section)}
-        for grade in _factual(section).get("claim_grades", []):
+        assessment = _factual(section)
+        for grade in assessment.get("claim_grades", []):
             pid = grade["passage_id"]
             if passage_id is not None and pid != passage_id:
                 continue
@@ -112,8 +113,10 @@ def claim_passages(sections, passage_id=None):
                 id=grade["claim_id"],
                 score=grade.get("score"),
                 passed=grade.get("passed"),
+                grade=grade,
                 section_id=section["section_id"],
                 claim_number=grade["claim"],
+                claim_text=passage.passage,
                 outcome=grade.get(
                     "outcome", "grading_error" if grade.get("error") else "assessed"
                 ),

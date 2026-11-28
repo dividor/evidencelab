@@ -358,6 +358,8 @@ class BriefFactCheckMark(BaseModel):
 
     passage_id: int
     claim_id: Optional[uuid.UUID] = None
+    claim_text: Optional[str] = None
+    grade: Optional[Dict[str, Any]] = None
     section_id: Optional[str] = None
     section_title: str
     passage: str

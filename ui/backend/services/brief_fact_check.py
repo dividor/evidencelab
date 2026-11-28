@@ -251,6 +251,8 @@ def fact_check_marks(cov: Coverage) -> List[Dict[str, Any]]:
                 {
                     "passage_id": row.passage_id,
                     "claim_id": row.id if getattr(row, "claim_number", None) else None,
+                    "grade": getattr(row, "grade", None),
+                    "claim_text": getattr(row, "claim_text", None),
                     "section_id": section_id,
                     "section_title": passage.section_title,
                     "passage": strip_inline_markdown(row.passage),

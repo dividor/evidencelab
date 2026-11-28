@@ -309,6 +309,8 @@ export interface BriefCitationCheckDetail extends BriefCitationCheck {
 // it (citation markers and markdown removed); the document locates it in the
 // rendered section.
 export interface BriefFactCheckMark {
+  claim_text?: string | null;
+  grade?: NonNullable<AssertionResult['claim_grades']>[number] | null;
   passage_id: number;
   section_id: string | null;
   section_title: string;

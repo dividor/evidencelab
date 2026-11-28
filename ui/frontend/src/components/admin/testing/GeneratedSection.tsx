@@ -1,21 +1,21 @@
 import React, { useId, useState } from 'react';
 import type { AssertionResult, BriefEvalClaim, BriefEvalReference, TestResult } from '../../../types/testing';
 
-import { VERDICT_LABEL, VERDICT_TONE } from './citationCheckFormat';
-import { formatScore } from './testingFormat';
+import { ClaimAssessment, ClaimReference } from '../../brief/ClaimAssessment';
 
 type SavedSource = { title?: string; page?: number | null; text?: string; headings?: string[] };
 type ReferenceProps = { reference: BriefEvalReference; sources: SavedSource[] };
 
 function Reference({ reference, sources, expanded }: ReferenceProps & { expanded?: boolean }) {
   const source = reference.source_position === null ? undefined : sources[reference.source_position];
-  const heading = `[${reference.label}] ${source?.title || (source ? 'Untitled source' : 'Source unavailable')}`;
+  const title = source?.title || (source ? 'Untitled source' : 'Source unavailable');
+  const heading = `[${reference.label}] ${title}`;
   const label = source?.page == null ? heading : `${heading} · p. ${source.page}`;
   const excerpt = <div className="testing-cited-excerpt">{source?.headings?.length ? <p>{source.headings.join(' › ')}</p> : null}{source?.text || 'No passage text was saved for this citation.'}</div>;
   return expanded ? (
     <div className="testing-claim-source"><strong>{label}</strong>{excerpt}</div>
   ) : (
-    <details className="testing-section-reference"><summary>{label}</summary>{excerpt}</details>
+    <ClaimReference number={reference.label} title={title} page={source?.page}>{excerpt}</ClaimReference>
   );
 }
 
@@ -44,26 +44,6 @@ function Claim({ claim, references, sources }: {
   );
 }
 
-type ClaimGrade = NonNullable<AssertionResult['claim_grades']>[number];
-
-function ClaimScore({ grade, threshold }: { grade: ClaimGrade; threshold?: number }) {
-  if (grade.error) return <span>{grade.outcome === 'missing_source' ? 'Cited excerpt unavailable' : 'Grading error'}</span>;
-  return <>
-    {grade.verdict && <span className={`testing-status testing-status-${VERDICT_TONE[grade.verdict]}`}>{VERDICT_LABEL[grade.verdict]}</span>}
-    <span>Score {formatScore(grade.score)}</span>
-    <span>{grade.passed ? 'Pass' : 'Fail'}</span>
-    {threshold !== undefined && <span>Required {formatScore(threshold)}</span>}
-  </>;
-}
-
-function PartialSupport({ grade }: { grade: ClaimGrade }) {
-  if (grade.verdict !== 'partially_supported' || !grade.unmet?.length) return null;
-  return <div>
-    <strong>What the evidence does not establish</strong>
-    <ul className="claim-evidence-gaps">{grade.unmet.map((gap, i) => <li key={i}>{gap}</li>)}</ul>
-  </div>;
-}
-
 export function AssertionEvidence({ assessment, result }: { assessment: AssertionResult; result: Pick<TestResult, "actual_output" | "brief_evidence"> }) {
   const evidence = result.brief_evidence;
   if (!evidence) return null;
@@ -75,13 +55,8 @@ export function AssertionEvidence({ assessment, result }: { assessment: Assertio
     const grade = grades.get(index + 1);
     return (
       <div className="testing-evidence-claim" key={index}>
-        <div className="testing-claim-heading">
-          <strong>Claim {index + 1}</strong>
-          {grade && <ClaimScore grade={grade} threshold={assessment.threshold} />}
-        </div>
-        <div>{claim.parts.map(part => part.text).join('')}</div>
-        {grade && <p className="testing-claim-reason"><strong>Judge assessment</strong> {grade.reason}</p>}
-        {grade && <PartialSupport grade={grade} />}
+        <ClaimAssessment number={index + 1} text={claim.parts.map(part => part.text).join('')}
+          grade={grade} threshold={assessment.threshold} />
         {claim.references.length ? claim.references.map(ref => (
           <Reference key={ref} reference={evidence.references[ref]} sources={sources} />
         )) : <small>No citation on this sentence.</small>}
