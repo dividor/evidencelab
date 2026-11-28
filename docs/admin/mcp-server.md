@@ -2,7 +2,7 @@
 
 The MCP server runs as a separate Docker service that exposes Evidence Lab's search tools via the [Model Context Protocol](https://modelcontextprotocol.io/). The same service also hosts the [A2A Server](a2a-server.md) for agent-to-agent research tasks.
 
-> **Tools:** `search` and `get_document` only. Research synthesis is handled by the [A2A Server](a2a-server.md).
+> **Tools:** `search`, `get_document`, and Heatmapper. Research synthesis is handled by the [A2A Server](a2a-server.md).
 
 ## Architecture
 
@@ -34,8 +34,9 @@ Qdrant + PostgreSQL
 | `API_SECRET_KEY` | *required* | Shared secret for API key authentication |
 | `AUTH_SECRET_KEY` | *required* | Secret for JWT token verification |
 | `APP_BASE_URL` | `https://evidencelab.ai` | Base URL for OAuth redirects and citation links |
+| `MCP_PUBLIC_URL` | `APP_BASE_URL` followed by `/mcp` | Exact public connector URL for OAuth and the Heatmapper sandbox |
 | `OAUTH_CALLBACK_BASE_URL` | `http://localhost:8000` | Base URL for OAuth callbacks |
-| `RATE_LIMIT_MCP_SEARCH` | `30/minute` | Rate limit for search and get_document tools, per caller (signed-in user or API key) |
+| `RATE_LIMIT_MCP_SEARCH` | `30/minute` | Shared allowance for search, document retrieval, and Heatmapper, per user or API key |
 | `RATE_LIMIT_MCP_AI` | `10/minute` | Rate limit for ask_assistant tool, per caller |
 
 ### Docker Compose
@@ -107,16 +108,96 @@ Clients can pass a JWT token in the `Authorization: Bearer <token>` header. The 
 
 ## Tools
 
-The MCP server exposes two tools, both read-only:
+The MCP server exposes read-only tools:
 
 | Tool | Description | Rate Limit |
 |------|-------------|------------|
-| `search` | Hybrid semantic + keyword search across document chunks | 30/min |
-| `get_document` | Retrieve full document metadata by ID | 30/min |
+| `search` | Hybrid semantic + keyword search across document chunks | 1 unit from the shared allowance |
+| `get_document` | Retrieve full document metadata by ID | 1 unit from the shared allowance |
+| `heatmap` | Compare counts in a grid with up to 24 cells | 1 unit to plan, plus 1 per cell |
+| `heatmap_cell` | List documents from a selected grid cell | 1 unit per page |
 
 For synthesised research answers, use the [A2A Server](a2a-server.md) `research` skill.
 
 Tool parameters, descriptions, and available data sources are driven by `config.json`. When data sources are added or removed, the MCP tool descriptions update automatically.
+
+## Heatmapper in an MCP Apps host
+
+Set `APP_BASE_URL` to the public Evidence Lab web address. Set
+`MCP_PUBLIC_URL` to the exact public HTTPS address you will enter in Claude,
+including any path prefix and `/mcp`. A different trailing slash changes the
+sandbox origin. Use [the custom connector steps](../overview/mcp.md#connecting-claude)
+to sign in. Inline rendering and clicking a cell use the connector's existing
+authentication. The HTML has no external scripts or API calls.
+
+For local testing through a Claude Desktop standard-input/output (stdio)
+bridge, use the local HTTP address for `MCP_PUBLIC_URL`. Claude gives the
+local app its sandbox origin. If the bridge connects to an HTTPS deployment,
+strip `_meta.ui.domain` from its UI resource responses before forwarding them
+to Claude Desktop.
+
+When the user module is enabled, signed-in MCP users must have access to the
+requested data source through Group Settings for Search and Heatmapper.
+Server and managed API keys retain access to the configured data sources.
+Each heatmap and each selected-cell call adds an entry to the MCP audit log.
+Hosts that support app-only tool visibility show `heatmap_cell` to the app.
+
+Both tools describe their input fields in `tools/list`. The `heatmap` result
+includes a text table in `content` and a grid in `structuredContent`.
+Read `counts[row][column]` using the order of `rows.values` and
+`columns.values`. A true value at the same position in `capped_cells`
+means that search reached `candidate_limit`. A row or column's `omitted`
+count records how many values are outside the displayed grid.
+
+To read a cell, send the result's `request` as `grid`, the zero-based
+`row` and `column`, the result's `cutoff` (including null), and
+`fingerprints[row][column]` as `fingerprint`. The tool returns up to 20
+matching documents. Use `next_offset` as `offset` to fetch another page.
+If the evidence has changed, rerun the grid to get a new fingerprint.
+
+The Heatmapper uses Evidence Lab’s logo, colors, and typefaces. Docker Compose reads
+the same [branding folder](customization.md) as the web build when
+`CUSTOMIZE_ASSETS` is set. For a separate MCP service, mount that folder
+read-only and set `MCP_BRANDING_DIR` to its path inside the service. The view
+uses the name from `manifest.json`, embeds `logo.png` as a PNG up to 512 KiB,
+and reads the `--brand-primary`, `--brand-primary-light`, and
+`--brand-accent-dark` colors from `theme.css` as three- or six-digit hex
+values. The Heatmapper bundles Evidence Lab's Open Sans and Poppins fonts.
+When the theme sets `--font-body` or `--font-heading`, the Heatmapper can
+use matching normal WOFF2 faces from its `fonts/` folder. It supports font
+weights 400, 600, and 700, with a 64 KiB limit per font file. The browser
+loads the font bytes from the HTML without requesting a font URL.
+
+The Python Docker image includes the HTML. For host development, build it
+from the checkout with Node 22 or later before starting the MCP server.
+
+```sh
+npm ci --prefix mcp_server/resources/heatmap --legacy-peer-deps --ignore-scripts
+npm run --prefix mcp_server/resources/heatmap build
+```
+
+Read the tool and resource metadata using an existing server or admin-managed
+API key from your shell environment.
+
+```sh
+rpc() {
+  curl --silent --show-error --fail-with-body "$MCP_PUBLIC_URL" \
+    -H 'Accept: application/json, text/event-stream' \
+    -H 'Content-Type: application/json' \
+    -H "X-API-Key: $MCP_API_KEY" --data "$1"
+}
+
+rpc '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+  | jq '.result.tools[] | select(.name == "heatmap") | {name, _meta}'
+
+rpc '{"jsonrpc":"2.0","id":2,"method":"resources/read","params":{"uri":"ui://evidencelab/heatmap.html"}}' \
+  | jq '.result.contents[] | {uri, mimeType, _meta, htmlCharacters: (.text | length)}'
+```
+
+The tool points to `ui://evidencelab/heatmap.html` and the resource returns
+`text/html;profile=mcp-app`. With the default allowance of 30 units per minute,
+a full heatmap uses 25 units. A deployment with a smaller allowance also has
+a smaller grid limit.
 
 ## Monitoring
 

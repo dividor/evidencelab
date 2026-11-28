@@ -7,6 +7,7 @@ The HTTP server (http_server.py) handles transport and authentication.
 import json
 import logging
 import time
+from inspect import getdoc
 from typing import Annotated, Any, List, Optional
 
 from mcp.server.fastmcp import FastMCP
@@ -14,7 +15,12 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from mcp_server.audit import log_mcp_call, request_auth, request_client_ip
+from mcp_server.resources.heatmap import (
+    heatmap_tool_metadata,
+    register_heatmap_resource,
+)
 from mcp_server.schemas import MCPDocumentResponse, MCPSearchResponse
+from mcp_server.tools.heatmap import heatmap, heatmap_cell
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +40,12 @@ def _data_source_description() -> str:
     sources = _load_config().get("datasources", {})
     entries = []
     for name, conf in sources.items():
-        subdir = conf.get("data_subdir", "")
+        subdir = conf.get("data_subdir") or name
         entries.append(f'"{subdir}" ({name})')
     return (
         "Data collection to search. Options: "
         + ", ".join(entries)
-        + ". Required when there is more than one."
+        + ". Required when there is more than one and the deployment has no default."
     )
 
 
@@ -111,11 +117,24 @@ mcp = FastMCP(
         "explicitly requests a different one.\n\n"
         "TOOLS:\n"
         "  - search: Find relevant text passages across documents\n"
-        "  - get_document: Retrieve full metadata for a specific document\n\n"
+        "  - get_document: Retrieve full metadata for a specific document\n"
+        "  - heatmap: Compare document or paragraph counts in a grid\n\n"
         "For synthesised research answers, use the Evidence Lab A2A agent "
         "at <base_url>/a2a (Agent-to-Agent protocol)."
     ),
 )
+
+
+mcp.tool(
+    description=f"{getdoc(heatmap)}\n\n{_data_source_description()}",
+    annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False),
+    meta=heatmap_tool_metadata(),
+)(heatmap)
+mcp.tool(
+    annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False),
+    meta=heatmap_tool_metadata(app_only=True),
+)(heatmap_cell)
+register_heatmap_resource(mcp)
 
 
 # ---------------------------------------------------------------------------

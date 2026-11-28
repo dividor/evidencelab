@@ -142,6 +142,9 @@ my-branding/
 Stock builds (no `CUSTOMIZE_ASSETS`) copy nothing and are byte-identical to plain
 Evidence Lab.
 
+See [Heatmapper in an MCP Apps host](mcp-server.md#heatmapper-in-an-mcp-apps-host)
+for the branding assets shared with the in-chat view.
+
 ## Deployment facts: operator, contact, site URL and hosting region
 
 The pages the app renders from `docs/` (About, Privacy Policy, Terms of Service, Connecting to AI Platforms and the rest) are shared markdown, but a few facts differ per deployment: who operates the instance (the data controller under the GDPR), where it is hosted, its public address, and how to contact the operator. The Contact dialog and the deep links in the Word export use the same facts. They are set with environment variables and substituted when the pages render:
@@ -170,7 +173,7 @@ used when its variable is set.
 
 | Env var | Asset | How it's consumed | Default (stock) |
 |---------|-------|-------------------|-----------------|
-| `CUSTOMIZE_ASSETS` | `branding/` | UI build context (branding overlay) | `./customize` |
+| `CUSTOMIZE_ASSETS` | `branding/` | UI build context and read-only MCP branding mount in Compose | `./customize` |
 | `CONFIG_SRC` | folder with `config.json` | UI build context (baked into the bundle) **and** mounted into the api at `/app/config.json` by the deploy override | `.` (repo root) |
 | `CADDYFILE_PATH` | `Caddyfile` | bind-mounted into the reverse proxy by the deploy override | `./Caddyfile` |
 | `GCP_CREDS_PATH` | `gcp-creds.json` | bind-mounted read-only into the api at `/app/gcp-creds.json` by the deploy override | `./gcp-creds.json` |

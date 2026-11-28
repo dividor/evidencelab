@@ -6,7 +6,7 @@ from the auth context that MCP and A2A set for every request
 address matters behind the reverse proxy, where every request arrives from
 the proxy's address.
 
-Limits come from ``RATE_LIMIT_MCP_SEARCH`` (search and get_document) and
+Limits come from ``RATE_LIMIT_MCP_SEARCH`` (search, get_document, and Heatmapper) and
 ``RATE_LIMIT_MCP_AI`` (the assistant), in the usual ``"10/minute"`` form.
 """
 
@@ -39,14 +39,21 @@ def _caller() -> str:
     return str(auth.get("key_hash") or auth.get("user_id") or "unknown")
 
 
-def check_caller_rate_limit(kind: str) -> None:
-    """Count one ``kind`` call ("search" or "ai") for the current caller.
+def rate_limit_allowance(kind: str) -> int:
+    """Return the maximum units available per window."""
+    return parse(_LIMITS[kind]).amount
+
+
+def check_caller_rate_limit(kind: str, *, cost: int = 1) -> None:
+    """Charge ``cost`` units to the ``kind`` budget ("search" or "ai") for the current caller.
 
     Raises McpRateLimitExceeded when the caller is over its limit.
     """
+    if cost < 1:
+        raise ValueError("MCP rate limit cost must be positive")
     limit_string = _LIMITS[kind]
     caller = _caller()
-    if not _limiter.hit(parse(limit_string), "mcp", kind, caller):
+    if not _limiter.hit(parse(limit_string), "mcp", kind, caller, cost=cost):
         logger.warning("MCP rate limit exceeded: kind=%s caller=%s", kind, caller)
         raise McpRateLimitExceeded(
             f"Rate limit exceeded ({limit_string} for {kind}). Try again shortly."

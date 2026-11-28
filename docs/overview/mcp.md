@@ -6,7 +6,7 @@ Evidence Lab can be connected to AI platforms and agent frameworks via two open 
 |---|---|---|
 | **Protocol** | Model Context Protocol | Agent-to-Agent |
 | **Used by** | LLMs (Claude, ChatGPT) calling tools | AI agents delegating full research tasks |
-| **Returns** | Raw passages, document metadata | Synthesised answers with citations |
+| **Returns** | Raw passages, document metadata, interactive heatmaps | Synthesised answers with citations |
 | **URL** | `/mcp` | `/a2a` |
 | **Auth** | OAuth 2.0 or API Key | API Key or Bearer token |
 
@@ -18,12 +18,19 @@ Evidence Lab supports the [Model Context Protocol (MCP)](https://modelcontextpro
 
 ### Connecting Claude
 
-In the Claude desktop or web app:
+In Claude on the web or desktop, open **Plugins** (called **Customize** in
+some versions) and find **Connectors**.
 
-1. Click **+** → **Connectors** → **Manage Connectors**
-2. Click **+** → **Add custom connector**
-3. Enter a name (e.g. *Evidence Lab*) and the URL: `{{SITE_URL}}/mcp`
-4. You will be prompted to log in with your Evidence Lab account
+1. Choose **Add** and add a custom web connector.
+2. Name it **Evidence Lab** and enter `{{SITE_URL}}/mcp`. If your administrator
+   gives you a different connector URL, use it exactly as written.
+3. For OAuth sign-in, choose **Register automatically** if Claude asks how
+   to register its OAuth client. Then sign in with your Evidence Lab account
+   and approve the connection.
+4. Enable the connector from the **+** menu in the conversation.
+
+See [Claude's custom connector guide](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)
+for organization permissions and connection settings.
 
 ### Connecting ChatGPT
 
@@ -56,6 +63,38 @@ Retrieve full metadata for a specific document by ID.
 |-----------|---------|-------------|
 | `doc_id` | *required* | Document identifier (from search results) |
 | `data_source` | `"uneg"` | Collection containing the document |
+
+#### `heatmap`
+
+Compare document or paragraph counts in an interactive grid. With an MCP Apps
+host such as Claude on the web or desktop, you can change the axes, select a
+cell to see the documents, ask Claude about it, and open the grid in Evidence
+Lab. Text-only clients can read the counts from the tool result.
+
+Try asking Claude:
+
+> Use the Evidence Lab Heatmapper on UNEG. Show UNDP and UNICEF as rows
+> and publication years 2022, 2023, and 2024 as columns. Count documents.
+
+Pass the options in the tool's `request` object. A grid has at most four
+rows, six columns, and 24 cells. A deployment can set a smaller limit.
+
+| Field | What to pass |
+|-------|--------------|
+| `data_source` | The collection key, such as `uneg`. Required if the deployment has several collections and no default. |
+| `row_dimension` | A configured facet key such as `organization`, or `queries` to show one topic per row. |
+| `column_dimension` | A different facet key with up to 20 available categories, or `published_year`. |
+| `row_values`, `column_values` | Exact values for the axes, such as `["UNDP", "UNICEF"]` or `["2023", "2024"]`. Omit these fields to use the most frequent values. |
+| `query` | One search query to use in every cell when both axes are facets. |
+| `row_queries` | One distinct query per row when `row_dimension` is `queries`. Leave `query` and `row_values` unset. |
+| `filters` | Facet restrictions for the entire grid. Use an exact value or a list of values for each key. |
+| `metric` | Use `documents` (the default) or `chunks` (matching paragraphs). Paragraph counts require a query. |
+
+Call `search` with `include_facets: true` to discover facet keys and
+values for a collection. Use the values as returned, including years as strings.
+
+See [Heatmapper](../using-evidence-lab/heatmapper.md#heatmapper-in-claude)
+for what counts describe and which controls are available.
 
 ### Authentication
 
