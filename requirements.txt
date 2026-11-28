@@ -82,7 +82,7 @@ langchain==1.5.2
 langchain-core==1.8.4
 langchain-community==0.4.2
 langchain-huggingface==1.2.2
-langchain-openai==1.6.0
+langchain-openai==1.8.5
 langchain-anthropic==1.7.0
 langchain-aws==1.7.5
 boto3==1.43.123
