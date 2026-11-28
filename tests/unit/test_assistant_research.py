@@ -1271,7 +1271,47 @@ async def test_brief_edits_an_overlong_draft_before_losing_its_last_finding():
     words = sum(len(f.split()) for f in (start, detail, end))
     assert len(prompts) == 2 and f"draft has {words} words" in prompts[1]
     assert "target is 19 words" in prompts[1]
-    assert "16 to 22 words" in prompts[0].split("Source 1:")[-1]
+    assert "Aim for 19 words of supported prose" in prompts[0].split("Source 1:")[-1]
+    assert next(e["token"] for e in events if e["type"] == "token") == (
+        f"{start} [1]. {end} [1]."
+    )
+
+
+@pytest.mark.asyncio
+async def test_brief_expands_checked_prose_when_raw_draft_exceeds_target():
+    start = "The motor stopped twice"
+    end = "Replacing the damaged switch restored continuous operation"
+    rejected = (
+        "The installation had previously set a record for uninterrupted operation "
+        "during periods of exceptionally high demand"
+    )
+    events, _, model = await run_research(
+        [
+            '{"queries":[]}',
+            _brief_draft((start, 1, start), (rejected, 1, start)),
+            _brief_draft((start, 1, start), (end, 1, end)),
+        ],
+        [[point(1, f"{start}. {end}.")]],
+        scope_check=lambda _, rows: [
+            {
+                "id": row["id"],
+                "subject": "Motor performance",
+                "reason": "Check the observation against the maintenance log.",
+                "keep": rejected not in row["text"],
+                "source_matches_assignment": rejected not in row["text"],
+            }
+            for row in rows
+        ],
+        brief_section=BriefSectionPrompt(outline=[{"title": "Recovery"}], current=0),
+        target_words=12,
+    )
+    revision = [
+        call.args[0][-1].content
+        for call in model.ainvoke.await_args_list
+        if call.args[0][0].content.startswith("Write the prose of one section")
+    ][1]
+    assert "about 8 more words of distinct evidence" in revision
+    assert "Edit this draft as a complete section" not in revision
     assert next(e["token"] for e in events if e["type"] == "token") == (
         f"{start} [1]. {end} [1]."
     )

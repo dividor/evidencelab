@@ -573,7 +573,6 @@ async def write_grounded_brief(
             repair_draft = raw
             draft_words = len(strip_citation_markers(raw).split())
             continue
-        draft_words = len(strip_citation_markers(raw).split())
         text, issues, prepared_quotes = _brief_draft_text(
             raw,
             evidence,
@@ -601,8 +600,9 @@ async def write_grounded_brief(
             words, written_words, repair_draft, minimum_words, issues
         ):
             accepted, written_words = candidate, words
+        draft_words = len(strip_citation_markers(text).split())
         if attempt == 0 and _exceeds_word_budget(draft_words, target_words):
-            repair_draft = raw
+            repair_draft = _revision_notes(text, selected_sources)
             continue
         if written_words >= minimum_words:
             break

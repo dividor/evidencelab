@@ -1,5 +1,5 @@
 {% macro word_budget() -%}
-The reader has room for about {{ target_words }} words in total. {% if introduces %}Frame the shared question and reserve the findings for the subheadings.{% else %}Choose a central answer to this heading and cover its requested parts. Use only the evidence needed to develop or qualify that answer.{% endif %} Leave other excerpts unused. Deliver the complete section in the requested voice, with citations, aiming for {{ (target_words * 0.85) | round | int }} to {{ (target_words * 1.15) | round | int }} words when the evidence supports it.
+Aim for {{ target_words }} words of supported prose, excluding citation labels. {% if introduces %}Frame the shared question and reserve the findings for the subheadings.{% else %}Develop the central answer and its requested parts with specific observations from the excerpts. Include documented conditions, comparisons or examples where they help explain the answer.{% endif %} Stop when the available evidence is exhausted.
 {%- endmacro -%}
 {% if system -%}
 Write the prose of one section of an evidence brief. Follow the author's writing guidance and voice. Write continuous paragraphs, separated by a blank line.
@@ -26,7 +26,7 @@ Use only the distinct information this section contributes.
 {% endif %}
 {% if accepted %}
 Use this checked draft as notes. Return a complete revised section, integrating its supported findings with evidence that develops the answer. You may rewrite the opening and group related findings in the same paragraph. Cite each sentence again using the excerpt labels in this request.
-{% if target_words %}The draft contains {{ written_words }} words. The target for the complete section is {{ target_words }} words.{% endif %}
+{% if target_words %}The draft contains {{ written_words }} words. The target for the complete section is {{ target_words }} words.{% if written_words < target_words %} Keep the supported findings and develop them with about {{ target_words - written_words }} more words of distinct evidence from the excerpts. Integrate the details into the paragraphs they explain.{% endif %}{% endif %}
 {{ accepted | tojson }}
 {% endif %}
 {% if issues %}
