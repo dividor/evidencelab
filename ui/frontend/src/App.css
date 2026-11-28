@@ -215,6 +215,13 @@ h6,
   gap: var(--spacing-xl);
 }
 
+@media (min-width: 1400px) {
+  .top-bar-content {
+    max-width: none;
+    padding-inline-start: calc((100% - 1400px) / 2 + var(--spacing-xl));
+  }
+}
+
 .top-bar-left {
   display: flex;
   align-items: center;

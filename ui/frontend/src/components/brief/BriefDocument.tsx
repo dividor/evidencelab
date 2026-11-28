@@ -3,7 +3,7 @@ import { SearchResult, SourceReference } from '../../types/api';
 import { CitedMarkdown, CitedReferences, RequestCitationHighlight } from '../citations/CitedContent';
 import { IconClock, IconCopy, IconDownload, IconEdit, IconFactCheck, IconRefresh, IconShare, IconSparkle } from './BriefIcons';
 import { BriefActionMenu, BriefAction } from './BriefActionMenu';
-import { BriefDocumentActions } from './BriefDocumentActions';
+import { BriefDocumentActions, DocumentAiActions } from './BriefDocumentActions';
 import { BriefAskAi } from './BriefAskAi';
 import { BriefSectionFrame } from './BriefSectionFrame';
 import { BriefClaimDialog } from './BriefClaimDialog';
@@ -84,6 +84,7 @@ interface SectionViewProps {
   onSourceClick: (source: SourceReference) => void;
   // Viewer-only (shared brief): no editing or AI actions.
   readOnly?: boolean;
+  checkingFacts?: boolean;
   // Hover on an un-enriched citation asks for that source to be highlighted.
   onRequestHighlight?: RequestCitationHighlight;
   // Commented passages in this section, and the thread currently open.
@@ -253,6 +254,7 @@ const SectionTools: React.FC<{
   showLog: boolean;
   onToggleEdit: () => void;
   onRegenerate: () => void;
+  checkingFacts: boolean;
   regenerationFailed: boolean;
   onAiEdit: () => void;
   onAiUpdate: () => void;
@@ -264,6 +266,7 @@ const SectionTools: React.FC<{
   showLog,
   onToggleEdit,
   onRegenerate,
+  checkingFacts,
   regenerationFailed,
   onAiEdit,
   onAiUpdate,
@@ -271,7 +274,7 @@ const SectionTools: React.FC<{
 }) => (
   <div className="brief-doc-section-tools">
     <BriefAskAi
-      label={`Ask AI for ${title}`}
+      label={`Ask AI for ${title}`} disabled={checkingFacts}
       buttonClass="brief-regen-btn"
       actions={[
         {
@@ -293,7 +296,7 @@ const SectionTools: React.FC<{
         },
       ]}
     />
-    <button className="brief-regen-btn" onClick={onToggleEdit}>
+    <button className="brief-regen-btn" onClick={onToggleEdit} disabled={checkingFacts}>
       <IconEdit /> {editing ? 'Done' : 'Edit'}
     </button>
     {showLog && (
@@ -623,12 +626,52 @@ const SectionResearchFailure: React.FC<{
   );
 };
 
+function SectionResearchControls({ section, brief, panelOpen, busy, locked, onSourceClick }:
+  Pick<SectionViewProps, 'section' | 'brief' | 'onSourceClick'> & { panelOpen: boolean; busy: boolean; locked: boolean }) {
+  const pendingMode = pendingResearchMode(section, panelOpen, busy, locked);
+  return <>
+    {(panelOpen || pendingMode === 'inline') && (
+        <GuidancePanel section={section} brief={brief} hideCancel={pendingMode === 'inline'} />
+      )}
+
+      {pendingMode === 'button' && (
+        <SectionPending sample onResearch={() => brief.openRegen(section.id)} />
+      )}
+
+      {section.status === 'researching' && (
+        <SectionResearching section={section} onSourceClick={onSourceClick} />
+      )}
+  </>;
+}
+
+function SectionHeading({ section, num, brief, readOnly }: Pick<SectionViewProps, 'section' | 'num' | 'brief' | 'readOnly'>) {
+  return (
+      <div className="brief-doc-section-head">
+        {num && <span className="brief-doc-section-num">{num}</span>}
+        <input
+          className="brief-doc-section-title"
+          aria-label="Heading"
+          value={section.title}
+          onChange={(e) => brief.editTitle(section.id, e.target.value)}
+          onBlur={brief.commitEdits}
+          readOnly={readOnly}
+        />
+        {section.status === 'done' && (
+          <span className="brief-doc-section-words" title={sectionWordsTitle(section, brief.targetWords)}>
+            {countWords(section.content).toLocaleString()} words
+          </span>
+        )}
+      </div>
+  );
+}
+
 const BriefSectionView: React.FC<SectionViewProps> = ({
   section,
   num,
   brief,
   onSourceClick,
   readOnly = false,
+  checkingFacts = false,
   onRequestHighlight,
   marks,
   onOpenThread,
@@ -645,11 +688,11 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   const [aiPanel, setAiPanel] = useState<null | 'edit' | 'update'>(null);
   const [aiText, setAiText] = useState('');
   const [logOpen, setLogOpen] = useState(false);
-  const changes = useSectionChanges(section, !!readOnly);
-  const panelOpen = brief.regenFor === section.id;
+  const locked = readOnly || checkingFacts;
+  const changes = useSectionChanges(section, locked);
+  const panelOpen = !checkingFacts && brief.regenFor === section.id;
   const isDone = section.status === 'done';
-  const anyResearching = brief.researching;
-  const pendingMode = pendingResearchMode(section, panelOpen, anyResearching, !!readOnly);
+  const anyResearching = brief.researching || checkingFacts;
   const audit = section.audit ?? [];
   const auditCount = audit.length;
   // Signed-in users who can open the brief see the Log; a brief kept only in
@@ -671,22 +714,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
       data-brief-section-id={section.id}
       className={`brief-doc-section${section.level === 2 ? ' brief-doc-section-sub' : ''}`}
     >
-      <div className="brief-doc-section-head">
-        {num && <span className="brief-doc-section-num">{num}</span>}
-        <input
-          className="brief-doc-section-title"
-          aria-label="Heading"
-          value={section.title}
-          onChange={(e) => brief.editTitle(section.id, e.target.value)}
-          onBlur={brief.commitEdits}
-          readOnly={readOnly}
-        />
-        {isDone && (
-          <span className="brief-doc-section-words" title={sectionWordsTitle(section, brief.targetWords)}>
-            {countWords(section.content).toLocaleString()} words
-          </span>
-        )}
-      </div>
+      <SectionHeading section={section} num={num} brief={brief} readOnly={locked} />
 
       <SectionResearchFailure
         section={section}
@@ -702,7 +730,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
         <ViewerLogButton show={showLog} auditCount={auditCount} onOpen={() => setLogOpen(true)} />
       )}
       {isDone && !readOnly && (
-        <SectionTools
+        <SectionTools checkingFacts={checkingFacts}
           title={section.title}
           editing={editing}
           auditCount={auditCount}
@@ -731,7 +759,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
         />
       )}
 
-      {aiPanel && (
+      {aiPanel && !checkingFacts && (
         <AiInstructionPanel
           mode={aiPanel}
           title={section.title}
@@ -774,24 +802,15 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
         />
       )}
 
-      {(panelOpen || pendingMode === 'inline') && (
-        <GuidancePanel section={section} brief={brief} hideCancel={pendingMode === 'inline'} />
-      )}
-
-      {pendingMode === 'button' && (
-        <SectionPending sample onResearch={() => brief.openRegen(section.id)} />
-      )}
-
-      {section.status === 'researching' && (
-        <SectionResearching section={section} onSourceClick={onSourceClick} />
-      )}
+      <SectionResearchControls section={section} brief={brief} panelOpen={panelOpen}
+        busy={anyResearching} locked={locked} onSourceClick={onSourceClick} />
 
       {isDone && (
         <SectionDoneBody
           section={section}
           brief={brief}
-          editing={editing}
-          readOnly={readOnly}
+          editing={editing && !checkingFacts}
+          readOnly={locked}
           versionEntry={changes.versionEntry}
           onCloseVersion={changes.closeVersion}
           reviewOpen={changes.reviewOpen}
@@ -811,13 +830,24 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   );
 };
 
+function FactCheckLegend({ factCheck }: { factCheck?: UseBriefFactCheckReturn }) {
+  return <>{factCheck?.active && <div className="brief-fact-legend" role="group" aria-label="Fact check results">
+          <strong>Showing fact check results</strong>
+          {factCheck.legend.filter(item => item.count > 0).map(item => <span key={item.verdict} className="brief-fact-legend-item">
+            <span className={`brief-fact-swatch brief-fact-mark-${item.verdict}`} />{item.label} {item.count}
+          </span>)}
+          <button type="button" className="brief-fact-hide" onClick={factCheck.toggle}>Hide results</button>
+        </div>}
+        {factCheck?.notice && <p role="status">{factCheck.notice}</p>}</>;
+}
+
 const FactCheckButton = ({ factCheck }: { factCheck: UseBriefFactCheckReturn }) => (
   <BriefActionMenu label="Fact Checker" buttonText="Fact Checker" icon={IconFactCheck}
     buttonClass="brief-export-word brief-fact-check" actions={[
-      { label: 'Check Facts', icon: IconFactCheck, onSelect: factCheck.start,
+      { label: 'Run Fact Checker', icon: IconFactCheck, onSelect: factCheck.start,
         disabled: !!factCheck.disabledReason || !!factCheck.run || factCheck.busy,
         title: factCheck.disabledReason || undefined },
-      { label: factCheck.active ? 'Hide results' : 'Display Results', icon: IconFactCheck,
+      { label: factCheck.active ? 'Hide results' : 'Show Fact Checks', icon: IconFactCheck,
         onSelect: factCheck.toggle, disabled: !factCheck.available, title: factCheck.note },
     ]} />
 );
@@ -871,12 +901,7 @@ const HeaderActions: React.FC<{
   return (
     <div className="brief-doc-header-actions" aria-label="Whole document actions">
       {!readOnly && hasSections && (
-        <BriefAskAi
-          label="Ask AI for the whole brief"
-          buttonClass="brief-regen-all"
-          actions={aiActions}
-          disabled={!canEditStructure}
-        />
+        <DocumentAiActions actions={aiActions} disabled={!canEditStructure} />
       )}
       {factCheck && <FactCheckButton factCheck={factCheck} />}
       <BriefDocumentActions actions={moreActions} />
@@ -953,7 +978,7 @@ const ProgressBar = ({ label, count, percent, stop, stopLabel, stopping }: {
         onClick={stop} disabled={stopping}
         aria-label={stopLabel} title={stopLabel}
       >
-        {stopping ? 'Stopping…' : '■ Stop'}
+        {stopping ? 'Stopping…' : 'Stop'}
       </button>
     </div>
   );
@@ -1121,9 +1146,11 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
 
 
   // Viewer-only: a brief shared with (not owned by) this user renders read-only.
+  const checkingFacts = !!(factCheck?.run || factCheck?.busy);
   const readOnly = !brief.canEdit;
   // Structural edits (reorder/add/remove via the TOC) lock while research runs.
-  const canEditStructure = !readOnly && !brief.researching;
+  const editingLocked = readOnly || checkingFacts;
+  const canEditStructure = !editingLocked && !brief.researching;
 
   // A cited excerpt from the Fact Checker's card, opened the same way.
   const handleEvidenceClick = (source: BriefFactCheckEvidence) => {
@@ -1180,14 +1207,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
             factCheck={factCheck}
             onHistory={() => setVersionsOpen(true)}
           />
-        {factCheck?.active && <div className="brief-fact-legend" role="group" aria-label="Fact check results">
-          <strong>Showing fact check results</strong>
-          {factCheck.legend.filter(item => item.count > 0).map(item => <span key={item.verdict} className="brief-fact-legend-item">
-            <span className={`brief-fact-swatch brief-fact-mark-${item.verdict}`} />{item.label} {item.count}
-          </span>)}
-          <button type="button" className="brief-fact-hide" onClick={factCheck.toggle}>Hide results</button>
-        </div>}
-        {factCheck?.notice && <p role="status">{factCheck.notice}</p>}
+        <FactCheckLegend factCheck={factCheck} />
         <div className="brief-doc-header-top">
           <div className="brief-eyebrow">EVIDENCE BRIEF</div>
 
@@ -1202,7 +1222,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
             onBlur={brief.commitEdits}
             rows={1}
             aria-label="Brief title"
-            readOnly={readOnly}
+            readOnly={editingLocked}
           />
 
         </div>
@@ -1210,6 +1230,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
         {versionsOpen && (
           <BriefVersionsModal
             briefId={brief.getServerBriefId()}
+            readOnly={editingLocked}
             onRestore={brief.restoreBriefVersion}
             onClose={() => setVersionsOpen(false)}
           />
@@ -1244,6 +1265,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           marks={showComments === false ? undefined : commentMarks?.get(s.id)}
           onOpenThread={onOpenThread}
           activeThreadId={activeThreadId}
+          checkingFacts={checkingFacts}
           factMarks={factCheck?.marks.get(s.id)}
           factNote={factCheck?.changedSections.get(s.id)?.note}
           onSelectClaim={factCheck?.selectClaim}
@@ -1255,7 +1277,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           <button
             className="brief-btn brief-btn-primary"
             onClick={onRegenerateAll || (() => void brief.startResearch())}
-            disabled={!sections.length}
+            disabled={!sections.length || checkingFacts}
           >
             Start deep research →
           </button>
@@ -1265,6 +1287,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
       <BriefReferences
         references={brief.references}
         groups={brief.referenceGroups}
+        locked={checkingFacts}
         grouping={brief.referenceGrouping}
         onGroupingChange={brief.setReferenceGrouping}
         onSourceClick={handleSourceClick}

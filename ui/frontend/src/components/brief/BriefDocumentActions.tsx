@@ -1,21 +1,34 @@
 import React, { useEffect, useState } from 'react';
+import { BriefAskAi } from './BriefAskAi';
 import { BriefAction, BriefActionMenu } from './BriefActionMenu';
 
-function ActionButtons({ actions }: { actions: BriefAction[] }) {
+function ActionButtons({ actions, primary = false, locked = false }: { actions: BriefAction[]; primary?: boolean; locked?: boolean }) {
   return <>{actions.map(({ label, icon: Icon, onSelect, disabled, title }) => (
-    <button key={label} type="button" className="brief-regen-all" onClick={onSelect}
-      disabled={disabled} title={title}><Icon /> {label}</button>
+    <button key={label} type="button" className={primary ? 'brief-regen-all brief-ai-primary' : 'brief-regen-all'} onClick={onSelect}
+      disabled={locked || disabled} title={title}><Icon /> {label}</button>
   ))}</>;
 }
 
-/** Keep secondary document actions visible when the viewport has room. */
-export function BriefDocumentActions({ actions }: { actions: BriefAction[] }) {
+function useCompactActions() {
   const [compact, setCompact] = useState(() => window.innerWidth <= 1024);
   useEffect(() => {
     const resize = () => setCompact(window.innerWidth <= 1024);
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
   }, []);
+  return compact;
+}
+
+export function DocumentAiActions({ actions, disabled }: { actions: BriefAction[]; disabled: boolean }) {
+  return useCompactActions()
+    ? <BriefAskAi label="Ask AI for the whole brief" buttonClass="brief-regen-all" actions={actions} disabled={disabled} />
+    : <div className="brief-secondary-start" role="group" aria-label="Whole brief AI actions">
+        <ActionButtons actions={actions} primary locked={disabled} />
+      </div>;
+}
+
+export function BriefDocumentActions({ actions }: { actions: BriefAction[] }) {
+  const compact = useCompactActions();
   if (!actions.length) return null;
   if (compact) return <BriefActionMenu label="More actions" buttonText="More Actions"
     buttonClass="brief-regen-all brief-more-actions" actions={actions} />;

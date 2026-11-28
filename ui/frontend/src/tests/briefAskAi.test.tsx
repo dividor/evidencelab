@@ -72,6 +72,31 @@ test('the Brief header groups the existing whole-brief actions under Ask AI', ()
   expect(brief.updateAll).toHaveBeenCalledTimes(1);
 });
 
+test('whole-brief AI actions are buttons on wide screens and move into Ask AI on phones', () => {
+  const originalWidth = window.innerWidth;
+  const resize = (width: number) => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+    act(() => { window.dispatchEvent(new Event('resize')); });
+  };
+  try {
+    resize(1440);
+    const brief = makeBrief();
+    const regenerate = jest.fn();
+    render(<BriefDocument brief={brief} showToc={false} onRegenerateAll={regenerate} />);
+    fireEvent.click(getButton(REGENERATE_ALL));
+    expect(regenerate).toHaveBeenCalledTimes(1);
+    fireEvent.click(getButton('AI Get Updates for All Sections'));
+    expect(brief.updateAll).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: wholeBriefAskAi })).toBeNull();
+    resize(390);
+    expect(screen.queryByRole('button', { name: REGENERATE_ALL })).toBeNull();
+    fireEvent.click(getButton(wholeBriefAskAi));
+    expect(getButton(REGENERATE_ALL)).toBeVisible();
+  } finally {
+    resize(originalWidth);
+  }
+});
+
 test('a completed section opens the matching AI action and keeps Edit visible and puts history in More', () => {
   const brief = makeBrief();
   render(<BriefDocument brief={brief} showToc={false} />);

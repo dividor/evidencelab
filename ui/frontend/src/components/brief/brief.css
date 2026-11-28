@@ -2476,32 +2476,20 @@
 }
 
 /* ---------- workspace additions ---------- */
-.brief-back-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
 .brief-back-btn {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  background: var(--brand-surface);
-  border: 1px solid var(--brand-border);
-  color: var(--brand-text-secondary);
-  font-family: var(--font-heading);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 8px 13px;
+  gap: 6px;
+  min-height: 32px;
+  margin-bottom: 6px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--brand-accent);
+  font: 600 14px var(--font-heading);
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
-
-.brief-back-btn:hover {
-  background: var(--brand-border-light);
-  color: var(--brand-text-primary);
-}
+.brief-back-btn:hover { text-decoration: underline; }
 
 .brief-viewer-chip {
   font-size: 12.5px;
@@ -4149,8 +4137,8 @@
   .brief-doc-header-actions { margin: -20px -18px 20px; padding: 12px 18px; }
 }
 
-.brief-expanded-actions { flex: 1; display: flex; flex-wrap: wrap; gap: 8px; }
-.brief-expanded-actions button { min-height: 44px; border-radius: .35rem; font: 600 13px var(--font-heading); }
+.brief-expanded-actions { display: contents; }
+.brief-expanded-actions button, .brief-secondary-start > .brief-ai-primary { min-height: 44px; border-radius: .35rem; font: 600 13px var(--font-heading); }
 .brief-doc-header-actions > button,
 .brief-doc-header-actions > .brief-action-menu > button,
 .brief-expanded-actions button { height: 44px; box-sizing: border-box; }

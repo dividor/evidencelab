@@ -176,7 +176,7 @@ describe('Fact Checker on an open brief', () => {
     render(<BriefTab dataSource="wfp" onResultClick={onResultClick} />);
     fireEvent.click(await screen.findByTitle(OPEN_BRIEF));
     fireEvent.click(await screen.findByRole('button', { name: FACT_CHECKER }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Display Results' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Show Fact Checks' }));
     fireEvent.click(await waitFor(() => {
       const mark = document.querySelector(FACT_MARK_SELECTOR);
       if (!mark) throw Error('Waiting for highlight');
@@ -224,7 +224,7 @@ describe('Fact Checker on an open brief', () => {
     mockGet.mockImplementation(answer({ ...withCheck, marks: [partial] }));
     await openBrief();
     fireEvent.click(await screen.findByRole('button', { name: FACT_CHECKER }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Display Results' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Show Fact Checks' }));
     const mark = await waitFor(() => {
       const found = document.querySelector<HTMLElement>('.brief-fact-mark.brief-fact-mark-partially_supported');
       if (!found) throw Error('Waiting for the sentence highlight');
@@ -262,7 +262,7 @@ describe('Fact Checker on an open brief', () => {
     expect(screen.queryByRole('group', { name: FACT_LEGEND })).toBeNull();
 
     fireEvent.click(button);
-    const display = screen.getByRole('button', { name: 'Display Results' });
+    const display = screen.getByRole('button', { name: 'Show Fact Checks' });
     expect(display).toHaveAttribute('title', expect.stringContaining(NOTE));
     fireEvent.click(display);
     expect(screen.getByRole('group', { name: FACT_LEGEND })).toHaveTextContent('Showing fact check results');
@@ -316,16 +316,20 @@ describe('Fact Checker on an open brief', () => {
     render(<BriefTab dataSource="wfp" modelCombo="Selected models" />);
     fireEvent.click(await screen.findByTitle(OPEN_BRIEF));
     fireEvent.click(await screen.findByRole('button', { name: FACT_CHECKER }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Check Facts' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Run Fact Checker' }));
     expect(mockPost).toHaveBeenCalledWith(FACT_CHECK_URL + '/runs', { model_combo: 'Selected models' });
-    await screen.findByRole('button', { name: 'Stop fact check' });
+    expect(await screen.findByRole('button', { name: 'Stop fact check' })).toHaveTextContent(/^Stop$/);
+    expect(screen.getByRole('button', { name: 'Ask AI for the whole brief' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Ask AI for Findings' })).toBeDisabled();
+    screen.getAllByRole('button', { name: 'Edit', exact: true }).forEach(button => expect(button).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Brief Central' })).toBeEnabled();
     checked = true;
     await act(async () => finish({ data: { ...pending, status: 'completed' } }));
     expect(await screen.findByText('Showing fact check results')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Hide results' }));
     fireEvent.click(screen.getByRole('button', { name: FACT_CHECKER }));
-    expect(screen.getByRole('button', { name: 'Check Facts' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Display Results' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Run Fact Checker' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Show Fact Checks' })).toBeEnabled();
   });
 
   test('a written brief without a completed check can start its first check', async () => {
@@ -333,7 +337,7 @@ describe('Fact Checker on an open brief', () => {
     await openBrief();
     await waitFor(() => expect(mockGet).toHaveBeenCalledWith(FACT_CHECK_URL));
     fireEvent.click(screen.getByRole('button', { name: FACT_CHECKER }));
-    expect(screen.getByRole('button', { name: 'Display Results' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Check Facts' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Show Fact Checks' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Run Fact Checker' })).toBeEnabled();
   });
 });
