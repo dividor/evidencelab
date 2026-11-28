@@ -673,6 +673,17 @@ class BriefTemplateRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class EvaluationTemplateRead(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str | None
+    owner_name: str | None
+    section_count: int
+    sections: list[str]
+    heading_numbers: list[str]
+    can_delete: bool
+
+
 class BriefCreate(BaseModel):
     """Payload for saving a brief.
 
@@ -1071,6 +1082,7 @@ class AssistantChatRequest(BaseModel):
     query: str = Field(..., max_length=5000)
     thread_id: Optional[str] = None
     data_source: Optional[str] = Field(None, max_length=255)
+    model_combo: Optional[str] = Field(None, min_length=1, max_length=255)
     assistant_model_config: Optional[AssistantModelConfig] = None
     reranker_model: Optional[str] = None
     search_settings: Optional[AssistantSearchSettings] = None

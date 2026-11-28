@@ -224,6 +224,8 @@ The panel has two sections:
 
 The **Group Settings** tab lets you configure default search behavior for each group. Users inherit these defaults when they log in, and can still override most of them in the UI; the models chosen on the **LLMs** tab they can't.
 
+You can refresh or bookmark an Admin page. In **Group Settings**, the address includes the selected group and settings tab. In **Testing → Experiments**, it can reopen the saved dataset or experiment. Back and Forward move between the pages you visited. Save any form changes before refreshing.
+
 ![Admin Group Settings](../images/admin/group-settings.png)
 
 Select a group using the buttons at the top. The settings are grouped into tabs (Search Settings, Content Settings, Search AI Summary, Assistant, Brief, Document Summaries, LLMs, Features & Tabs, Appearance); **Save Settings** saves the changes on every tab at once.
@@ -309,13 +311,14 @@ Defaults for document summaries that administrators regenerate on the Documents 
 
 #### LLMs
 
-Which model does each AI job for the group's members. Each list offers the models in `config.json`'s `supported_llms`. The first option, **Default from config**, names the model `config.json` gives that job, and the group uses it.
+Choose the models used by members of the group. Each list offers the models in `config.json`’s `supported_llms`. **Use evaluation judge** makes automatic citation checking follow the judge for the current run. The other lists offer **Default from config**.
 
 | Setting | What the model does | Default from config |
 |---------|---------------------|---------------------|
 | **Search AI summary** | Writes the AI summary above search results. | The model combo's `summarization_model`. |
 | **Brief** | Writes a Brief's outline, its sections and edits. | The model combo's `assistant_model`, else its `summarization_model`. |
 | **Evaluation judge** | Scores the LLM-judge checks of [evaluation](evaluation.md) runs, and the Brief citation check. | The model combo's `judge_model`, else its `summarization_model`. |
+| **Automatic citation check** | Verifies cited passages while the Assistant or Brief writes. | Uses the run’s evaluation judge. Selecting a checker here overrides that choice. |
 
 - **A choice here overrides `config.json`**, including the model combo a member picks. Members can't change it.
 - **A member of several groups** gets the choice of the first of their groups, by name, that makes one. This is the same rule as every other group setting.

@@ -1,0 +1,39 @@
+[
+  {
+    "type": "brief_structure"
+  },
+  {
+    "type": "brief_length"
+  },
+  {
+    "type": "brief_overlap"
+  },
+  {
+    "type": "brief_intro_scope"
+  },
+  {
+    "type": "brief_factual",
+    "rubric": "Check factual grounding against the cited excerpts. Fail any uncited factual claim or altered population, degree of certainty, cause, figure or denominator. Quote the weakest claim verbatim, including its qualifiers. If it describes frequency, quote the source words establishing that frequency for the same group and event. Evidence that a problem occurred is insufficient. If frequency is unmeasured, name the unsupported modifier and score below full credit.",
+    "threshold": 1,
+    "label": "Factual support from citations"
+  },
+  {
+    "type": "brief_relevance",
+    "rubric": "Does the section answer the question assigned by its template, heading and section instructions? Check its subject and any specified population, setting, version or period against the cited material. Identify any requested part that is missing or off topic. Require a measurement or comparison only if the assignment asks for it. Assess the strength of support for individual claims in the factual support check.",
+    "threshold": 1,
+    "label": "Relevance to the template and section"
+  },
+  {
+    "type": "brief_voice"
+  },
+  {
+    "type": "brief_writing",
+    "rubric": "Does the section read as developed, connected prose? Look for an opening answer followed by evidence, explanation or qualification of the same point. Fail a succession of isolated fact summaries, even when each is cited. Accept a concise introduction or a short paragraph with a clear purpose. Judge the writing against the requested voice and length.",
+    "threshold": 1,
+    "label": "Paragraph development and flow"
+  },
+  {
+    "type": "brief_paragraphs",
+    "max_percent": 50
+  }
+]

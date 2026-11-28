@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../../config';
 import type { TestCapability } from '../../../types/testing';
-import { parseQaCsv, QaCsvRow } from './csv';
+import { parseQaCsv, QaCsvRow, SAMPLE_QA_CSV } from './csv';
 import FilterHelp from './FilterHelp';
 import { DEFAULT_THRESHOLD, importDatasetWithExperiment } from './experimentImport';
 import {
@@ -155,8 +155,7 @@ const CreateDatasetWithExperimentModal: React.FC<
         <div className="modal-body">
           {error && <div className="auth-error">{error}</div>}
           <p className="text-muted" style={{ marginTop: 0 }}>
-            Upload dataset and expectation to create experiment. See the parent
-            page for a link to a sample sheet.
+            Each row creates a case in a new dataset. Its expected answer becomes a grading instruction in the new experiment.
           </p>
           <form onSubmit={handleSubmit}>
             <div className="form-group">
@@ -238,6 +237,9 @@ const CreateDatasetWithExperimentModal: React.FC<
                 >
                   {fileName || 'Choose CSV…'}
                 </button>
+                <a download="qa-experiment-sample.csv" href={'data:text/csv;charset=utf-8,' + encodeURIComponent(SAMPLE_QA_CSV)}>
+                  Download example CSV
+                </a>
               </div>
               <input
                 id="cde-file"

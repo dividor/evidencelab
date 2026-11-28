@@ -71,6 +71,33 @@ const SEARCH_ASSERTIONS: AssertionTypeSpec[] = [
   },
 ];
 
+const judgeSpec: AssertionTypeSpec = {
+  type: 'llm_judge',
+  label: 'LLM judge',
+  fields: [
+    {
+      key: 'label', label: 'Check name', type: 'text',
+      placeholder: 'For example, Accuracy of the cited figures',
+    },
+    {
+      key: 'rubric',
+      label: 'Judge prompt',
+      type: 'textarea',
+      required: true,
+      placeholder:
+        'Describe what a good answer must contain. The judge returns a 0-1 '
+        + 'score and a reason.',
+    },
+    {
+      key: 'threshold',
+      label: 'Threshold (0-1)',
+      type: 'number',
+      required: true,
+      default: 1,
+    },
+  ],
+};
+
 const AI_SUMMARY_ASSERTIONS: AssertionTypeSpec[] = [
   {
     type: 'contains_text',
@@ -105,33 +132,32 @@ const AI_SUMMARY_ASSERTIONS: AssertionTypeSpec[] = [
     label: 'Cites source',
     fields: [{ key: 'source', label: 'Source', type: 'text', required: true }],
   },
-  {
-    type: 'llm_judge',
-    label: 'LLM judge',
-    fields: [
-      {
-        key: 'rubric',
-        label: 'Judge prompt',
-        type: 'textarea',
-        required: true,
-        placeholder:
-          'Describe what a good answer must contain. The judge returns a 0-1 '
-          + 'score and a reason.',
-      },
-      {
-        key: 'threshold',
-        label: 'Threshold (0-1)',
-        type: 'number',
-        required: true,
-        default: 1,
-      },
-    ],
-  },
+  judgeSpec,
 ];
 
 export const ASSERTION_SPECS_BY_CAPABILITY: Record<TestCapability, AssertionTypeSpec[]> = {
   search: SEARCH_ASSERTIONS,
   ai_summary: AI_SUMMARY_ASSERTIONS,
+  brief: [
+    { type: 'brief_voice', label: 'Selected voice and tone profile', fields: [] },
+    { type: 'brief_length', label: 'Word count meets target', fields: [] },
+    { type: 'brief_structure', label: 'Section format and citations', fields: [] },
+    {
+      type: 'brief_paragraphs', label: 'Limit one-sentence paragraphs',
+      fields: [{
+        key: 'max_percent', label: 'Maximum percentage in sections with three or more paragraphs',
+        type: 'number', required: true, default: 50,
+      }],
+    },
+    { type: 'brief_intro_scope', label: 'Introduction leaves details to subheadings', fields: [] },
+    { type: 'brief_overlap', label: 'Findings are distinct across sections', fields: [] },
+    judgeSpec,
+    { ...judgeSpec, type: 'brief_factual', label: 'Factual support from citations',
+      fields: judgeSpec.fields.map(field => field.key === 'rubric'
+        ? { ...field, default: 'Check factual grounding against the cited excerpts.' } : field) },
+    { ...judgeSpec, type: 'brief_relevance', label: 'Relevance to the template and section' },
+    { ...judgeSpec, type: 'brief_writing', label: 'Judge writing against the assignment' },
+  ],
 };
 
 export const getAssertionSpecs = (capability: TestCapability): AssertionTypeSpec[] =>
@@ -141,3 +167,19 @@ export const getAssertionSpec = (
   capability: TestCapability,
   type: string,
 ): AssertionTypeSpec | undefined => getAssertionSpecs(capability).find((s) => s.type === type);
+
+// Existing starter experiments recorded the criterion text without a display name.
+const starterCriterionNames: Record<string, string> = {
+  'Check factual grounding against the cited excerpts.': 'Factual support from citations',
+  'Read the brief topic together with its section heading.': 'Relevance to the assigned topic and heading',
+  'Check whether the voice, tone and language suit the requested reader.': 'Voice and tone for the reader',
+  'Does the section read as developed, connected prose?': 'Paragraph development and flow',
+};
+
+export function judgeCriterionName(type: string, rubric: unknown, label?: unknown): string {
+  if (typeof label === 'string' && label.trim()) return label.trim();
+  const text = typeof rubric === 'string' ? rubric.trim() : '';
+  const opening = text.match(/^[\s\S]*?[.!?](?=\s|$)/)?.[0] || text;
+  return starterCriterionNames[opening] || opening ||
+    (type === 'brief_writing' ? 'Writing quality' : 'Custom grading criterion');
+}

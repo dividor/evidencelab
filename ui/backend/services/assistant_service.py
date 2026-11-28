@@ -19,13 +19,28 @@ from ui.backend.services.assistant_citations import (
     remap_citations,
 )
 from ui.backend.services.assistant_graph import SearchTracker, build_research_agent
+from ui.backend.services.assistant_grounding import InvalidAssistantResponse
 from ui.backend.services.assistant_settings import AssistantSettings
 from ui.backend.services.brief_citation_model import cited_numbers_in_order
 from ui.backend.services.llm_service import summarize_usage_metadata
 from ui.backend.utils.llm_request_limits import max_output_tokens
-from utils.llm_factory import get_llm, resolve_effective_model_key
+from utils.llm_factory import get_llm
 
 logger = logging.getLogger(__name__)
+
+
+def research_error_message(error: Exception) -> str:
+    """Describe recognised failures without exposing provider or document details."""
+    if isinstance(error, InvalidAssistantResponse):
+        return "The model returned a response that could not be verified."
+    for cause in (error, error.__cause__):
+        if getattr(cause, "status_code", None) == 429:
+            return (
+                "The model provider is rate-limiting requests. Please try again later."
+            )
+        if getattr(cause, "code", None) == "content_filter":
+            return "The model provider blocked this request under its content policy."
+    return "The Assistant could not complete this request."
 
 
 # Token ceiling for a requested length in words. English prose runs at about
@@ -182,6 +197,7 @@ async def stream_research_response(
     citation_order: bool = True,
     brief_section_prompt: Optional[str] = None,
     brief_section: Optional[BriefSectionPrompt] = None,
+    survey_only: bool = False,
     check_citations: bool = True,
     citation_model_key: Optional[str] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
@@ -204,7 +220,7 @@ async def stream_research_response(
             model_key, temperature, max_tokens_for_target(max_tokens, target_words)
         )
         reviewer, reviewer_usage = _reviewer_model(
-            citation_model_key if check_citations else None, model_key
+            citation_model_key if check_citations else None
         )
         graph, tracker, search_budget = build_research_agent(
             llm,
@@ -232,6 +248,13 @@ async def stream_research_response(
                 "initial_search_query": initial_search_query,
                 "brief_target_words": target_words,
                 "messages": _build_conversation_messages(conversation_messages),
+                "survey_only": survey_only,
+                "require_deep_plan": (
+                    deep_research
+                    and not survey_only
+                    and (brief_section is None or brief_section.mode == "generate")
+                    and search_budget >= 3
+                ),
             },
             config={
                 "run_id": run_id,
@@ -271,11 +294,11 @@ async def stream_research_response(
         if brief_section is not None:
             done["section_written"] = section_written
         yield done
-    except Exception:
+    except Exception as exc:
         logger.exception("Assistant research failed (run_id=%s)", run_id)
         yield {
             "type": "error",
-            "error": "The Assistant could not complete this request.",
+            "error": research_error_message(exc),
         }
 
 
@@ -292,8 +315,8 @@ def _research_sources(
     return [source for source in sources if source["index"] in citations]
 
 
-def _reviewer_model(checker_key: Optional[str], writer_key: Optional[str]) -> tuple:
-    if not checker_key or checker_key == resolve_effective_model_key(writer_key):
+def _reviewer_model(checker_key: Optional[str]) -> tuple:
+    if not checker_key:
         return None, None
     usage = UsageMetadataCallbackHandler()
     budget = min(2000, max_output_tokens(checker_key))

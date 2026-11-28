@@ -14,6 +14,7 @@ stored source text, which readers see and which highlighting matches against,
 is not changed.
 """
 
+import json
 import re
 
 # Pipeline footnote references and their definitions' markers: "[^94]", with
@@ -39,3 +40,12 @@ def passage_for_agent(text: str) -> str:
     cleaned = _FOOTNOTE_MARKER.sub("", text)
     cleaned = _BRACKETED_REFERENCE.sub("", cleaned)
     return _PARAGRAPH_NUMBER.sub(r"\1", cleaned)
+
+
+def passage_title_with_fields(passage: dict) -> str:
+    """Give the model the source title and its catalogued scope."""
+    title = passage["title"]
+    fields = passage.get("document_fields")
+    if not fields:
+        return title
+    return f"{title} | Document fields: {json.dumps(fields, ensure_ascii=False)}"

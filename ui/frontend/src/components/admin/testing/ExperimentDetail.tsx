@@ -2,24 +2,19 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../../config';
 import type {
-  AssertionResult,
   ExperimentDetail as ExperimentDetailType,
-  RunProgress,
   TestCase,
-  TestResult,
   TestRun,
 } from '../../../types/testing';
 import {
-  formatCostUsd,
   formatMs,
   formatPercent,
   formatScore,
   formatTimestamp,
-  formatTokens,
-  prettyJson,
 } from './testingFormat';
 import RunPassRateChart from './RunPassRateChart';
-import { resultWarnings } from './resultWarnings';
+import { RunStats, RunProgressBar } from './BriefScoreStats';
+import { RemainingSections, ResultRow, ResultTable } from './ResultTable';
 import { runConfigHeadline, runConfigRows } from './runConfig';
 
 interface ExperimentDetailProps {
@@ -34,331 +29,6 @@ const isActive = (status?: string): boolean =>
   status === 'pending' || status === 'running';
 
 /* ------------------------------------------------------------------ */
-/*  Per-run summary strip — every number labelled with its unit        */
-/* ------------------------------------------------------------------ */
-
-const RunStats: React.FC<{ run: TestRun }> = ({ run }) => {
-  const stats = run.summary_stats;
-  return (
-    <div className="testing-summary-header">
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Pass rate</span>
-        <span>{formatPercent(stats?.pass_rate)}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Mean score</span>
-        <span>{formatScore(stats?.mean_score)}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Total cases</span>
-        <span>{stats?.total ?? '-'}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Passed</span>
-        <span>{stats?.passed ?? '-'}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Failed</span>
-        <span>{stats?.failed ?? '-'}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Errored</span>
-        <span>{stats?.errored ?? '-'}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Duration</span>
-        <span>{formatMs(stats?.duration_ms)}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Tokens</span>
-        <span>{formatTokens(stats?.total_tokens)}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Cost</span>
-        <span>{formatCostUsd(stats?.cost_usd)}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Started</span>
-        <span>{formatTimestamp(run.started_at)}</span>
-      </div>
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Finished</span>
-        <span>{formatTimestamp(run.finished_at)}</span>
-      </div>
-    </div>
-  );
-};
-
-/* ------------------------------------------------------------------ */
-/*  Per-assertion result row                                          */
-/* ------------------------------------------------------------------ */
-
-const AssertionResultRow: React.FC<{ result: AssertionResult }> = ({ result }) => {
-  const [showPrompt, setShowPrompt] = useState(false);
-  return (
-    <div className="testing-assertion-result">
-      {result.type === 'llm_judge' && (
-        <div className="testing-judge-rubric">
-          <div className="testing-judge-rubric-text">
-            {result.rubric || '(prompt not recorded for this run)'}
-          </div>
-          {result.judge_prompt && (
-            <>
-              <button
-                type="button"
-                className="testing-raw-toggle"
-                onClick={() => setShowPrompt((v) => !v)}
-              >
-                {showPrompt
-                  ? 'Hide full prompt sent to the LLM'
-                  : 'Show full prompt sent to the LLM'}
-              </button>
-              {showPrompt && (
-                <pre className="testing-pre testing-pre-scroll">{result.judge_prompt}</pre>
-              )}
-            </>
-          )}
-        </div>
-      )}
-      <div className="testing-assertion-result-main">
-        <span
-          className={`testing-badge testing-badge-${result.passed ? 'pass' : 'fail'}`}
-        >
-          {result.passed ? 'pass' : 'fail'}
-        </span>
-        <span className="testing-assertion-result-type">{result.type}</span>
-        {result.score !== undefined && (
-          <span className="testing-assertion-result-score">
-            score: {formatScore(result.score)}
-          </span>
-        )}
-        <span className="testing-assertion-result-message">{result.message}</span>
-      </div>
-    </div>
-  );
-};
-
-/* ------------------------------------------------------------------ */
-/*  Human-friendly output: AI summary + sources, or search cards      */
-/* ------------------------------------------------------------------ */
-
-type OutputBlob = Record<string, unknown> | null | undefined;
-
-const asArray = (v: unknown): Record<string, unknown>[] =>
-  Array.isArray(v) ? (v as Record<string, unknown>[]) : [];
-
-const str = (v: unknown): string => (typeof v === 'string' ? v : '');
-
-const SourceCard: React.FC<{ r: Record<string, unknown>; index: number }> = ({
-  r,
-  index,
-}) => {
-  const title =
-    str(r.title) || str(r.map_title) || str(r.doc_id) || `Result ${index + 1}`;
-  const org = str(r.organization) || str(r.map_organization);
-  const score = typeof r.score === 'number' ? r.score : undefined;
-  const text = str(r.text);
-  return (
-    <div className="testing-result-card">
-      <div className="testing-result-card-head">
-        <span className="testing-result-card-num">{index + 1}</span>
-        <span className="testing-result-card-title">{title}</span>
-        {score !== undefined && (
-          <span className="testing-result-card-score">{score.toFixed(3)}</span>
-        )}
-      </div>
-      {org && <div className="testing-result-card-org">{org}</div>}
-      {text && (
-        <div className="testing-result-card-snippet">
-          {text.length > 500 ? `${text.slice(0, 500)}…` : text}
-        </div>
-      )}
-    </div>
-  );
-};
-
-const ReferenceItem: React.FC<{ entry: Record<string, unknown> }> = ({ entry }) => {
-  const title = str(entry.title) || str(entry.doc_id) || 'Unknown';
-  const org = str(entry.organization);
-  const year = entry.year !== null && entry.year !== undefined ? String(entry.year) : '';
-  const url = str(entry.url);
-  const meta = [org, year].filter(Boolean).join(', ');
-  const num = entry.number !== undefined ? String(entry.number) : '';
-  return (
-    <li className="testing-reference">
-      {num && <span className="testing-reference-num">[{num}]</span>}{' '}
-      {url ? (
-        <a href={url} target="_blank" rel="noreferrer">
-          {title}
-        </a>
-      ) : (
-        <span>{title}</span>
-      )}
-      {meta && <span className="text-muted"> — {meta}</span>}
-    </li>
-  );
-};
-
-const ResultOutput: React.FC<{ output: OutputBlob }> = ({ output }) => {
-  const [showRaw, setShowRaw] = useState(false);
-  if (!output) return <p className="text-muted" style={{ margin: 0 }}>No output.</p>;
-
-  const summary = str(output.summary);
-  const references = asArray(output.references);
-  const sources = asArray(output.search_results);
-  const searchResults = asArray(output.results);
-
-  return (
-    <div className="testing-output">
-      {summary ? (
-        <>
-          <span className="testing-case-label">AI summary (with references)</span>
-          <div className="testing-summary-text">{summary}</div>
-          {references.length > 0 && (
-            <>
-              <span className="testing-case-label">
-                Cited references ({references.length})
-              </span>
-              <ol className="testing-references">
-                {references.map((entry, i) => (
-                  <ReferenceItem key={i} entry={entry} />
-                ))}
-              </ol>
-            </>
-          )}
-          {sources.length > 0 && (
-            <>
-              <span className="testing-case-label">Sources ({sources.length})</span>
-              <div className="testing-result-cards">
-                {sources.map((r, i) => (
-                  <SourceCard key={i} r={r} index={i} />
-                ))}
-              </div>
-            </>
-          )}
-        </>
-      ) : searchResults.length > 0 ? (
-        <>
-          <span className="testing-case-label">Search results ({searchResults.length})</span>
-          <div className="testing-result-cards">
-            {searchResults.map((r, i) => (
-              <SourceCard key={i} r={r} index={i} />
-            ))}
-          </div>
-        </>
-      ) : (
-        <pre className="testing-pre testing-pre-scroll">{prettyJson(output)}</pre>
-      )}
-
-      <button
-        type="button"
-        className="testing-raw-toggle"
-        onClick={() => setShowRaw((v) => !v)}
-      >
-        {showRaw ? 'Hide raw output' : 'Show raw output'}
-      </button>
-      {showRaw && (
-        <pre className="testing-pre testing-pre-scroll">{prettyJson(output)}</pre>
-      )}
-    </div>
-  );
-};
-
-/* ------------------------------------------------------------------ */
-/*  Expandable result row                                             */
-/* ------------------------------------------------------------------ */
-
-const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> }> = ({
-  result,
-  input,
-}) => {
-  const [expanded, setExpanded] = useState(false);
-  const [showOutput, setShowOutput] = useState(false);
-  const warnings = resultWarnings(result.actual_output);
-  return (
-    <>
-      <tr
-        className="testing-clickable-row testing-result-row"
-        onClick={() => setExpanded((v) => !v)}
-      >
-        <td className="testing-result-caret" aria-hidden>
-          {expanded ? '▾' : '▸'}
-        </td>
-        <td className="testing-result-case" title={str(input?.query)}>
-          {str(input?.query) || '—'}
-        </td>
-        <td>
-          <span
-            className={`testing-badge testing-badge-${result.status} testing-result-status`}
-          >
-            {result.status}
-          </span>
-        </td>
-        <td>{formatScore(result.score)}</td>
-        <td>{formatMs(result.latency_ms)}</td>
-        <td className={result.error_message ? 'testing-result-error' : 'testing-result-warning'}>
-          {result.error_message || warnings.join('; ')}
-        </td>
-      </tr>
-      {expanded && (
-        <tr className="testing-result-detail-row">
-          <td colSpan={6}>
-            <div className="testing-result-detail">
-              <div className="testing-case-block">
-                <span className="testing-case-label">Query</span>
-                <div className="testing-query">{str(input?.query) || '(no query)'}</div>
-                {input && Object.keys(input).some((k) => k !== 'query') && (
-                  <pre className="testing-pre">
-                    {prettyJson(
-                      Object.fromEntries(
-                        Object.entries(input).filter(([k]) => k !== 'query'),
-                      ),
-                    )}
-                  </pre>
-                )}
-              </div>
-              {warnings.length > 0 && (
-                <div className="testing-case-block">
-                  <span className="testing-case-label">Warnings</span>
-                  <ul className="testing-result-warning-list">
-                    {warnings.map((w, i) => (
-                      <li key={i} className="testing-result-warning">{w}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              <div className="testing-case-block">
-                <span className="testing-case-label">Expectations</span>
-                {(result.assertion_results || []).map((ar, i) => (
-                  <AssertionResultRow key={i} result={ar} />
-                ))}
-                {(result.assertion_results || []).length === 0 && (
-                  <p className="text-muted" style={{ margin: 0 }}>No expectation results.</p>
-                )}
-              </div>
-              <div className="testing-case-block">
-                <button
-                  type="button"
-                  className="testing-collapse-toggle"
-                  onClick={() => setShowOutput((v) => !v)}
-                  aria-expanded={showOutput}
-                >
-                  <span className="testing-collapse-caret" aria-hidden>
-                    {showOutput ? '▾' : '▸'}
-                  </span>
-                  <span className="testing-case-label">Output</span>
-                </button>
-                {showOutput && <ResultOutput output={result.actual_output} />}
-              </div>
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
-  );
-};
-
-/* ------------------------------------------------------------------ */
 /*  One run: collapsible header + its per-case results                */
 /* ------------------------------------------------------------------ */
 
@@ -367,43 +37,6 @@ const passRateLevel = (rate?: number | null): string => {
   if (rate >= 1) return 'good';
   if (rate > 0) return 'warn';
   return 'bad';
-};
-
-/* Live progress for an in-flight run: "k of N cases (z%)" plus a bar. The
-   backend publishes `progress` on summary_stats while running and replaces it
-   with the real stats on completion. */
-const RunProgressBar: React.FC<{ progress?: RunProgress | null }> = ({ progress }) => {
-  if (!progress) {
-    return (
-      <div className="testing-run-progress" role="status">
-        <span className="testing-run-progress-label">Starting…</span>
-      </div>
-    );
-  }
-  const { completed, total } = progress;
-  const fraction = total > 0 ? completed / total : 0;
-  return (
-    <div className="testing-run-progress" role="status">
-      <div className="testing-run-progress-label">
-        <span>
-          {completed} of {total} {total === 1 ? 'case' : 'cases'} processed
-        </span>
-        <span className="testing-run-progress-pct">{formatPercent(fraction)}</span>
-      </div>
-      <div
-        className="testing-run-progress-track"
-        role="progressbar"
-        aria-valuenow={completed}
-        aria-valuemin={0}
-        aria-valuemax={total}
-      >
-        <div
-          className="testing-run-progress-fill"
-          style={{ width: `${Math.round(fraction * 100)}%` }}
-        />
-      </div>
-    </div>
-  );
 };
 
 /* ------------------------------------------------------------------ */
@@ -476,6 +109,8 @@ const RunSection: React.FC<{
   const active = isActive(run.status);
   const results = run.results || [];
   const level = passRateLevel(stats?.pass_rate);
+  const isBrief = run.config?.capability === 'brief';
+  const unit = isBrief ? 'section' : 'case';
   return (
     <div className={`testing-run${isLatest ? ' testing-run--latest' : ''}`}>
       <button
@@ -484,7 +119,7 @@ const RunSection: React.FC<{
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
       >
-        <span className="testing-run-caret" aria-hidden>{open ? '▾' : '▸'}</span>
+        <span className="testing-run-caret" aria-hidden><span className="testing-disclosure-arrow" /></span>
         <span className="testing-run-number">Run&nbsp;#{run.run_number}</span>
         <span
           className={`testing-status testing-status-${run.status} testing-run-status`}
@@ -499,7 +134,7 @@ const RunSection: React.FC<{
                 {stats.progress.completed}
                 <span className="testing-run-progress-of">/{stats.progress.total}</span>
               </strong>
-              <span className="testing-run-metric-label">cases</span>
+              <span className="testing-run-metric-label">{unit}s</span>
             </span>
           </span>
         ) : (
@@ -512,7 +147,7 @@ const RunSection: React.FC<{
             </span>
             <span className="testing-run-metric">
               <strong>{formatScore(stats?.mean_score)}</strong>
-              <span className="testing-run-metric-label">score</span>
+              <span className="testing-run-metric-label">Mean Total Score</span>
             </span>
             <span className="testing-run-metric">
               <strong>{formatMs(stats?.duration_ms)}</strong>
@@ -527,33 +162,23 @@ const RunSection: React.FC<{
       {open && (
         <div className="testing-run-body">
           {stats?.error && <div className="auth-error">Run error: {stats.error}</div>}
-          {active && <RunProgressBar progress={stats?.progress} />}
-          <RunStats run={run} />
+          {active && <RunProgressBar progress={stats?.progress} unit={unit} />}
+          <RunStats stats={stats} brief={isBrief} total={stats?.total} passed={stats?.passed} failed={stats?.failed}
+            errored={stats?.errored} started={run.started_at} finished={run.finished_at} />
           <RunConfigPanel run={run} previous={previous} />
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th aria-label="expand" />
-                <th>Case</th>
-                <th>Status</th>
-                <th>Score</th>
-                <th>Latency</th>
-                <th>Error</th>
-              </tr>
-            </thead>
-            <tbody>
+          <ResultTable brief={isBrief} heading={isBrief ? 'Section and template' : 'Case'}>
               {results.map((r) => (
-                <ResultRow key={r.id} result={r} input={caseInputs[r.test_case_id]} />
+                <ResultRow key={r.id} brief={isBrief} result={r} input={r.test_case_id ? caseInputs[r.test_case_id] : undefined} />
               ))}
-              {results.length === 0 && (
+              <RemainingSections sections={stats?.progress?.remaining_sections} />
+              {results.length === 0 && !stats?.progress?.remaining_sections?.length && (
                 <tr>
-                  <td colSpan={6} className="text-muted">
+                  <td colSpan={isBrief ? 8 : 6} className="text-muted">
                     {active ? 'Running — results appear here as each case finishes…' : 'No results.'}
                   </td>
                 </tr>
               )}
-            </tbody>
-          </table>
+          </ResultTable>
         </div>
       )}
     </div>

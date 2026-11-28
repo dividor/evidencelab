@@ -32,10 +32,13 @@ AI requests are also limited by `config.json`: a request may only name a model l
 
 | Variable | Default | What it controls |
 |----------|---------|------------------|
-| `POSTGRES_POOL_MAX` | `16` | Connections for the search and document queries, **per data source**. This pool raises an error rather than queueing when it is empty, so it must cover the request concurrency the API serves. |
+| `POSTGRES_POOL_MAX` | `16` | Connections for the search and document queries, **per data source**. When all of them are in use, a request waits for one to come free. |
 | `POSTGRES_POOL_MIN` | `4` | Connections kept open when returned. Below this number the driver closes them, so a low value means reconnecting to Postgres on every request under load. |
-| `AUTH_DB_POOL_SIZE` | `10` | Connections for accounts, activity and briefs. Unlike the pool above, this one waits rather than failing. |
+| `POSTGRES_POOL_TIMEOUT` | `30` | How many seconds a request waits for a free connection from the pool above. If none comes free in time, the request fails with a 503 "The service is busy" error. Must be a number above 0. |
+| `AUTH_DB_POOL_SIZE` | `10` | Connections for accounts, activity and briefs. This pool also waits when all its connections are in use. |
 | `AUTH_DB_MAX_OVERFLOW` | `20` | Extra connections this pool may open temporarily beyond `AUTH_DB_POOL_SIZE`. |
+
+**A busy pool makes requests wait, not fail.** One search page asks for its filter counts and a page of document thumbnails at the same time, which can be more requests than `POSTGRES_POOL_MAX`. Each query takes milliseconds, so the waiting requests get a connection almost at once. A 503 "The service is busy" error means requests waited `POSTGRES_POOL_TIMEOUT` seconds without one: the database is slower than usual, or the pool is too small for the traffic. The API log then has lines containing `no Postgres connection came free`. Raise `POSTGRES_POOL_MAX` within the budget below, or find what is slowing the database.
 
 There is **one pool per process, per data source**, shared by every client object inside that process. That makes the budget below predictable, but it also means the count scales with processes, not just with settings.
 

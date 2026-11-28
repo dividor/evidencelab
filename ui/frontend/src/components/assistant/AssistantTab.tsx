@@ -18,11 +18,13 @@ import { ThreadSidebar } from './ThreadSidebar';
 
 interface AssistantTabProps {
   dataSource: string;
+  modelCombo?: string | null;
   assistantModelConfig?: SummaryModelConfig | null;
   rerankerModel?: string | null;
   searchSettings?: AssistantSearchSettings | null;
   exampleQueries?: string[];
   defaultDeepResearch?: boolean;
+  modelsReady?: boolean;
   onResultClick?: (result: SearchResult) => void;
 }
 
@@ -31,11 +33,13 @@ const nextMessageId = () => `local-${++messageIdCounter}`;
 
 export const AssistantTab: React.FC<AssistantTabProps> = ({
   dataSource,
+  modelCombo,
   assistantModelConfig,
   rerankerModel,
   searchSettings,
   exampleQueries,
   defaultDeepResearch = false,
+  modelsReady = true,
   onResultClick,
 }) => {
   const auth = useAuth();
@@ -244,7 +248,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   }, [onResultClick]);
 
   const submitQuery = useCallback(async (query: string) => {
-    if (!query.trim() || isStreaming) return;
+    if (!query.trim() || isStreaming || !modelsReady) return;
     setRequestError('');
 
     // Add user message
@@ -342,7 +346,8 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
         query: query.trim(),
         dataSource,
         threadId: activeThreadId,
-        assistantModelConfig: assistantModelConfig,
+        modelCombo,
+        assistantModelConfig,
         rerankerModel: rerankerModel,
         searchSettings: searchSettings,
         deepResearch,
@@ -408,7 +413,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
       setStreamingPhase('');
       abortRef.current = null;
     }
-  }, [isStreaming, dataSource, activeThreadId, assistantModelConfig, rerankerModel, searchSettings, deepResearch, isAuthenticated, loadThreads]);
+  }, [isStreaming, modelsReady, dataSource, activeThreadId, modelCombo, assistantModelConfig, rerankerModel, searchSettings, deepResearch, isAuthenticated, loadThreads]);
 
   const handleSubmit = useCallback(() => {
     submitQuery(inputValue);
@@ -507,6 +512,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
                   <button
                     key={q}
                     className="assistant-example-btn"
+                    disabled={!modelsReady}
                     onClick={() => submitQuery(q)}
                   >
                     {capitalize(q)}
@@ -539,7 +545,8 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
           onChange={setInputValue}
           onSubmit={handleSubmit}
           onStop={handleStop}
-          disabled={isStreaming}
+          disabled={isStreaming || !modelsReady}
+          placeholder={modelsReady ? undefined : 'Loading research settings…'}
           isStreaming={isStreaming}
           footerLeft={chatFooterLinks}
         />

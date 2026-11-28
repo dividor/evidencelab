@@ -5,8 +5,8 @@
 // section on screen is markdown rendered to DOM with citation badges
 // inline. The rendered output is searched with the badges skipped (see
 // briefTextRange) and each located passage is wrapped in a mark that carries
-// its verdict, so the reader sees the judge's flags in place and can hover
-// them for the explanation.
+// its verdict, so the reader sees the judge's flags in place and can select
+// a claim to inspect its assessment.
 
 import type { BriefFactCheckMark } from '../../types/testing';
 import { rangeForText, unwrapAll, wrapRange } from './briefTextRange';
@@ -20,6 +20,7 @@ const SKIP = `.citation-group, .brief-comment-bubble, .${FACT_MARK_CLASS}`;
 
 /** Remove previously painted marks, restoring the original text. */
 export const clearFactMarks = (root: HTMLElement): void => {
+  root.querySelectorAll('.brief-fact-claim-number').forEach(button => button.remove());
   unwrapAll(root, `.${FACT_MARK_CLASS}`);
 };
 
@@ -56,6 +57,23 @@ export const paintFactMarks = (root: HTMLElement, marks: BriefFactCheckMark[]): 
       return;
     }
     // One label for the passage, on its first span, for assistive technology.
+    if (mark.grade) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'brief-fact-claim-number';
+      button.textContent = `Claim ${mark.grade.claim}`;
+      button.setAttribute('aria-haspopup', 'dialog');
+      spans[0].prepend(button);
+    } else {
+      spans[0].tabIndex = 0;
+      spans[0].setAttribute('role', 'button');
+      spans[0].onkeydown = event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          spans[0].click();
+        }
+      };
+    }
     spans[0].setAttribute('aria-label', `${mark.verdict_label}: ${mark.explanation}`);
   });
   return missing;

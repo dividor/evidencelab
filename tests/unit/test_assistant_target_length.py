@@ -16,11 +16,55 @@ from ui.backend.services.assistant_graph import build_research_agent
 from ui.backend.services.assistant_service import (
     TARGET_LENGTH_HEADROOM_TOKENS,
     TOKENS_PER_WORD,
+    _reviewer_model,
     max_tokens_for_target,
 )
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 DEFAULT_LENGTH_RULE = "Develop at least three paragraphs"
+
+
+@pytest.mark.unit
+def test_citation_reviewer_uses_its_own_output_budget():
+    checker = "configured-checker"
+    with (
+        patch(
+            "ui.backend.services.assistant_service.max_output_tokens", return_value=4000
+        ),
+        patch("ui.backend.services.assistant_service._get_llm") as factory,
+    ):
+        reviewer, usage = _reviewer_model(checker)
+
+    factory.assert_called_once_with(checker, 0, 2000)
+    factory.return_value.with_config.assert_called_once_with(callbacks=[usage])
+    assert reviewer is factory.return_value.with_config.return_value
+
+
+@pytest.mark.unit
+def test_model_output_limit_survives_loading_config(monkeypatch):
+    from pipeline.db import config
+    from ui.backend.utils.llm_request_limits import max_output_tokens
+
+    models = config._load_llms(
+        {"supported_llms": {"checker": {"model": "review-model", "max_tokens": 2000}}}
+    )
+    monkeypatch.setattr(config, "SUPPORTED_LLMS", models)
+    monkeypatch.setattr(
+        config,
+        "UI_MODEL_COMBOS",
+        {"site": {"assistant_model": {"model": "checker", "max_tokens": 500}}},
+    )
+
+    assert max_output_tokens("checker") == 2000
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("limit", [True, 0, "2000"])
+def test_model_output_limit_must_be_a_positive_integer(limit):
+    from pipeline.db import config
+
+    with pytest.raises(ValueError, match="max_tokens must be a positive integer"):
+        config._load_llms({"supported_llms": {"checker": {"max_tokens": limit}}})
 
 
 @pytest.fixture

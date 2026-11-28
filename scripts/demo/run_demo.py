@@ -415,20 +415,20 @@ def save_config(config):
 
 
 def make_combo_default(config, combo):
-    """Mark the chosen provider's combo as the one the app starts on.
+    """Use the selected provider for the demo's reranker and citation checker.
 
-    The API's MCP and A2A tools, and the UI, start on the combo flagged
-    ``"default": true``. Leaving another provider's combo flagged would send
-    those requests to a provider the user has no keys for. Returns True if
-    config.json changed.
+    The UI, MCP and A2A use the default combo. Set its reranker to the one
+    declared by the demo provider so it works with the credentials that the
+    demo asks for. Return True if config.json changed.
     """
+    provider_name = combo["name"]
     combos = config.get("ui_model_combos", {})
-    if combo["name"] not in combos:
-        print(f"ERROR: config.json has no '{combo['name']}' entry in ui_model_combos.")
+    if provider_name not in combos:
+        print(f"ERROR: config.json has no '{provider_name}' entry in ui_model_combos.")
         sys.exit(1)
     changed = False
     for name, combo_config in combos.items():
-        wanted = name == combo["name"]
+        wanted = name == provider_name
         if bool(combo_config.get("default")) == wanted:
             continue
         if wanted:
@@ -437,7 +437,24 @@ def make_combo_default(config, combo):
             del combo_config["default"]
         changed = True
     if changed:
-        print(f"  Default model combo set to '{combo['name']}'")
+        print(f"  Default model combo set to '{provider_name}'")
+
+    selected_combo = combos[provider_name]
+    reranker = combo["reranker"]
+    if selected_combo.get("reranker_model") != reranker:
+        selected_combo["reranker_model"] = reranker
+        print(f"  Demo reranker set to '{reranker}'")
+        changed = True
+
+    assistant = config.setdefault("application", {}).setdefault("assistant", {})
+    brief_model = (
+        selected_combo.get("assistant_model") or selected_combo["summarization_model"]
+    )
+    citation_checker = brief_model["model"]
+    if assistant.get("citation_check_model") != citation_checker:
+        assistant["citation_check_model"] = citation_checker
+        print(f"  Demo citation checker set to '{citation_checker}'")
+        changed = True
     return changed
 
 
@@ -1085,8 +1102,8 @@ def main():
     print("[1/4] Configuring demo datasource...")
     config = load_config()
     added = ensure_demo_datasource(config, combo)
-    made_default = make_combo_default(config, combo)
-    if added or made_default:
+    combo_changed = make_combo_default(config, combo)
+    if added or combo_changed:
         save_config(config)
     print()
 

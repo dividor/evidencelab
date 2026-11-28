@@ -243,7 +243,7 @@ const RangeFieldInput: React.FC<RangeFieldInputProps> = ({
 /*  Editor form (inputs only — assertions live on experiments)        */
 /* ------------------------------------------------------------------ */
 
-interface CaseEditorProps {
+export interface CaseEditorProps {
   initialCase: TestCase | null;
   dataSource: string;
   saving: boolean;

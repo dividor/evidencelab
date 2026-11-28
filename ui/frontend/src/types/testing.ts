@@ -1,6 +1,6 @@
 // Types for the admin Search & AI-Summary evaluation harness (superuser-only).
 
-export type TestCapability = 'search' | 'ai_summary';
+export type TestCapability = 'search' | 'ai_summary' | 'brief';
 export type ExperimentStatus = 'draft' | 'pending' | 'running' | 'completed' | 'failed';
 export type ResultStatus = 'pass' | 'fail' | 'error';
 
@@ -53,9 +53,28 @@ export interface TestCase {
   updated_at: string;
 }
 
+export interface RepeatedPassage {
+  source_index: number;
+  source_quote: string;
+  target_quote: string;
+  assessment?: string;
+}
+
 export interface AssertionResult {
+  relevance?: { negatives: string[]; positives: string[] };
+  repetitions?: RepeatedPassage[];
+  section_assessment?: string;
   type: string;
-  passed: boolean;
+  label?: string;
+  quoted_claims?: number[];
+  factual_support?: boolean;
+  threshold?: number;
+  claim_grades?: { claim: number; outcome?: string; verdict?: CitationVerdict; unmet?: string[];
+    supporting_quotes?: { citation: number; quote: string }[]; reason: string; score?: number; passed?: boolean; error?: boolean }[];
+  error?: boolean;
+  not_run?: boolean;
+  applicable?: boolean;
+  passed?: boolean;
   message: string;
   score?: number;
   // For llm_judge: the rubric and the exact prompt sent to the judge LLM.
@@ -66,11 +85,17 @@ export interface AssertionResult {
 // Emitted only while a run is in flight, so the UI can show how far it has
 // progressed. Replaced by the aggregate fields below once the run completes.
 export interface RunProgress {
+  remaining_sections?: { template: string; heading: string; number?: string }[];
   completed: number;
   total: number;
 }
 
-export interface SummaryStats {
+export interface FactualClaimMetrics {
+  factual_claim_mean_score?: number | null;
+  factual_claim_pass_rate?: number | null;
+}
+
+export interface SummaryStats extends FactualClaimMetrics {
   total: number;
   passed: number;
   failed: number;
@@ -101,14 +126,30 @@ export interface TestExperiment {
   created_at: string;
 }
 
-export interface TestResult {
+export interface BriefEvalClaim {
+  parts: Array<{ text: string; marker?: boolean }>;
+  references: number[];
+}
+
+export interface BriefEvalReference {
+  label: string;
+  source_position: number | null;
+}
+
+export interface BriefEvalEvidence {
+  paragraphs: BriefEvalClaim[][];
+  references: BriefEvalReference[];
+}
+
+export interface TestResult extends FactualClaimMetrics {
   id: string;
   experiment_id: string;
   run_id?: string | null;
-  test_case_id: string;
+  test_case_id: string | null;
   status: ResultStatus;
   score?: number | null;
   actual_output?: Record<string, unknown> | null;
+  brief_evidence?: BriefEvalEvidence | null;
   assertion_results?: AssertionResult[] | null;
   latency_ms?: number | null;
   error_message?: string | null;
@@ -151,7 +192,10 @@ export interface CheckSectionStats {
   flagged_share: number;
 }
 
-export interface CheckSummaryStats {
+export interface CheckSummaryStats extends FactualClaimMetrics {
+  pass_rate?: number;
+  mean_score?: number | null;
+  section_counts?: Record<ResultStatus, number>;
   total?: number;
   verdicts?: Record<CitationVerdict, number>;
   flagged?: number;
@@ -169,6 +213,7 @@ export interface CheckSummaryStats {
 }
 
 export interface BriefCitationCheck {
+  check_kind?: "citation" | "full";
   id: string;
   brief_id: string;
   brief_title: string;
@@ -250,7 +295,12 @@ export interface BriefCitationCheckPassage {
   error_message?: string | null;
 }
 
+export type BriefSectionReview = FactualClaimMetrics & Pick<TestResult, 'actual_output' | 'brief_evidence' | 'assertion_results' | 'status' | 'score' | 'latency_ms' | 'error_message'> & {
+  section_id: string; heading: string; number: string;
+};
+
 export interface BriefCitationCheckDetail extends BriefCitationCheck {
+  section_results?: BriefSectionReview[] | null;
   passages: BriefCitationCheckPassage[];
 }
 
@@ -259,6 +309,8 @@ export interface BriefCitationCheckDetail extends BriefCitationCheck {
 // it (citation markers and markdown removed); the document locates it in the
 // rendered section.
 export interface BriefFactCheckMark {
+  claim_text?: string | null;
+  grade?: NonNullable<AssertionResult['claim_grades']>[number] | null;
   passage_id: number;
   section_id: string | null;
   section_title: string;

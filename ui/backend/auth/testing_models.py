@@ -36,7 +36,8 @@ from ui.backend.auth.models import Base
 # Capability identifiers (kept in sync with the evaluator/runner dispatch).
 CAPABILITY_SEARCH = "search"
 CAPABILITY_AI_SUMMARY = "ai_summary"
-VALID_CAPABILITIES = {CAPABILITY_SEARCH, CAPABILITY_AI_SUMMARY}
+CAPABILITY_BRIEF = "brief"
+VALID_CAPABILITIES = {CAPABILITY_SEARCH, CAPABILITY_AI_SUMMARY, CAPABILITY_BRIEF}
 
 # Experiment lifecycle states. An experiment is created as a ``draft`` (the
 # user defines per-row assertions + config), then ``run`` transitions it
@@ -234,10 +235,10 @@ class TestResult(Base):
         nullable=True,
         index=True,
     )
-    test_case_id: Mapped[uuid.UUID] = mapped_column(
+    test_case_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("test_cases.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     )
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -289,6 +290,8 @@ class BriefCitationCheck(Base):
         nullable=False,
         index=True,
     )
+    check_kind: Mapped[str] = mapped_column(String(20), server_default="citation")
+    section_results: Mapped[list | None] = mapped_column(JSONB, deferred=True)
     # Snapshot: the brief may be renamed or re-researched after the check.
     brief_title: Mapped[str] = mapped_column(String(500), nullable=False)
     data_source: Mapped[str | None] = mapped_column(String(255), nullable=True)

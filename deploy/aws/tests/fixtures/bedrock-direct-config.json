@@ -1,0 +1,7 @@
+{
+  "application": {},
+  "datasources": {},
+  "supported_embedding_models": {
+    "aws_titan_v2": { "model_id": "amazon.titan-embed-text-v2:0", "source": "aws_bedrock" }
+  }
+}

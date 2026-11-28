@@ -3,7 +3,8 @@ import { SearchResult, SourceReference } from '../../types/api';
 import { CitedMarkdown, CitedReferences, RequestCitationHighlight } from '../citations/CitedContent';
 import { IconClock, IconCopy, IconDownload, IconEdit, IconFactCheck, IconRefresh, IconShare, IconSparkle } from './BriefIcons';
 import { BriefAskAi } from './BriefAskAi';
-import { BriefFactCheckTooltip } from './BriefFactCheckTooltip';
+import { BriefSectionFrame } from './BriefSectionFrame';
+import { BriefClaimDialog } from './BriefClaimDialog';
 import { useFactMarkPainter, UseBriefFactCheckReturn } from './useBriefFactCheck';
 import type { BriefFactCheckEvidence, BriefFactCheckMark } from '../../types/testing';
 import { BriefLengthControl } from './BriefLengthControl';
@@ -92,8 +93,7 @@ interface SectionViewProps {
   // moving over the marks (the document shows the judge's explanation).
   factMarks?: BriefFactCheckMark[];
   factNote?: string;
-  onFactPointerOver?: (target: EventTarget | null) => void;
-  onFactPointerLeave?: () => void;
+  onSelectClaim?: (target: EventTarget | null) => void;
 }
 
 // Tooltip for a section's word count: which target (if any) it was written to.
@@ -226,7 +226,10 @@ const GuidancePanel: React.FC<{
       <div className="brief-regen-actions">
         <button
           className="brief-btn brief-btn-primary"
-          onClick={() => brief.regenerate(section.id, (section.guidance || '').trim() || null)}
+          onClick={(event) => {
+            event.currentTarget.closest('section')?.querySelector<HTMLInputElement>('.brief-doc-section-title')?.focus({ preventScroll: true });
+            brief.regenerate(section.id, (section.guidance || '').trim() || null);
+          }}
         >
           {isPending ? 'Research section' : 'Re-research section'}
         </button>
@@ -393,8 +396,7 @@ const SectionDoneBody: React.FC<{
   activeThreadId?: string | null;
   factMarks?: BriefFactCheckMark[];
   factNote?: string;
-  onFactPointerOver?: (target: EventTarget | null) => void;
-  onFactPointerLeave?: () => void;
+  onSelectClaim?: (target: EventTarget | null) => void;
 }> = ({
   section,
   brief,
@@ -412,8 +414,7 @@ const SectionDoneBody: React.FC<{
   activeThreadId,
   factMarks,
   factNote,
-  onFactPointerOver,
-  onFactPointerLeave,
+  onSelectClaim,
 }) => {
   // Rendered exactly as the API returned them: the renumbered text and the
   // display sources behind its numbers.
@@ -512,12 +513,11 @@ const SectionDoneBody: React.FC<{
             className="brief-doc-content"
             ref={proseRef}
             onClick={(e) => {
+              onSelectClaim?.(e.target);
               const bubble = (e.target as HTMLElement).closest(`.${BUBBLE_CLASS}`);
               const threadId = bubble?.getAttribute('data-thread-id');
               if (threadId && onOpenThread) onOpenThread(threadId);
             }}
-            onMouseOver={onFactPointerOver ? (e) => onFactPointerOver(e.target) : undefined}
-            onMouseLeave={onFactPointerLeave}
           >
             <CitedMarkdown
               content={content}
@@ -634,8 +634,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   activeThreadId,
   factMarks,
   factNote,
-  onFactPointerOver,
-  onFactPointerLeave,
+  onSelectClaim,
 }) => {
   const [editing, setEditing] = useState(false);
   // The stored original being viewed from the Log, and its load state.
@@ -666,7 +665,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   };
 
   return (
-    <section
+    <BriefSectionFrame researching={section.status === 'researching'}
       id={`brief-section-${section.id}`}
       data-brief-section-id={section.id}
       className={`brief-doc-section${section.level === 2 ? ' brief-doc-section-sub' : ''}`}
@@ -804,11 +803,10 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
           activeThreadId={activeThreadId}
           factMarks={factMarks}
           factNote={factNote}
-          onFactPointerOver={onFactPointerOver}
-          onFactPointerLeave={onFactPointerLeave}
+          onSelectClaim={onSelectClaim}
         />
       )}
-    </section>
+    </BriefSectionFrame>
   );
 };
 
@@ -836,7 +834,7 @@ const ExportButton: React.FC<{
 const factCheckTitle = (factCheck: UseBriefFactCheckReturn): string => {
   const what =
     "Highlight every cited passage in the colour of the citation check's verdict; " +
-    "hover one for the verdict, the judge's reason and the evidence.";
+    "select a claim to read its assessment and sources.";
   return factCheck.note ? `${what} ${factCheck.note}` : what;
 };
 
@@ -850,7 +848,7 @@ const FactCheckLegend: React.FC<{ factCheck: UseBriefFactCheckReturn }> = ({ fac
         {item.label} <b>{item.count}</b>
       </span>
     ))}
-    <span className="brief-fact-legend-hint">Hover a highlight for the verdict and its evidence.</span>
+    <span className="brief-fact-legend-hint">Select a claim to see its assessment and sources.</span>
   </div>
 );
 
@@ -1091,9 +1089,7 @@ const ResearchProgress: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => (
     <div className="brief-doc-progress-row">
       <span>Researching…</span>
       <span className="brief-doc-progress-right">
-        {brief.regenerating
-          ? `${brief.updatedCount} of ${brief.regeneration?.total} updated`
-          : `${brief.doneCount}/${brief.sections.length}`}
+        {brief.doneCount}/{brief.sections.length}
         <button className="brief-stop-btn" onClick={brief.stopResearch} title="Stop all research">
           ■ Stop
         </button>
@@ -1282,7 +1278,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           showComments={showComments}
           onToggleComments={onToggleComments}
         />
-        {brief.stage === 'research' && brief.researching && <ResearchProgress brief={brief} />}
+        {brief.stage === 'research' && brief.researching && !brief.regenerating && <ResearchProgress brief={brief} />}
         <RegenerationResult brief={brief} />
         {logOpen && hasOutlineLog && <OutlineLog brief={brief} onClose={() => setLogOpen(false)} />}
       </div>
@@ -1305,8 +1301,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           activeThreadId={activeThreadId}
           factMarks={factCheck?.marks.get(s.id)}
           factNote={factCheck?.changedSections.get(s.id)?.note}
-          onFactPointerOver={factCheck?.onPointerOver}
-          onFactPointerLeave={factCheck?.onPointerLeave}
+          onSelectClaim={factCheck?.selectClaim}
         />
       ))}
 
@@ -1333,13 +1328,12 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
       />
 
       <ResearchStatusBar brief={brief} />
-      <BriefFactCheckTooltip
-        hover={factCheck?.hover ?? null}
-        evidence={factCheck?.evidence ?? null}
-        onEnter={factCheck?.onCardEnter}
-        onLeave={factCheck?.onCardLeave}
+      {factCheck?.selectedClaim && <BriefClaimDialog
+        mark={factCheck.selectedClaim}
+        onClose={factCheck.closeClaim}
+        evidence={factCheck.evidence}
         onOpenSource={onResultClick ? handleEvidenceClick : undefined}
-      />
+      />}
     </div>
   );
 };

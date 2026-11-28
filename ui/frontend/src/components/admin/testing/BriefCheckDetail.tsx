@@ -1,3 +1,6 @@
+import type { BriefSectionReview, RunProgress } from '../../../types/testing';
+import { RunStats, RunProgressBar } from './BriefScoreStats';
+import { RemainingSections, ResultRow, ResultTable } from './ResultTable';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../../config';
@@ -29,7 +32,7 @@ import {
 // passages table (the notebook's "All judgements" / "Flagged" sheets).
 
 interface BriefCheckDetailProps {
-  check: BriefCitationCheck;
+  checkId: string;
   dataSource: string;
   onBack: () => void;
   // Opens a cited passage in the app's document preview (never a new window).
@@ -70,6 +73,27 @@ const isActive = (status?: string): boolean => status === 'pending' || status ==
 /*  Summary header                                                    */
 /* ------------------------------------------------------------------ */
 
+function SectionReviews({ sections, counts, title, remaining }: { remaining?: RunProgress['remaining_sections']; title: string; sections: BriefSectionReview[]; counts?: NonNullable<CheckDetailType['summary_stats']>['section_counts'] }) {
+  const [showAll, setShowAll] = useState(true);
+  const attention = sections.filter(section => section.status !== 'pass');
+  const shown = showAll || !attention.length ? sections : attention;
+  return <div className="testing-section"><h3>Section checks</h3>
+    <p>{sections.length} {sections.length === 1 ? 'section checked' : 'sections checked'}.{' '}
+      {counts && <span>{counts.pass} passed · {counts.fail} failed · {counts.error} with errors.{' '}</span>}
+      {attention.length > 0 && attention.length < sections.length && <button className="btn-sm" onClick={() => setShowAll(!showAll)}>
+        {showAll ? 'Show sections needing attention' : 'Show all sections'}
+      </button>}
+    </p>
+    <div className="testing-run"><div className="testing-run-body">
+    <ResultTable brief heading="Section and brief" timeLabel="Check time">
+      {shown.map(section => <ResultRow brief key={section.section_id} result={section}
+        savedSection={{ template: title, number: section.number, heading: section.heading }} />)}
+      <RemainingSections sections={remaining} />
+    </ResultTable>
+    </div></div>
+  </div>;
+}
+
 const Summary: React.FC<{ detail: CheckDetailType }> = ({ detail }) => {
   const stats = detail.summary_stats || {};
   if (isActive(detail.status)) {
@@ -78,7 +102,7 @@ const Summary: React.FC<{ detail: CheckDetailType }> = ({ detail }) => {
     return (
       <div className="testing-run-progress" role="status">
         <div className="testing-run-progress-label">
-          <span>{p ? `${p.completed} of ${p.total} passages judged` : 'Starting…'}</span>
+          <span>{p ? `${p.completed} of ${p.total} ${detail.check_kind === 'full' ? 'sections checked' : 'passages judged'}` : detail.check_kind === 'full' ? 'Starting section checks…' : 'Starting…'}</span>
           <span className="testing-run-progress-pct">{formatPercent(fraction)}</span>
         </div>
         <div className="testing-run-progress-track" role="progressbar" aria-valuenow={p?.completed ?? 0} aria-valuemin={0} aria-valuemax={p?.total ?? 0}>
@@ -114,6 +138,26 @@ const Summary: React.FC<{ detail: CheckDetailType }> = ({ detail }) => {
     </div>
   );
 };
+
+function CheckResults({ detail, children }: React.PropsWithChildren<{ detail: CheckDetailType }>) {
+  if (detail.check_kind !== 'full') return <><Summary detail={detail} />{children}</>;
+  const active = isActive(detail.status);
+  return <>
+    {active && <RunProgressBar progress={detail.summary_stats?.progress} unit="section" />}
+    {detail.status === 'failed' && <Summary detail={detail} />}
+    <RunStats brief stats={detail.summary_stats} total={detail.summary_stats?.progress?.total ?? detail.section_results?.length}
+      passed={detail.summary_stats?.section_counts?.pass} failed={detail.summary_stats?.section_counts?.fail}
+      errored={detail.summary_stats?.section_counts?.error} started={detail.started_at} finished={detail.finished_at} />
+    <SectionReviews title={detail.brief_title} sections={detail.section_results || []} counts={detail.summary_stats?.section_counts}
+      remaining={active ? detail.summary_stats?.progress?.remaining_sections : undefined} />
+    {detail.status === 'completed' &&
+    <details className="testing-case-block">
+      <summary>Passage evidence and run statistics</summary>
+      <Summary detail={detail} />
+      {children}
+    </details>}
+  </>;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Filters                                                           */
@@ -368,7 +412,7 @@ const runTime = (check: BriefCitationCheck, status: string): string => {
 };
 
 const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
-  check,
+  checkId,
   dataSource,
   onBack,
   onResultClick,
@@ -384,12 +428,12 @@ const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
 
   const fetchDetail = useCallback(async () => {
     try {
-      const resp = await axios.get<CheckDetailType>(`${API_BASE_URL}/testing/brief-checks/${check.id}`);
+      const resp = await axios.get<CheckDetailType>(`${API_BASE_URL}/testing/brief-checks/${checkId}`);
       setDetail(resp.data);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to load the check');
     }
-  }, [check.id]);
+  }, [checkId]);
 
   useEffect(() => {
     fetchDetail();
@@ -428,7 +472,7 @@ const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
   const handleCancel = async () => {
     setBusy(true);
     try {
-      await axios.post(`${API_BASE_URL}/testing/brief-checks/${check.id}/cancel`);
+      await axios.post(`${API_BASE_URL}/testing/brief-checks/${checkId}/cancel`);
       await fetchDetail();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to cancel the check');
@@ -440,13 +484,13 @@ const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
   const handleExport = async () => {
     setBusy(true);
     try {
-      const resp = await axios.get(`${API_BASE_URL}/testing/brief-checks/${check.id}/export.xlsx`, {
+      const resp = await axios.get(`${API_BASE_URL}/testing/brief-checks/${checkId}/export.xlsx`, {
         responseType: 'blob',
       });
       const url = URL.createObjectURL(resp.data as Blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `citation_check_${check.brief_id}.xlsx`;
+      link.download = `citation_check_${detail?.brief_id}.xlsx`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
@@ -456,8 +500,13 @@ const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
     }
   };
 
-  const status = detail?.status || check.status;
-  const ran = runTime(detail || check, status);
+  if (!detail) return <div className="admin-section testing-section">
+    <button className="btn-sm" onClick={onBack}>&larr; Briefs</button>
+    {error ? <p role="alert">{error}</p> : <p role="status">Loading citation check…</p>}
+  </div>;
+  const check = detail;
+  const status = check.status;
+  const ran = runTime(check, status);
   return (
     <div className="admin-section testing-section">
       {error && (
@@ -475,7 +524,7 @@ const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
         <div>
           <strong>{check.brief_title}</strong>
           <div className="text-muted">
-            Checked {formatTimestamp(check.created_at)} · judge {check.judge_model || '—'}
+            {check.check_kind === 'full' ? 'Full Brief check' : 'Citation check'} · Started {formatTimestamp(check.created_at)} · judge {check.judge_model || '—'}
             {check.model_combo ? ` (${check.model_combo})` : ''}
             {' · '}
             {check.brief_version_number != null
@@ -507,35 +556,35 @@ const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
         </div>
       </div>
 
-      {detail && <Summary detail={detail} />}
-
-      {passages.length > 0 && (
-        <>
-          <Filters filters={filters} sections={sections} counts={counts} onChange={setFilters} />
-          <p className="text-muted">
-            Showing {visible.length} of {passages.length} passages. Click a row for the judge's
-            reasoning and the cited excerpts. Hover a column heading or a verdict for what it
-            means.
-          </p>
-          <table className="admin-table testing-check-table">
-            <thead>
-              <tr>
-                <th aria-label="expand" />
-                {COLUMNS.map((c) => (
-                  <th key={c.key} className="testing-has-help" title={COLUMN_HELP[c.key]}>
-                    {c.label}
-                  </th>
+      {detail && <CheckResults detail={detail}>
+        {passages.length > 0 && (
+          <>
+            <Filters filters={filters} sections={sections} counts={counts} onChange={setFilters} />
+            <p className="text-muted">
+              Showing {visible.length} of {passages.length} passages. Click a row for the judge's
+              reasoning and the cited excerpts. Hover a column heading or a verdict for what it
+              means.
+            </p>
+            <table className="admin-table testing-check-table">
+              <thead>
+                <tr>
+                  <th aria-label="expand" />
+                  {COLUMNS.map((c) => (
+                    <th key={c.key} className="testing-has-help" title={COLUMN_HELP[c.key]}>
+                      {c.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((p) => (
+                  <PassageRow key={p.id} passage={p} onOpen={openSource} />
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((p) => (
-                <PassageRow key={p.id} passage={p} onOpen={openSource} />
-              ))}
-            </tbody>
-          </table>
-        </>
-      )}
+              </tbody>
+            </table>
+          </>
+        )}
+      </CheckResults>}
     </div>
   );
 };

@@ -1,11 +1,38 @@
+{% macro research_subject(section, children) -%}
+Brief topic: {{ section.topic | tojson }}
+Assigned heading: {{ section.outline[section.current].title | tojson }}
+{% if children -%}
+Subheadings introduced here: {{ children | tojson }}
+Find evidence for what connects the subheadings. Leave their detailed findings to their own sections.
+{% endif -%}
+Use the outline to interpret the requested subject. If the results describe a different subject, refine the search to recover the one the author requested.
+{%- endmacro -%}
 {% if stage == 'contextualize' -%}
 Latest user message as quoted text: {{ question | tojson }}
 {%- elif stage == 'organize' -%}
 Question: {{ question | safe }}
+{% if require_deep_plan -%}
+This is a Deep research request. Return two to four distinct streams for a question with multiple outcomes or comparisons.
+For a single focused inquiry only, propose at least one distinct search with a reason explaining what it will add. Confirm the
+initial findings with independent evidence or check a complementary angle even when the initial results look promising.
+{% endif -%}
 {% if brief_section -%}
+{{ research_subject(brief_section, child_headings) }}
 Plan searches for this Brief section only. Treat any quoted guidance as context for its topic and scope.
+The author may expressly ask about separate outcomes or comparisons within this section. Give those outcomes
+their own focused research streams using the streams format. Leave all questions assigned to other headings
+to those sections. Use the single-inquiry format when this section asks one narrow question.
 {% if brief_focus -%}
 Section guidance: {{ brief_focus | tojson }}
+Preserve the exact subject and all explicit qualifiers in the next search. Do not narrow to a specific case or setting
+unless the evidence gives that lead. Use qualitative findings where they answer the heading. Treat a missing figure as
+a reason to search only if the question explicitly asks for a figure or the evidence identifies a useful lead to one.
+{% endif -%}
+{% if target_words -%}
+Target length of the finished section: {{ target_words }} words. Assess how many distinct, relevant observations
+these excerpts support. When they would yield only a short paragraph and the assignment calls for more, use
+the evidence to identify the next specific question. For example, distinguish an observed pattern from evidence
+explaining it. Keep the requested subject and population. Stop when another search cannot reasonably add evidence.
 {% endif -%}
 {% endif -%}
 {% if first_search != question -%}
@@ -15,8 +42,17 @@ Initial evidence:
 {{ evidence | safe }}
 {%- elif stage == 'follow_up' -%}
 Question: {{ question | safe }}
+{% if brief_section %}{{ research_subject(brief_section, child_headings) }}{% endif %}
 {% if brief_focus -%}
 Section guidance: {{ brief_focus | tojson }}
+Use qualitative findings where they answer the heading. Search for missing scope using terms a source might use for
+the exact subject and all explicit qualifiers. Keep the requested subject even if most results describe a related one.
+{% endif -%}
+{% if target_words -%}
+Target length of the finished section: {{ target_words }} words. Assess how many distinct, relevant observations
+these excerpts support. When they would yield only a short paragraph and the assignment calls for more, use
+the evidence to identify the next specific question. For example, distinguish an observed pattern from evidence
+explaining it. Keep the requested subject and population. Stop when another search cannot reasonably add evidence.
 {% endif -%}
 {% if topic -%}
 Investigate only this stream: {{ topic | safe }}
@@ -31,6 +67,13 @@ New evidence from the latest search:
 
 Earlier evidence for this inquiry:
 {{ evidence | safe }}
+{% if brief_focus %}
+Return only a JSON object. To keep investigating, use {"queries":["next distinct search"],"reason":"evidence gap"}.
+To stop, use {"queries":[]}. Search for the specific missing part if the passages only cover a related subject.
+For a narrow section, a direct documented observation can answer the question. You do not need to find a new type of
+study or a new quantitative estimate unless the assignment asks for it. Stop when the passages address the requested
+parts or the next search would only reword a gap you have already investigated.
+{% endif %}
 {%- elif stage == 'answer' -%}
 Question: {{ question | safe }}
 
@@ -41,14 +84,12 @@ Question: {{ question | safe }}
 {% if brief_final_repair -%}
 The draft below contains statements retained by the citation check. Make the smallest edits needed. Open with a
 specific cited finding from the draft, keeping its citation and strength. Clarify any reference that lost its context.
-Address any remaining question with the retained findings where possible. If they do not establish a requested
-result, state that limit in its own sentence, after the cited opening. For example: "The sources reviewed
-here do not establish how widely this approach was used." Keep the requested voice and use fewer
+Address the assigned heading with the retained findings. Discuss the scope of the evidence only when the heading or author requests it and a cited passage supports it. Keep the requested voice and use fewer
 words if covering the evidence does not require more. Do not restore claims the check removed.
 {% else -%}
 The previous draft failed its evidence or scope check. Write the entire corrected answer. Remove unsupported
 claims and unrelated material, and keep the answer that the retrieved evidence can support.
-Repair only the reported issues. If a requested measure is unavailable, state the limit of the reviewed evidence.
+Repair only the reported issues. {% if brief_section %}Include a discussion of evidence gaps only when explicitly assigned and supported by citations.{% else %}If a requested measure is unavailable, state the limit of the reviewed evidence.{% endif %}
 For any unsupported or uncited factual sentence, first look across the retrieved passages for direct evidence.
 Keep the sentence with the citation that supports it, or remove the whole claim if no passage supports it.
 If the opening lacks support, look for a retrieved passage that supports it. If none does, start with a different
@@ -63,7 +104,20 @@ Draft for revision: {{ draft | tojson }}
 Issues: {{ correction | tojson }}
 {% endif -%}
 {%- elif stage == 'retry_plan' -%}
-The previous reply did not match the required format. Return only a JSON object matching the system instructions.
+The previous reply did not match the required format. Return only JSON that matches the required schema below.
+Required JSON schema: {{ reply_schema | tojson }}
+Correct these validation errors (field path and error type): {{ validation_errors | tojson }}.
+{%- elif stage == 'distinct_search' -%}
+Propose a search. Do not answer or summarize the research question.
+Original scope: {{ question | tojson }}
+The previous search proposal repeated terms already searched without a distinct angle.
+Searches already run: {{ searches | tojson }}
+The remaining evidence gap: {{ reason | tojson }}
+Propose one useful search for the missing part itself. A group or case the earlier results already covered is not a substitute.
+Use another name for the required group or setting, a specific barrier, process, measure, or type of source.
+Keep the question's scope. Use terms likely to appear in the source, even if they are different from the question's wording.
+Return only a JSON object with this shape: {"queries":["the next search"],"reason":"the gap it investigates"}.
+Return {"queries":[]} only if there is no distinct lead left to investigate.
 {%- elif stage == 'retry_citations' -%}
 These citation labels or ranges are invalid: {{ invalid | join(', ') }}. Rewrite the full answer. Cite only labels in the retrieved evidence. Remove any claim whose evidence cannot be cited.
 {%- elif stage == 'verify' -%}

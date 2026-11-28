@@ -1,138 +1,78 @@
-import React, { useState } from 'react';
-import type { ExperimentDetail as ExperimentDetailType, TestDataset, TestExperiment } from '../../types/testing';
+import React from 'react';
+import type { TestDataset, TestExperiment } from '../../types/testing';
+import { openAdminLocation, useAdminLocation } from '../../utils/adminLocation';
 import DatasetList from './testing/DatasetList';
+import BriefEvaluationTemplates from './testing/BriefEvaluationTemplates';
 import DatasetEditor from './testing/DatasetEditor';
 import ExperimentList from './testing/ExperimentList';
 import ExperimentEditor from './testing/ExperimentEditor';
 import ExperimentDetail from './testing/ExperimentDetail';
+import SavedEvaluationRecord from './testing/SavedEvaluationRecord';
 
-type SubView = 'datasets' | 'experiments';
+function DatasetsView({ id }: { id?: string }) {
+  const back = () => openAdminLocation({ page: 'testing', testing: 'datasets' });
+  const openDataset = (dataset: TestDataset) => openAdminLocation({ page: 'testing', dataset: dataset.id });
+  const viewExperiments = (dataset: TestDataset) =>
+    openAdminLocation({ page: 'testing', testing: 'experiments', dataset: dataset.id });
 
-const SUB_VIEWS: Array<{ key: SubView; label: string }> = [
-  { key: 'datasets', label: 'Datasets' },
-  { key: 'experiments', label: 'Experiments' },
-];
-
-/* ------------------------------------------------------------------ */
-/*  Datasets sub-view (list -> editor)                                */
-/* ------------------------------------------------------------------ */
-
-interface DatasetsViewProps {
-  onViewExperiments: (dataset: TestDataset) => void;
-}
-
-const DatasetsView: React.FC<DatasetsViewProps> = ({ onViewExperiments }) => {
-  const [selected, setSelected] = useState<TestDataset | null>(null);
-
-  if (selected) {
-    return (
-      <DatasetEditor
-        dataset={selected}
-        onBack={() => setSelected(null)}
-        onViewExperiments={onViewExperiments}
-      />
-    );
-  }
-  return <DatasetList onOpen={setSelected} />;
-};
-
-/* ------------------------------------------------------------------ */
-/*  Experiments sub-view (list -> editor / detail)                    */
-/* ------------------------------------------------------------------ */
-
-type ExpMode =
-  | { kind: 'list' }
-  | { kind: 'create' }
-  | { kind: 'edit'; experiment: TestExperiment }
-  | { kind: 'detail'; id: string };
-
-interface ExperimentsViewProps {
-  dataset: TestDataset | null;
-  onClearDataset: () => void;
-}
-
-const ExperimentsView: React.FC<ExperimentsViewProps> = ({ dataset, onClearDataset }) => {
-  const [mode, setMode] = useState<ExpMode>({ kind: 'list' });
-
-  const goList = () => setMode({ kind: 'list' });
-
-  if (mode.kind === 'create' || mode.kind === 'edit') {
-    return (
-      <ExperimentEditor
-        experiment={mode.kind === 'edit' ? mode.experiment : null}
-        initialDatasetId={mode.kind === 'create' ? dataset?.id ?? null : null}
-        onBack={goList}
-        onSaved={(id) => setMode({ kind: 'detail', id })}
-      />
-    );
-  }
-
-  if (mode.kind === 'detail') {
-    return (
-      <ExperimentDetail
-        experimentId={mode.id}
-        onBack={goList}
-        onEdit={(exp: ExperimentDetailType) => setMode({ kind: 'edit', experiment: exp })}
-      />
-    );
-  }
-
+  if (!id) return <DatasetList onOpen={openDataset} />;
   return (
+    <SavedEvaluationRecord<TestDataset> key={id} id={id} collection="datasets" onBack={back}>
+      {dataset => {
+        const Editor = dataset.capability === 'brief' ? BriefEvaluationTemplates : DatasetEditor;
+        return <Editor dataset={dataset} onBack={back} onViewExperiments={viewExperiments} />;
+      }}
+    </SavedEvaluationRecord>
+  );
+}
+
+function ExperimentsView() {
+  const { dataset, experiment, mode } = useAdminLocation();
+  const list = { page: 'testing', testing: 'experiments', dataset };
+  const back = () => openAdminLocation(list);
+  const detail = (id: string) => openAdminLocation({ ...list, experiment: id });
+  const edit = (exp: TestExperiment) => openAdminLocation({ ...list, experiment: exp.id, mode: 'edit' });
+  const create = () => openAdminLocation({ ...list, mode: 'create' });
+
+  if (experiment && mode === 'edit') return (
+    <SavedEvaluationRecord<TestExperiment> key={experiment} id={experiment} collection="experiments" onBack={back}>
+      {record => <ExperimentEditor experiment={record} onBack={back} onSaved={detail} />}
+    </SavedEvaluationRecord>
+  );
+  if (experiment) return <ExperimentDetail key={experiment} experimentId={experiment} onBack={back} onEdit={edit} />;
+  if (mode === 'create') return <ExperimentEditor initialDatasetId={dataset} onBack={back} onSaved={detail} />;
+
+  const clearDataset = () => openAdminLocation({ page: 'testing', testing: 'experiments' });
+  const renderList = (record: TestDataset | null) => (
     <ExperimentList
-      dataset={dataset}
-      onOpen={(exp: TestExperiment) => setMode({ kind: 'detail', id: exp.id })}
-      onEdit={(exp: TestExperiment) => setMode({ kind: 'edit', experiment: exp })}
-      onCreate={() => setMode({ kind: 'create' })}
-      onBack={dataset ? onClearDataset : undefined}
+      dataset={record}
+      onOpen={exp => detail(exp.id)}
+      onEdit={edit}
+      onCreate={create}
+      onBack={record ? clearDataset : undefined}
     />
   );
-};
+  if (!dataset) return renderList(null);
+  return (
+    <SavedEvaluationRecord<TestDataset> key={dataset} id={dataset} collection="datasets" onBack={clearDataset}>
+      {renderList}
+    </SavedEvaluationRecord>
+  );
+}
 
-/* ------------------------------------------------------------------ */
-/*  Shell                                                             */
-/* ------------------------------------------------------------------ */
-
-const TestingManager: React.FC = () => {
-  const [subView, setSubView] = useState<SubView>('datasets');
-  // When the user clicks "view experiments" from a dataset, we scope the
-  // experiments list to that dataset.
-  const [experimentDataset, setExperimentDataset] = useState<TestDataset | null>(null);
-
-  const goToExperiments = (dataset: TestDataset) => {
-    setExperimentDataset(dataset);
-    setSubView('experiments');
-  };
-
-  const switchSubView = (view: SubView) => {
-    if (view === 'experiments') {
-      setExperimentDataset(null);
-    }
-    setSubView(view);
-  };
-
+export default function TestingManager() {
+  const { testing, dataset } = useAdminLocation();
+  const experiments = testing === 'experiments' || (!testing && !dataset);
   return (
     <div className="admin-tab-content testing-manager">
+      <h3>{experiments ? 'Experiments' : 'Experiment datasets'}</h3>
       <div className="testing-subnav">
-        {SUB_VIEWS.map((view) => (
-          <button
-            key={view.key}
-            className={`btn-sm ${subView === view.key ? 'btn-primary' : ''}`}
-            onClick={() => switchSubView(view.key)}
-          >
-            {view.label}
-          </button>
-        ))}
+        <button className={`btn-sm ${experiments ? '' : 'btn-primary'}`}
+          onClick={() => openAdminLocation({ page: 'testing', testing: 'datasets' })}>Datasets</button>
+        <button className={`btn-sm ${experiments ? 'btn-primary' : ''}`}
+          onClick={() => openAdminLocation({ page: 'testing', testing: 'experiments' })}>Experiments</button>
       </div>
-
-      {subView === 'datasets' && <DatasetsView onViewExperiments={goToExperiments} />}
-      {subView === 'experiments' && (
-        <ExperimentsView
-          dataset={experimentDataset}
-          onClearDataset={() => setExperimentDataset(null)}
-        />
-      )}
+      {experiments ? <ExperimentsView /> : <DatasetsView id={dataset} />}
     </div>
   );
-};
-
-export default TestingManager;
+}

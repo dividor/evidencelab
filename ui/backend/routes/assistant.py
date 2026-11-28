@@ -38,7 +38,9 @@ from ui.backend.services.group_settings import CITATION_CHECK_DEFAULT, user_grou
 from ui.backend.services.llm_choice import (
     BRIEF,
     CITATION_CHECK,
+    combo_default,
     config_defaults,
+    run_combo,
     user_group_choice,
 )
 from ui.backend.services.usage_recorder import (
@@ -147,7 +149,9 @@ async def _assistant_answer_prompt(
 async def _research_preferences(
     body, user, session, assistant_settings: AssistantSettings
 ) -> tuple[str | None, bool]:
-    if body.brief_section is None and body.brief_survey is None:
+    if body.brief_survey is not None:
+        return None, False
+    if body.brief_section is None:
         enabled = assistant_settings.citationCheck
         return None, CITATION_CHECK_DEFAULT if enabled is None else enabled
     user_id = getattr(user, "id", None)
@@ -157,19 +161,19 @@ async def _research_preferences(
         else []
     )
     citation_check = brief_citation_check_for_groups(groups)
-    if body.brief_section is None:
-        return None, citation_check
     prompt = brief_section_prompt_for_groups(groups) or await run_in_threadpool(
         brief_section_prompt_default
     )
     return prompt, citation_check
 
 
-async def _citation_model(check_citations: bool, user, session) -> str | None:
+async def _citation_model(
+    check_citations: bool, user, session, model_combo=None
+) -> str | None:
     if not check_citations:
         return None
     selected = await user_group_choice(session, user, CITATION_CHECK)
-    model = selected or config_defaults()[CITATION_CHECK]
+    model = selected or combo_default(CITATION_CHECK, run_combo(model_combo))
     check_requested_llm(model, None)
     return model
 
@@ -222,7 +226,11 @@ async def _purpose_model_key(
     library survey), the group's Brief model (Group Settings > LLMs) overrides
     the model combo's; otherwise the model the request names."""
     if body.usage_context == "brief":
-        return await user_group_choice(session, user, BRIEF) or model_key
+        return (
+            await user_group_choice(session, user, BRIEF)
+            or model_key
+            or config_defaults()[BRIEF]
+        )
     return model_key
 
 
@@ -367,7 +375,9 @@ async def stream_assistant_chat(
     brief_section_prompt, check_citations = await _research_preferences(
         body, user, session, settings
     )
-    citation_model_key = await _citation_model(check_citations, user, session)
+    citation_model_key = await _citation_model(
+        check_citations, user, session, body.model_combo
+    )
 
     async def event_generator():
         thread_id = body.thread_id
@@ -397,6 +407,7 @@ async def stream_assistant_chat(
                 introduces_sub_sections=body.introduces_sub_sections,
                 brief_section_prompt=brief_section_prompt,
                 brief_section=body.brief_section,
+                survey_only=body.brief_survey is not None,
                 check_citations=check_citations,
                 citation_model_key=citation_model_key,
             ).__aiter__()
@@ -413,7 +424,7 @@ async def stream_assistant_chat(
                     last_sources = event.get("sources")
                 if etype == "done":
                     _record_assistant_usage(event, body, user)
-                if _should_persist(event, user, session):
+                if body.brief_survey is None and _should_persist(event, user, session):
                     logger.info(
                         "[deepres] done event: deep=%s synthesis_len=%d sources_count=%d",
                         body.deep_research,

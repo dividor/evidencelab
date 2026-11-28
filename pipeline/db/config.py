@@ -157,7 +157,8 @@ def _load_llms(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     Optional per model: ``price_per_million`` (USD per million input and
     output tokens, used instead of the built-in price table) and
     ``supports_temperature`` (``false`` for a model that refuses a
-    temperature, which is then never sent).
+    temperature, which is then never sent). ``max_tokens`` sets the model's
+    output ceiling for API requests.
     """
     result: Dict[str, Dict[str, Any]] = {}
     for model_name, model_info in config.get("supported_llms", {}).items():
@@ -167,6 +168,13 @@ def _load_llms(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         }
         if "inference_provider" in model_info:
             llm_config["inference_provider"] = model_info.get("inference_provider")
+        if "max_tokens" in model_info:
+            tokens = model_info["max_tokens"]
+            if isinstance(tokens, bool) or not isinstance(tokens, int) or tokens < 1:
+                raise ValueError(
+                    f"supported_llms.{model_name}.max_tokens must be a positive integer"
+                )
+            llm_config["max_tokens"] = tokens
         if "price_per_million" in model_info:
             llm_config["price_per_million"] = _checked_price(
                 model_name, model_info["price_per_million"]

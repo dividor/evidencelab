@@ -183,7 +183,9 @@ class CitedPassage:
         return bool(self.missing_indices)
 
 
-def extract_cited_passages(section: Dict[str, Any]) -> List[CitedPassage]:
+def extract_cited_passages(
+    section: Dict[str, Any], include_uncited: bool = False
+) -> List[CitedPassage]:
     """Every sentence of a section that cites something, with its sources.
 
     Sources are matched by the ``index`` the markdown refers to. A number
@@ -196,10 +198,12 @@ def extract_cited_passages(section: Dict[str, Any]) -> List[CitedPassage]:
         if src.get("index") is not None
     }
     passages: List[CitedPassage] = []
-    for sentence in split_sentences(section.get("content") or ""):
+    content = section.get("content") or ""
+    blocks = re.split(r"\n\s*\n", content) if include_uncited else [content]
+    for sentence in (s for block in blocks for s in split_sentences(block)):
         indices = extract_cited_numbers(sentence)
         unresolved = unresolved_numbers(sentence)
-        if not indices and not unresolved:
+        if not include_uncited and not indices and not unresolved:
             continue
         passage = CitedPassage(
             section_title=section.get("title", ""),

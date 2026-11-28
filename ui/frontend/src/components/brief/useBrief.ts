@@ -292,6 +292,7 @@ export interface UseBriefOptions {
   // The configured chat / deep-research model (combo.assistant_model). Used for
   // both outline generation and per-section research so the Brief tab uses the
   // same LLM as the rest of the system.
+  modelCombo?: string | null;
   assistantModelConfig?: SummaryModelConfig | null;
   // Group search settings to apply to brief searches (reranker + search
   // settings). Passed only for logged-in users so briefs search like the rest
@@ -391,6 +392,7 @@ const computeNumbers = (sections: BriefSection[]): string[] => {
 export const useBrief = ({
   apiBaseUrl,
   dataSource,
+  modelCombo,
   assistantModelConfig,
   rerankerModel,
   searchSettings,
@@ -435,6 +437,8 @@ export const useBrief = ({
     processed: number;
     failedIds: string[];
   } | null>(null);
+  const [openingSavedBrief, setOpeningSavedBrief] = useState(false);
+  const openRequest = useRef(0);
   const [outlineLoading, setOutlineLoading] = useState(false);
   // Show "1.", "2.1" numbering before heading titles. Off by default; the user
   // toggles it from the outline rail. Persisted with the brief.
@@ -1038,6 +1042,7 @@ export const useBrief = ({
     abortRef.current = controller;
     const guidance = (overrides?.instructions ?? instructions).trim();
     let gathered: BriefSourceSample[] = [];
+    let surveyError: string | null = null;
     // Allocate the new brief's activity id up front so the survey and outline
     // LLM calls record their token usage onto it server-side (tokens are
     // spent even when outline generation is aborted midway). Kept LOCAL until
@@ -1052,6 +1057,7 @@ export const useBrief = ({
         query: topic,
         briefSurvey: { topic, instructions: guidance || undefined },
         doneLabel: 'Document library surveyed',
+        modelCombo,
         assistantModelConfig,
         rerankerModel: rerankerModelRef.current,
         searchSettings: searchSettingsRef.current,
@@ -1068,10 +1074,11 @@ export const useBrief = ({
             }));
           },
           onDone: () => {},
-          onError: (m) => setError(m),
+          onError: (message) => { surveyError = message; },
         },
       });
       if (controller.signal.aborted) return;
+      if (surveyError) throw new Error(surveyError);
       setGeneratingActivity((prev) =>
         [{ tag: 'DRAFT' as const, text: 'Drafting outline' }, ...prev].slice(0, 40),
       );
@@ -1106,7 +1113,7 @@ export const useBrief = ({
     } finally {
       setOutlineLoading(false);
     }
-  }, [apiBaseUrl, dataSource, query, instructions, numHeadings, assistantModelConfig, resetCitationState]);
+  }, [apiBaseUrl, dataSource, query, instructions, numHeadings, modelCombo, assistantModelConfig, resetCitationState]);
 
   const startManual = useCallback(() => {
     briefIdRef.current = uid();
@@ -1358,6 +1365,7 @@ export const useBrief = ({
         context,
         briefTopic,
         briefInstructions: instructionsRef.current.trim() || null,
+        modelCombo,
         assistantModelConfig,
         rerankerModel: rerankerModelRef.current,
         searchSettings: searchSettingsRef.current,
@@ -1486,6 +1494,7 @@ export const useBrief = ({
     [
       apiBaseUrl,
       dataSource,
+      modelCombo,
       assistantModelConfig,
       updateSection,
       pushActivity,
@@ -1942,22 +1951,29 @@ export const useBrief = ({
     })();
   });
 
+  const loadSavedBrief = useCallback(async (id: string) => {
+    const request = ++openRequest.current;
+    setOpeningSavedBrief(true);
+    try {
+      const full = await getBriefRemote(id);
+      if (request !== openRequest.current) return;
+      applyLoadedBrief(remoteToRead(full), {
+        canEdit: full.can_edit,
+        ownerName: full.owner_name,
+        saved: true,
+        dataSource: full.data_source,
+      });
+    } catch (e) {
+      if (request === openRequest.current) setError(errorText(e, 'Could not open the brief.'));
+    } finally {
+      if (request === openRequest.current) setOpeningSavedBrief(false);
+    }
+  }, [applyLoadedBrief]);
+
   const loadBrief = useCallback(
     (entry: SavedBrief) => {
       if (remote) {
-        // History rows are stubs — fetch the full brief (with access info).
-        getBriefRemote(entry.id)
-          .then((full) =>
-            applyLoadedBrief(remoteToRead(full), {
-              canEdit: full.can_edit,
-              ownerName: full.owner_name,
-              saved: true,
-              dataSource: full.data_source,
-            }),
-          )
-          .catch((e) =>
-            setError(errorText(e, 'Could not open the brief.')),
-          );
+        void loadSavedBrief(entry.id);
         return;
       }
       // A browser-held brief: the API renders its stored form. One saved
@@ -1974,7 +1990,7 @@ export const useBrief = ({
         })
         .catch((e) => setError(errorText(e, 'Could not open the brief.')));
     },
-    [remote, applyLoadedBrief, persistStored],
+    [remote, loadSavedBrief, applyLoadedBrief, persistStored],
   );
 
   // Open a server brief by id (Brief Central cards and /brief/<id> URLs).
@@ -2068,6 +2084,8 @@ export const useBrief = ({
   );
 
   const reset = useCallback(() => {
+    openRequest.current++;
+    setOpeningSavedBrief(false);
     abortRef.current?.abort();
     setRegeneration(null);
     briefIdRef.current = null;
@@ -2151,6 +2169,7 @@ export const useBrief = ({
     historyOpen,
     error,
     outlineLoading,
+    openingSavedBrief,
     doneCount,
     regeneration,
     regenerating,

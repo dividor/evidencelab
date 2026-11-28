@@ -198,7 +198,10 @@ describe('Brief section length target', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ask AI for the whole brief' }));
     fireEvent.click(screen.getByRole('button', { name: 'Regenerate All', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: 'Regenerate all sections' }));
-    expect(await screen.findAllByText(`0 of ${total} updated`)).not.toHaveLength(0);
+    const updated = await screen.findByText(`0 of ${total} updated`);
+    const floating = updated.closest('[role="status"]');
+    expect(floating).toHaveClass('brief-status-bar');
+    expect(screen.getByTitle('Stop all research')).toBe(floating?.querySelector('button'));
     await act(async () => finish());
 
     expect(await screen.findByText(`Updated 1 of ${total} sections.`)).toBeInTheDocument();

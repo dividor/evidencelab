@@ -46,6 +46,7 @@ from ui.backend.schemas.testing import (
     BRIEF_ACCESS_OWN,
     BRIEF_ACCESS_SHARED,
     BriefAccess,
+    BriefCase,
     BriefCheckCandidate,
     BriefCitationCheckCreate,
     BriefCitationCheckDetail,
@@ -65,8 +66,16 @@ from ui.backend.schemas.testing import (
 from ui.backend.services import brief_version_store as versions
 from ui.backend.services.ai_daily_limit import require_ai_allowance
 from ui.backend.services.brief_citation_model import BriefCitationError
+from ui.backend.services.brief_claim_records import check_rows, uses_claim_records
 from ui.backend.services.brief_fact_check import brief_changed
+from ui.backend.services.brief_outline_numbers import number_saved_sections
 from ui.backend.services.brief_sharing import user_group_ids
+from ui.backend.services.brief_template_evaluation import (
+    DEFAULT_BRIEF_EXPECTATIONS,
+    TemplateSelectionError,
+    brief_expectation_matrix,
+    read_selected_templates,
+)
 from ui.backend.services.citation_check_runner import (
     build_review_workbook,
     count_cited_passages,
@@ -92,6 +101,21 @@ _RL_SEARCH, _RL_DEFAULT, _RL_AI = get_rate_limits()
 def _validate_capability(capability: str) -> None:
     if capability not in VALID_CAPABILITIES:
         raise HTTPException(status_code=400, detail="Invalid capability")
+
+
+def _case_input(dataset, values):
+    if dataset.capability != "brief":
+        return values
+    from pydantic import ValidationError
+
+    try:
+        return BriefCase.model_validate(values).model_dump(
+            mode="json", exclude_none=True
+        )
+    except ValidationError as exc:
+        problem = exc.errors(include_input=False)[0]
+        field = ".".join(map(str, problem["loc"]))
+        raise HTTPException(422, detail=f"{field}: {problem['msg']}") from exc
 
 
 def _validate_data_source(source: str) -> None:
@@ -131,9 +155,12 @@ async def _get_experiment(
 
 
 async def _dataset_read(session: AsyncSession, dataset: TestDataset) -> TestDatasetRead:
-    num_cases = await session.scalar(
-        select(func.count(TestCase.id)).where(TestCase.dataset_id == dataset.id)
-    )
+    from ui.backend.auth.models import BriefTemplate
+
+    query = select(func.count(TestCase.id)).where(TestCase.dataset_id == dataset.id)
+    if dataset.capability == "brief":
+        query = select(func.count(BriefTemplate.id))
+    num_cases = await session.scalar(query)
     last_exp = await session.scalar(
         select(TestExperiment)
         .where(TestExperiment.dataset_id == dataset.id)
@@ -279,10 +306,12 @@ async def create_case(
     admin: User = Depends(current_superuser),
     session: AsyncSession = Depends(get_async_session),
 ) -> TestCase:
-    await _get_dataset(session, dataset_id)
+    dataset = await _get_dataset(session, dataset_id)
+    if dataset.capability == "brief":
+        raise HTTPException(422, "Create a Brief template to add an evaluation record.")
     case = TestCase(
         dataset_id=dataset_id,
-        input=body.input,
+        input=_case_input(dataset, body.input),
         tags=body.tags,
         notes=body.notes,
     )
@@ -303,7 +332,8 @@ async def update_case(
 ) -> TestCase:
     case = await _get_case(session, case_id)
     if body.input is not None:
-        case.input = body.input
+        dataset = await _get_dataset(session, case.dataset_id)
+        case.input = _case_input(dataset, body.input)
     if body.tags is not None:
         case.tags = body.tags
     if body.notes is not None:
@@ -332,6 +362,22 @@ async def delete_case(
 # ---------------------------------------------------------------------------
 
 
+@router.get("/brief-expectations", tags=["testing"])
+def brief_expectations(admin: User = Depends(current_superuser)):
+    """The editable starting checks for Brief template experiments."""
+    return DEFAULT_BRIEF_EXPECTATIONS
+
+
+async def _validate_templates(session, dataset, matrix):
+    if dataset.capability == "brief":
+        try:
+            await read_selected_templates(session, matrix or {})
+            return brief_expectation_matrix(matrix)
+        except TemplateSelectionError as exc:
+            raise HTTPException(422, str(exc)) from exc
+    return matrix
+
+
 @router.post(
     "/experiments", response_model=TestExperimentRead, status_code=201, tags=["testing"]
 )
@@ -343,13 +389,14 @@ async def create_experiment(
     session: AsyncSession = Depends(get_async_session),
 ) -> TestExperiment:
     """Create a draft experiment (define dataset + per-row assertions); not run."""
-    await _get_dataset(session, body.dataset_id)
+    dataset = await _get_dataset(session, body.dataset_id)
+    matrix = await _validate_templates(session, dataset, body.case_expectations)
     experiment = TestExperiment(
         dataset_id=body.dataset_id,
         name=body.name,
         status=EXPERIMENT_DRAFT,
         config=body.config,
-        case_expectations=body.case_expectations,
+        case_expectations=matrix,
         created_by_user_id=admin.id,
     )
     session.add(experiment)
@@ -373,12 +420,20 @@ async def update_experiment(
     experiment = await _get_experiment(session, experiment_id)
     if experiment.status == EXPERIMENT_RUNNING:
         raise HTTPException(status_code=409, detail="Experiment is running")
+    if body.config is not None or body.case_expectations is not None:
+        experiment.case_expectations = await _validate_templates(
+            session,
+            await _get_dataset(session, experiment.dataset_id),
+            (
+                body.case_expectations
+                if body.case_expectations is not None
+                else experiment.case_expectations
+            ),
+        )
     if body.name is not None:
         experiment.name = body.name
     if body.config is not None:
         experiment.config = body.config
-    if body.case_expectations is not None:
-        experiment.case_expectations = body.case_expectations
     await session.commit()
     await session.refresh(experiment)
     return experiment
@@ -486,10 +541,11 @@ async def get_experiment(
     experiment = (await session.execute(stmt)).scalar_one_or_none()
     if experiment is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
-    detail = TestExperimentDetail.model_validate(experiment)
+    detail = await run_in_threadpool(TestExperimentDetail.model_validate, experiment)
     detail.runs.sort(key=lambda r: r.run_number, reverse=True)
     for run in detail.runs:
         run.results.sort(key=lambda r: r.created_at)
+        number_saved_sections(run.results)
     return detail
 
 
@@ -626,12 +682,11 @@ async def list_checkable_briefs(
 
 
 def _check_read(
-    check: BriefCitationCheck, current_version: Optional[int], detail: bool = False
+    check: BriefCitationCheck, current_version: Optional[int]
 ) -> BriefCitationCheckRead:
     """A check as the API returns it, saying whether the brief has moved on
     to a newer version than the one the check judged."""
-    model = BriefCitationCheckDetail if detail else BriefCitationCheckRead
-    return model.model_validate(check).model_copy(
+    return BriefCitationCheckRead.model_validate(check).model_copy(
         update={"brief_changed": brief_changed(check, current_version)}
     )
 
@@ -685,6 +740,7 @@ async def create_brief_check(
     except BriefCitationError as exc:
         raise citation_http_error(exc)
     check = BriefCitationCheck(
+        check_kind="full",
         brief_id=brief.id,
         brief_title=brief.title,
         data_source=brief.data_source,
@@ -743,9 +799,39 @@ async def get_brief_check(
     session: AsyncSession = Depends(get_async_session),
 ) -> BriefCitationCheckRead:
     check = await _get_check(session, check_id, admin)
-    await session.refresh(check, attribute_names=["passages"])
+    # Read progress and completed sections from the same committed snapshot.
+    await session.refresh(
+        check,
+        attribute_names=[
+            "passages",
+            "section_results",
+            "summary_stats",
+            "status",
+            "started_at",
+            "finished_at",
+        ],
+    )
     current = await _current_version(session, check.brief_id)
-    return _check_read(check, current, detail=True)
+    return await run_in_threadpool(_detail_read, check, current)
+
+
+def _detail_read(check, current):
+    detail = BriefCitationCheckDetail.model_validate(check)
+    from ui.backend.services.brief_score_metrics import factual_claim_metrics
+    from ui.backend.services.saved_brief_evaluation import section_metrics
+
+    detail.brief_changed = brief_changed(check, current)
+    if detail.section_results:
+        detail.section_results = [
+            {**s, **section_metrics(s), **factual_claim_metrics([s])}
+            for s in detail.section_results
+        ]
+    if uses_claim_records(check):
+        detail.passages = [
+            BriefCitationCheckPassageRead.model_validate(row)
+            for row in check_rows(check)
+        ]
+    return detail
 
 
 @router.post(
@@ -796,14 +882,14 @@ async def export_brief_check(
     """The review workbook (Flagged / All judgements / Summary), as the
     notebook writes it."""
     check = await _get_check(session, check_id, admin)
-    await session.refresh(check, attribute_names=["passages"])
-    passages = [
-        BriefCitationCheckPassageRead.model_validate(p).model_dump()
-        for p in check.passages
-    ]
+    await session.refresh(check, attribute_names=["passages", "section_results"])
+    passages = await run_in_threadpool(check_rows, check)
     stats = check.summary_stats or {}
     payload = await run_in_threadpool(
-        build_review_workbook, passages, stats.get("by_section") or []
+        build_review_workbook,
+        passages,
+        stats.get("by_section") or [],
+        check.section_results,
     )
     filename = f"citation_check_{check.brief_id}.xlsx"
     return Response(

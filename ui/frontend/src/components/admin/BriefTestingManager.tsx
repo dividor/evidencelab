@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { useAdminLocation, openAdminLocation } from '../../utils/adminLocation';
 import type { SearchResult } from '../../types/api';
-import type { BriefCitationCheck } from '../../types/testing';
 import BriefCheckDetail from './testing/BriefCheckDetail';
 import BriefCheckList from './testing/BriefCheckList';
 
@@ -17,18 +17,20 @@ const BriefTestingManager: React.FC<BriefTestingManagerProps> = ({
   modelCombo,
   onResultClick,
 }) => {
-  const [check, setCheck] = useState<BriefCitationCheck | null>(null);
+  const { check } = useAdminLocation();
   return (
     <div className="admin-tab-content testing-manager">
+      <h3>Saved Briefs</h3>
       {check ? (
         <BriefCheckDetail
-          check={check}
+          key={check}
+          checkId={check}
           dataSource={dataSource}
-          onBack={() => setCheck(null)}
+          onBack={() => openAdminLocation({page: 'testing-brief'})}
           onResultClick={onResultClick}
         />
       ) : (
-        <BriefCheckList modelCombo={modelCombo} onOpenCheck={setCheck} />
+        <BriefCheckList modelCombo={modelCombo} onOpenCheck={record => openAdminLocation({page: 'testing-brief', check: record.id})} />
       )}
     </div>
   );
