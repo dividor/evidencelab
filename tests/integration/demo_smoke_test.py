@@ -7,7 +7,7 @@ Exits non-zero on any failure.
 
 Usage:
     python -m tests.integration.demo_smoke_test
-    python -m tests.integration.demo_smoke_test
+    python tests/integration/demo_smoke_test.py
 """
 
 import json
@@ -17,8 +17,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-
-from ui.backend.services.test_evaluators import eval_brief_length
+from pathlib import Path
 
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
 MCP_URL = os.environ.get("MCP_URL", "http://localhost:8001")
@@ -196,6 +195,8 @@ def check_brief_generation(combo, auth):
 
 
 def _check_brief_section(combo, auth, heading, target, section):
+    from ui.backend.services.test_evaluators import eval_brief_length
+
     events = _research_events(
         combo,
         auth,
@@ -359,4 +360,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if not __package__:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     main()
