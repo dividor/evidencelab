@@ -67,8 +67,14 @@ _APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:3000")
 # Public base URL for the MCP server (used in metadata discovery)
 _MCP_PUBLIC_URL = os.environ.get(
     "MCP_PUBLIC_URL",
-    os.environ.get("APP_BASE_URL", "http://localhost:3000") + "/mcp",
+    _APP_BASE_URL.rstrip("/") + "/mcp",
 )
+
+
+def public_mcp_url() -> str:
+    """The canonical public URL entered when configuring a connector."""
+    return _MCP_PUBLIC_URL
+
 
 # Rate limiting: max requests per window
 _RATE_LIMIT_WINDOW = 60  # seconds
@@ -188,11 +194,12 @@ def _validate_redirect_uri(client_id: str, redirect_uri: str) -> str | None:
 
 def get_metadata() -> dict:
     """Return OAuth 2.0 Authorization Server Metadata."""
+    endpoint_root = public_mcp_url().rstrip("/")
     return {
-        "issuer": _MCP_PUBLIC_URL,
-        "authorization_endpoint": f"{_MCP_PUBLIC_URL}/authorize",
-        "token_endpoint": f"{_MCP_PUBLIC_URL}/token",
-        "registration_endpoint": f"{_MCP_PUBLIC_URL}/register",
+        "issuer": public_mcp_url(),
+        "authorization_endpoint": f"{endpoint_root}/authorize",
+        "token_endpoint": f"{endpoint_root}/token",
+        "registration_endpoint": f"{endpoint_root}/register",
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code"],
         "code_challenge_methods_supported": ["S256"],

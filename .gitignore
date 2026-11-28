@@ -306,3 +306,6 @@ tfplan*
 deploy/aws/.demo/
 deploy/azure/.demo/
 deploy/gcp/.demo/
+
+# Installed dependencies for assembling the Heatmapper MCP App.
+/mcp_server/resources/heatmap/node_modules/

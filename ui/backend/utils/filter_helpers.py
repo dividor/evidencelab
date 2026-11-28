@@ -383,7 +383,9 @@ _MULTIVALUE_EXPANSION_SKIP = frozenset(
 
 def _is_expandable_filter(core_field: str, value: Any) -> bool:
     """True for keyword payload filters whose stored values may be "; "-joined."""
-    if not isinstance(value, str) or not value.strip():
+    if not value or not isinstance(value, (str, list)):
+        return False
+    if isinstance(value, str) and not value.strip():
         return False
     if core_field in _MULTIVALUE_EXPANSION_SKIP:
         return False
@@ -420,7 +422,11 @@ def expand_multivalue_filters(
         storage_field = resolve_storage_field(core_field, data_source)
         if storage_field not in indexed_keys:
             continue
-        selected = split_filter_values(value) or [value.strip()]
+        selected = (
+            value
+            if isinstance(value, list)
+            else (split_filter_values(value) or [value.strip()])
+        )
         expanded = expand_multivalue_filter(db, storage_field, selected)
         if len(expanded) > len(selected):
             core_filters[core_field] = sorted(expanded)

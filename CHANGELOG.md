@@ -2,6 +2,23 @@
 
 All notable changes to Evidence Lab will be documented in this file.
 
+## [1.6.12] - 2026-11-27
+
+Evidence Lab can check a saved brief against its sources and show the assessment for each claim. Brief experiments use the same checks. The Heatmapper is also available to clients that connect through the Model Context Protocol (MCP).
+
+### Briefs and evaluations
+
+- Open **Fact Checker** in a brief to run a check, follow its progress, or show saved results. Click a numbered claim to see the judge’s assessment, supporting passages and any part the evidence leaves open. Editing pauses during a check. You can leave the page and return to it (#726, #729).
+- In **Admin → Testing**, compare sections in saved briefs and template-based experiments. Both screens report section pass rates, total scores and factual claim scores. The Excel export uses the same factual assessments (#722, #726).
+- Whole-brief AI actions are visible as buttons on wide screens and under **Ask AI** on smaller screens. **Brief Central** is above the document contents (#729).
+- Assistant and Brief writers can use follow-up searches to resolve gaps in their evidence. Brief sections use the selected writing guidance, section length and neighbouring headings when drafting (#722).
+
+### Heatmapper and deployment
+
+- MCP clients can compare search results in a Heatmapper grid and open the reports behind a cell. Clients that display text receive a Markdown table (#725).
+- The AWS deployment limits where its application role can call Bedrock. Administrators can use the Bedrock call log to see which models were called and how many tokens were used (#724).
+- When the database pool is busy, API requests wait for an available connection. The API also keeps internal database error details out of responses (#727, #728).
+
 ## [1.6.11] - 2026-11-26
 
 Evidence Lab v1.6.11 gives Assistant and Deep Research a shared workflow for finding and citing evidence. It also improves Brief generation, separates the Docs and Admin guides, and makes several controls easier to use on smaller screens.

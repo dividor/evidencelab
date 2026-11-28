@@ -211,3 +211,32 @@ class TestConfigHelpers:
         )
         assert db_config.get_metadata_panel_fields("wfp") == {"title": "Document Title"}
         assert db_config.get_metadata_panel_fields("other") == {}
+
+
+class TestHeatmapperCells:
+    def test_mcp_heatmap_cell_asks_for_lean_results(self, monkeypatch):
+        # The Heatmapper MCP app counts and lists documents per cell, like the
+        # UI Heatmap, so its cells take the lean shape.
+        from ui.backend.services import heatmap_search
+
+        captured = {}
+
+        def fake_prepare(**kwargs):
+            captured.update(kwargs)
+            return []
+
+        monkeypatch.setattr(heatmap_search, "prepare_chunk_results", fake_prepare)
+        with patch(
+            "ui.backend.services.result_shape.get_metadata_panel_fields",
+            return_value={},
+        ):
+            cell = heatmap_search.prepare_paragraph_hits(
+                db=object(),
+                pg=object(),
+                results=[],
+                query="school feeding",
+                source="wfp",
+            )
+        assert cell.hits == []
+        assert captured["shape"].lean is True
+        assert captured["query"] == "school feeding"

@@ -109,6 +109,9 @@ jobs:
           npm audit --audit-level=high || true
         continue-on-error: true
 
+      - name: Audit the Heatmapper app dependencies
+        run: npm audit --prefix mcp_server/resources/heatmap --audit-level=high
+
       # Dockerfile linting
       - name: Run Hadolint on main Dockerfile
         uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0

@@ -33,6 +33,7 @@ from mcp_server.oauth import (
     build_authorize_redirect,
     exchange_token,
     get_metadata,
+    public_mcp_url,
     register_client,
 )
 from ui.backend.services.ai_daily_limit import validate_ai_daily_limit_setting
@@ -230,10 +231,10 @@ class MCPApp:
 
         # OAuth 2.0 Protected Resource Metadata (RFC 9728)
         if path == "/.well-known/oauth-protected-resource":
-            base_url = os.environ.get("APP_BASE_URL", "https://evidencelab.ai")
+            resource_url = public_mcp_url()
             resource_meta = {
-                "resource": f"{base_url}/mcp",
-                "authorization_servers": [f"{base_url}/mcp"],
+                "resource": resource_url,
+                "authorization_servers": [resource_url],
                 "bearer_methods_supported": ["header"],
             }
             body = json.dumps(resource_meta).encode()
@@ -420,14 +421,14 @@ class MCPApp:
         if path in ("/mcp", "/mcp/"):
             # Log incoming request details
             req_headers = dict(scope.get("headers", []))
-            auth_hdr = req_headers.get(b"authorization", b"").decode()
+            auth_hdr = req_headers.get(b"authorization", b"")
             api_key_hdr = req_headers.get(b"x-api-key", b"").decode()
             content_type = req_headers.get(b"content-type", b"").decode()
             logger.info(
                 "MCP %s %s | auth=%r api_key=%s content_type=%s",
                 method,
                 scope.get("path", ""),
-                auth_hdr[:40] + "..." if len(auth_hdr) > 40 else auth_hdr,
+                "present" if auth_hdr else "absent",
                 "present" if api_key_hdr else "absent",
                 content_type,
             )
@@ -448,8 +449,7 @@ class MCPApp:
                     origin = dict(scope.get("headers", [])).get(b"origin", b"").decode()
                     # Return 401 with WWW-Authenticate to trigger
                     # the client's OAuth discovery flow (MCP spec).
-                    base_url = os.environ.get("APP_BASE_URL", "https://evidencelab.ai")
-                    resource_url = f"{base_url}/mcp"
+                    resource_url = public_mcp_url().rstrip("/")
                     headers = _add_cors_headers(
                         [
                             (b"content-type", b"application/json"),

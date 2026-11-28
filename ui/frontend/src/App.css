@@ -215,6 +215,13 @@ h6,
   gap: var(--spacing-xl);
 }
 
+@media (min-width: 1400px) {
+  .top-bar-content {
+    max-width: none;
+    padding-inline-start: calc((100% - 1400px) / 2 + var(--spacing-xl));
+  }
+}
+
 .top-bar-left {
   display: flex;
   align-items: center;
@@ -13812,7 +13819,7 @@ fieldset.group-assistant-options {
 .testing-assessment-claims { margin-top: 0.8rem; }
 .testing-evidence-claim { padding: 0.55rem 0; }
 
-.testing-claim-heading { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.25rem; }
+.testing-claim-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin-bottom: 0.25rem; }
 .claim-evidence-gaps {
   margin-block: 0.25rem 0.5rem;
   padding-inline-start: 1.25rem;

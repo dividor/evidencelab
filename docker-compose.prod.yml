@@ -207,9 +207,12 @@ services:
     container_name: mcp
     expose:
       - "8001"
+    volumes:
+      - ${CUSTOMIZE_ASSETS:-./customize}:/app/mcp-branding:ro
     env_file:
       - .env
     environment:
+      - MCP_BRANDING_DIR=/app/mcp-branding
       - QDRANT_HOST=http://host.docker.internal:6333
       - QDRANT_API_KEY=${QDRANT_API_KEY}
       - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
