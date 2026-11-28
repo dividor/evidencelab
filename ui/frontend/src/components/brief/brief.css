@@ -1858,14 +1858,6 @@
   margin: 0 0 10px;
 }
 
-.bc-lede {
-  font-size: 16px;
-  line-height: 1.6;
-  color: var(--brand-text-secondary);
-  max-width: 660px;
-  margin: 0;
-}
-
 .bc-new-btn {
   margin-top: 26px;
 }
