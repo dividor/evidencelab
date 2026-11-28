@@ -115,6 +115,7 @@ async def run_brief_case(raw, config, source):
             topic=case.query,
             heading=case.heading,
             child_headings=[child.title for child in case.children],
+            outline_headings=[item.title for item in section.outline],
             guidance=case.guidance,
             instructions=section.instructions,
             voice=section.voice_instructions,
