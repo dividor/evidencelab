@@ -35,6 +35,8 @@ Some lofty, often conflicting, goals! Always a work in progress, and low-cost hi
 
 <a href="https://www.loom.com/share/b3043d80834e44b3b935b7db7a086a1d"><img src="https://cdn.loom.com/sessions/thumbnails/b3043d80834e44b3b935b7db7a086a1d-04eb569ecf17a386-full-play.gif" alt="Watch overview video" width="400"></a>
 
+[Chapter order and timing](docs/images/demo/chapter-index.json) · [On-screen script](docs/images/demo/on-screen-script.md)
+
 ### Document pipeline
 
 - Parses PDF and Word files with Docling, keeping the document's structure
