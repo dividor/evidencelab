@@ -22,6 +22,7 @@ from ui.backend.services.assistant_grounding import (
     InvalidAssistantResponse,
     Passage,
     ReviewRequest,
+    TruncatedAssistantResponse,
     check_answer_citations,
     citation_check_batches,
     numbered_sentences,
@@ -30,7 +31,10 @@ from ui.backend.services.assistant_grounding import (
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.brief_citation_model import cited_numbers_in_order
 from ui.backend.services.brief_evidence_selection import select_brief_evidence
-from ui.backend.services.brief_excerpt_citations import cite_missing_excerpts
+from ui.backend.services.brief_excerpt_citations import (
+    cite_missing_excerpts,
+    expand_excerpt_ranges,
+)
 from ui.backend.services.brief_repetition import remove_repeated_brief_findings
 from ui.backend.services.brief_section_prompt import (
     brief_child_headings,
@@ -260,12 +264,12 @@ async def _review_finding_scope(
         "other_headings": [
             s.title for i, s in enumerate(section.outline) if i != section.current
         ],
-        "whole_section": draft if len(batches) > 1 else "",
     }
 
     def request_for(batch):
         return template.render(
             **assignment,
+            whole_section=draft if len(batch) < len(sentences) else "",
             sentences=[
                 _finding_for_scope(row, evidence, prepared_quotes, similar)
                 for row in batch
@@ -284,14 +288,18 @@ async def _review_finding_scope(
         return FindingScopeDecision(id=row["id"], **assessment.model_dump())
 
     async def review_batch(batch: list[dict]) -> list[FindingScopeDecision]:
-        async with concurrency:
-            result: FindingScopeReview = await review(
-                system, request_for(batch), [], config, _FINDING_SCOPE
-            )
-        if sorted(row.id for row in result.reviews) == [row["id"] for row in batch]:
-            return result.reviews
-        # Ambiguous attribution invalidates the batch. Recheck each sentence
-        # on its own so the request itself identifies which finding was graded.
+        try:
+            async with concurrency:
+                result: FindingScopeReview = await review(
+                    system, request_for(batch), [], config, _FINDING_SCOPE
+                )
+            decisions = result.reviews
+        except TruncatedAssistantResponse:
+            decisions = []
+        if sorted(row.id for row in decisions) == [row["id"] for row in batch]:
+            return decisions
+        # A cut-off or misnumbered batch cannot establish a verdict. Grade
+        # each original sentence before accepting any finding from this batch.
         return list(await asyncio.gather(*(review_one(row) for row in batch)))
 
     decisions = await asyncio.gather(*(review_batch(batch) for batch in batches))
@@ -459,9 +467,11 @@ async def _match_draft_citations(
     raw, passages, quotes, config, review_scope, last_attempt, stream
 ):
     """Request a writer correction if the matcher cannot assign verifiable labels."""
+    labels = set(quotes)
+    raw = expand_excerpt_ranges(raw, labels)
     try:
         matched = await cite_missing_excerpts(
-            raw, passages, set(quotes), config, review_scope
+            raw, passages, labels, config, review_scope
         )
     except InvalidAssistantResponse:
         if last_attempt:

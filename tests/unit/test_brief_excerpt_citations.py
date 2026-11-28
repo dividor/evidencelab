@@ -68,3 +68,53 @@ async def test_incorrect_sentence_number_gets_corrected_before_applying_citation
     )
     assert draft == "Pressure fell [8]."
     assert "invalid sentence numbers" in prompts[1] and "IDs: [1]" in prompts[1]
+
+
+@pytest.mark.parametrize(
+    ("marker", "expected"),
+    [
+        ("[3–5]", "[3, 4, 5]"),
+        ("[3 - 5, 4, 1]", "[3, 4, 5, 1]"),
+        ("[1, 5—5]", "[1, 5]"),
+        ("[1, 3]", "[1, 3]"),
+        ("[1–3]", "[1–3]"),
+        ("[3-7]", "[3-7]"),
+        ("[5-3]", "[5-3]"),
+        ("[3-5, 99]", "[3-5, 99]"),
+        ("[3-5,]", "[3-5,]"),
+        ("[2018–2020]", "[2018–2020]"),
+    ],
+)
+async def test_expand_excerpt_ranges_uses_only_supplied_labels(marker, expected):
+    from ui.backend.services.brief_excerpt_citations import expand_excerpt_ranges
+
+    assert expand_excerpt_ranges(f"An observation {marker}.", {1, 3, 4, 5}) == (
+        f"An observation {expected}."
+    )
+
+
+async def test_range_citations_keep_the_finding_and_its_original_support():
+    from unittest.mock import AsyncMock
+
+    from ui.backend.services.assistant_brief_writer import (
+        _brief_draft_text,
+        _match_draft_citations,
+    )
+
+    request = AsyncMock()
+    quotes = {3: (8, "low voltage"), 4: (8, "short duration"), 5: (10, "backup supply")}
+    evidence = {
+        8: {"text": "The log recorded low voltage and short duration."},
+        10: {"text": "The backup supply started."},
+    }
+    text, retry = await _match_draft_citations(
+        "The log recorded the drop [3–5].", "", quotes, {}, request, False, None
+    )
+    assert not retry
+    request.assert_not_awaited()
+    draft, issues, support = _brief_draft_text(text, evidence, set(), quotes)
+    assert draft == "The log recorded the drop [8, 10]."
+    assert issues == []
+    assert [(src.citation, src.quote) for src in support[draft]] == list(
+        quotes.values()
+    )
