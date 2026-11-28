@@ -1,6 +1,7 @@
 """Extract the parts of retrieved passages that belong in one Brief section."""
 
 import logging
+from itertools import chain
 
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
@@ -16,6 +17,7 @@ from ui.backend.services.assistant_grounding import (
     TruncatedAssistantResponse,
 )
 from ui.backend.services.assistant_settings import assistant_prompt_templates
+from ui.backend.services.brief_citation_model import cited_numbers_in_order
 from ui.backend.services.citation_fidelity import split_sentences
 
 logger = logging.getLogger(__name__)
@@ -35,6 +37,24 @@ class BriefEvidenceSelection(BaseModel):
 
 
 _EVIDENCE_SELECTION = TypeAdapter(BriefEvidenceSelection)
+
+
+def brief_development_passages(
+    draft: str, evidence: dict[int, Passage], retrieved: list[Passage]
+) -> dict[int, Passage]:
+    """Look for distinct detail without increasing the original passage budget."""
+    cited = set(cited_numbers_in_order(draft))
+    unused = (
+        passage
+        for passage in retrieved
+        if passage["global_index"] not in cited and (passage["text"] or "").strip()
+    )
+    selected: dict[int, Passage] = {}
+    for passage in chain(unused, evidence.values()):
+        if len(selected) >= len(evidence):
+            break
+        selected.setdefault(passage["global_index"], passage)
+    return selected
 
 
 def _check_selection(

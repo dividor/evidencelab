@@ -22,7 +22,10 @@ pytestmark = pytest.mark.unit
 async def test_section_with_no_missing_length_skips_another_edit(target):
     draft = "The valve was closed before the overnight pressure test [1]."
     write, review = AsyncMock(), AsyncMock()
-    assert await develop_short_brief(draft, target, {}, write, review) == draft
+    assert (
+        await develop_short_brief(draft, target, {}, write, review, retrieved=[])
+        == draft
+    )
     write.assert_not_awaited()
     review.assert_not_awaited()
 
@@ -46,7 +49,7 @@ async def test_short_section_keeps_only_an_addition_that_fits_and_reads_well(
 ):
     draft = "The team inspected the valve [1]."
     write, review = AsyncMock(return_value=addition), AsyncMock(return_value=issues)
-    result = await develop_short_brief(draft, 14, {}, write, review)
+    result = await develop_short_brief(draft, 14, {}, write, review, retrieved=[])
     write.assert_awaited_once_with(evidence={}, target_words=9, continuation=draft)
     assert result == (f"{draft} {addition}" if accepted else draft)
     if addition and len(addition.split()) < 10:
@@ -116,3 +119,26 @@ def test_scope_edit_requires_original_source_labels_and_a_verified_quote(labels)
     )
     quotes = {row["text"]: [EvidenceQuote(citation=1, quote="The device ran.")]}
     assert _sourced_scope_revision(review, row, quotes) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("labels", "expected"),
+    [([1, 4, 4, 7, 8], [4, 7]), ([1, 2], [1, 2]), ([1, 4], [4, 1])],
+)
+async def test_final_edit_selects_unused_passages_within_the_original_budget(
+    labels, expected
+):
+    def passage(label):
+        return {"global_index": label, "text": f"Passage {label}."}
+
+    original = {label: passage(label) for label in [1, 2]}
+    write = AsyncMock(return_value="")
+    draft = "An inspection took place [1, 2]."
+    retrieved = [{"global_index": 9, "text": " "}, *(passage(i) for i in labels)]
+    result = await develop_short_brief(
+        draft, 100, original, write, AsyncMock(), retrieved=retrieved
+    )
+    assert result == draft
+    assert list(write.await_args.kwargs["evidence"]) == expected
+    assert write.await_args.kwargs["continuation"] == draft

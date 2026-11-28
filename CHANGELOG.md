@@ -12,6 +12,7 @@ Evidence Lab can check a saved brief against its sources and show the assessment
 - In **Admin → Testing**, compare sections in saved briefs and template-based experiments. Both screens report section pass rates, total scores and factual claim scores. The Excel export uses the same factual assessments (#722, #726).
 - Whole-brief AI actions are visible as buttons on wide screens and under **Ask AI** on smaller screens. **Brief Central** is above the document contents (#729).
 - Assistant and Brief writers can use follow-up searches to resolve gaps in their evidence. Brief sections use the selected writing guidance, section length and neighbouring headings when drafting (#722).
+- When a reviewed section is short, the writer looks first for additional detail in retrieved passages the section has yet to cite. It checks the new paragraph against its sources and the rest of the section.
 - When a Brief writer cites a range of excerpts, the checker reads each supplied reference. If a batch of findings is too long for the reviewer to finish, it checks those sentences individually.
 
 ### Heatmapper and deployment

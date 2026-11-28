@@ -107,7 +107,7 @@ One click on **Research this section** can involve several model requests. Brief
 | What the writer needs to fix | What happens during generation |
 | --- | --- |
 | A sentence has a missing or incorrect citation | Brief looks for a retrieved passage that supports the whole sentence. The writer can revise the wording to match the evidence. Unsupported findings are left out. |
-| The draft is short | The writer measures the prose left after review and looks for supporting details. If the reviewed section is still short, it can develop it once more using the selected excerpts. Brief keeps the existing paragraphs and checks the addition for repetition and flow. A section can finish short when the evidence runs out. |
+| The draft is short | The writer measures the prose left after review and looks for supporting details. If the reviewed section is still short, it can add a paragraph. It looks first at retrieved passages the section has yet to cite and can revisit a cited passage for a new detail. Brief keeps the existing paragraphs and checks the addition for repetition and flow. A section can finish short when the evidence runs out. |
 | The draft is long | The writer receives the measured word count and target so it can condense the explanation. If further trimming is needed, Brief keeps sentences in their original order and stops at a sentence boundary. |
 | The prose is unclear or repeats another section | Brief checks the section in context. The writer can repair a dangling reference or unclear opening. To remove a repeated finding, the reviewer must identify earlier wording that already conveys it. |
 
