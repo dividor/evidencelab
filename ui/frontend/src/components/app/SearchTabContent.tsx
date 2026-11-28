@@ -797,7 +797,6 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             aiSummaryExpanded={aiSummaryExpanded}
             aiSummaryLoading={aiSummaryLoading}
             aiSummary={effectiveAiSummary}
-            minScore={hasActiveFilter ? 0 : minScore}
             results={aiSummaryResults.length > 0 ? aiSummaryResults : effectiveResults}
             aiPrompt={aiPrompt}
             showPromptModal={showPromptModal}

@@ -5,7 +5,8 @@
  * exists); such markers must be dropped, not shown as bare numbers.
  */
 import React from 'react';
-import { render } from '@testing-library/react';
+import { fireEvent, render } from '@testing-library/react';
+import { AiSummaryPanel } from '../components/AiSummaryPanel';
 import { AiSummaryWithCitations } from '../components/AiSummaryWithCitations';
 import { AiSummaryReferences } from '../components/AiSummaryReferences';
 import { SearchResult } from '../types/api';
@@ -20,6 +21,26 @@ const makeResults = (n: number): SearchResult[] =>
     score: 1,
     title: `Doc ${i + 1}`,
   }));
+
+test('summary citations open the original passages even when reranker scores are negative', () => {
+  const results = makeResults(2);
+  results[0].score = -0.82;
+  const onResultClick = jest.fn();
+  const { container } = render(
+    <AiSummaryPanel
+      enabled aiSummaryExpanded aiSummaryCollapsed={false} aiSummaryLoading={false}
+      aiSummary="First finding [1]. Second finding [2]." results={results}
+      aiPrompt="" showPromptModal={false} onResultClick={onResultClick}
+      onOpenPrompt={jest.fn()} onClosePrompt={jest.fn()}
+      onToggleExpanded={jest.fn()} onToggleCollapsed={jest.fn()}
+    />,
+  );
+  const references = container.querySelectorAll('.ai-summary-ref-link');
+  expect(references).toHaveLength(2);
+  fireEvent.click(references[0]);
+  fireEvent.click(references[1]);
+  expect(onResultClick.mock.calls).toEqual([[results[0]], [results[1]]]);
+});
 
 describe('AiSummaryWithCitations — hallucinated citations', () => {
   test('renders real citations but drops out-of-range markers', () => {

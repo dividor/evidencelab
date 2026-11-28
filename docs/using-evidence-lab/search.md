@@ -21,6 +21,7 @@ Click **Search** or press Enter to run your query.
 At the top of your results, Evidence Lab generates an **AI Summary** — a synthesized answer drawn from the top-matching document excerpts. This gives you an immediate overview without needing to read individual results.
 
 - The summary includes structured **headings** and **sub-topics** derived from your query.
+- Click a numbered citation to open the passage used in the summary, even when the minimum score hides that passage from the results list.
 - Click **"See more"** to expand the full summary.
 - Use the **language dropdown** (top-right of the summary card) to translate the summary into 10+ languages.
 - Click **"Find out more"** next to a heading to drill into that sub-topic as a new search — this launches a **Research Tree** (see [Research Trees](research-trees.md)).

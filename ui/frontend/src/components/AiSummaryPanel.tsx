@@ -22,7 +22,7 @@ interface AiSummaryPanelProps {
   aiSummaryExpanded: boolean;
   aiSummaryLoading: boolean;
   aiSummary: string;
-  minScore: number;
+  /** Ordered passages supplied to the summary model; citation numbers index this list. */
   results: SearchResult[];
   aiPrompt: string;
   showPromptModal: boolean;
@@ -128,7 +128,7 @@ const AiSummaryLoading = ({ expanded, summary }: { expanded: boolean; summary: s
 const AiSummaryBody = ({
   expanded,
   summary,
-  filteredResults,
+  results,
   onResultClick,
   contentRef,
   onDrilldown,
@@ -139,7 +139,7 @@ const AiSummaryBody = ({
 }: {
   expanded: boolean;
   summary: string;
-  filteredResults: SearchResult[];
+  results: SearchResult[];
   onResultClick: (result: SearchResult) => void;
   contentRef?: React.RefObject<HTMLDivElement | null>;
   onDrilldown?: (text: string, mode: DrilldownMode) => void;
@@ -156,7 +156,7 @@ const AiSummaryBody = ({
     <div className="ai-summary-markdown">
       <AiSummaryWithCitations
         summaryText={summary}
-        searchResults={filteredResults}
+        searchResults={results}
         onResultClick={onResultClick}
         onFindOutMore={onFindOutMore}
         findOutMoreLoading={findOutMoreLoading}
@@ -165,7 +165,7 @@ const AiSummaryBody = ({
     </div>
     <AiSummaryReferences
       summaryText={summary}
-      results={filteredResults}
+      results={results}
       onResultClick={onResultClick}
     />
     {onDrilldown && contentRef && !loading && (
@@ -182,7 +182,7 @@ const AiSummaryContent = ({
   expanded,
   loading,
   summary,
-  filteredResults,
+  results,
   onResultClick,
   contentRef,
   onDrilldown,
@@ -194,7 +194,7 @@ const AiSummaryContent = ({
   expanded: boolean;
   loading: boolean;
   summary: string;
-  filteredResults: SearchResult[];
+  results: SearchResult[];
   onResultClick: (result: SearchResult) => void;
   contentRef?: React.RefObject<HTMLDivElement | null>;
   onDrilldown?: (text: string, mode: DrilldownMode) => void;
@@ -210,7 +210,7 @@ const AiSummaryContent = ({
     <AiSummaryBody
       expanded={expanded}
       summary={summary}
-      filteredResults={filteredResults}
+      results={results}
       onResultClick={onResultClick}
       contentRef={contentRef}
       onDrilldown={onDrilldown}
@@ -738,7 +738,6 @@ export const AiSummaryPanel = ({
   aiSummaryExpanded,
   aiSummaryLoading,
   aiSummary,
-  minScore,
   results,
   aiPrompt,
   showPromptModal,
@@ -867,7 +866,6 @@ export const AiSummaryPanel = ({
 
   if (!enabled) return null;
 
-  const filteredResults = results.filter((result) => result.score >= minScore);
   const displaySummary = translatedSummary || aiSummary;
   const selectedLang = translatedLang || 'en';
   const isDrilldown = (drilldownStackDepth || 0) > 0;
@@ -972,7 +970,7 @@ export const AiSummaryPanel = ({
               expanded={aiSummaryExpanded}
               loading={aiSummaryLoading}
               summary={displaySummary}
-              filteredResults={filteredResults}
+              results={results}
               onResultClick={onResultClick}
               contentRef={summaryContentRef}
               onDrilldown={onDrilldown}
