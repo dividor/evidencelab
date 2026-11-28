@@ -991,14 +991,17 @@ def test_language_codes_roundtrip():
 
 
 def test_normalize_language_filter_maps_names_to_codes():
-    assert filter_helpers_module.normalize_language_filter("English") == "en"
-    assert filter_helpers_module.normalize_language_filter("French,Spanish") == "fr,es"
+    assert filter_helpers_module.normalize_language_filter("English") == ["en"]
+    assert filter_helpers_module.normalize_language_filter("French,Spanish") == [
+        "fr",
+        "es",
+    ]
 
 
 def test_normalize_language_filter_passes_through_codes():
     """Unknown values (including raw codes) pass through unchanged."""
-    assert filter_helpers_module.normalize_language_filter("en") == "en"
-    assert filter_helpers_module.normalize_language_filter("Unknown") == "Unknown"
+    assert filter_helpers_module.normalize_language_filter("en") == ["en"]
+    assert filter_helpers_module.normalize_language_filter("Unknown") == ["Unknown"]
 
 
 def test_normalize_language_filter_none():

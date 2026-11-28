@@ -201,7 +201,7 @@ def test_document_retrieval_excludes_points_with_empty_payloads(monkeypatch):
     assert result.points == points[:1]
     assert find.call_args.kwargs["core_filters"] == {
         "country": ["Congo, Dem. Rep."],
-        "language": "en",
+        "language": ["en"],
     }
 
 

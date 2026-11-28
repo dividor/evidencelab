@@ -50,6 +50,26 @@ _EXCLUDE_FROM_META = frozenset(
 )
 
 
+def normalize_agent_filters(
+    filters: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Read an agent's ``filters`` object: a string is one value, a list is
+    several.
+
+    The web app writes a multi-select as one comma-separated string with
+    escaped commas; agents send JSON instead, so a value such as
+    ``"SDG16 - Peace, Justice and Strong Institutions"`` must stay whole. Each
+    string becomes a one-item list, which the search reads verbatim. Numbers
+    and range bounds (``*_min`` / ``*_max``) are left as they are.
+    """
+    if filters is None:
+        return None
+    return {
+        field: [value] if isinstance(value, str) else value
+        for field, value in filters.items()
+    }
+
+
 async def mcp_search(
     query: str,
     data_source: Optional[str] = None,
@@ -77,6 +97,7 @@ async def mcp_search(
 
     limit = max(1, min(limit, 100))
     source = await resolve_mcp_source(data_source)
+    filters = normalize_agent_filters(filters)
     loop = asyncio.get_running_loop()
 
     def _run():

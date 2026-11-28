@@ -16,6 +16,7 @@ import { serializeDrilldownTree } from '../../utils/drilldownUtils';
 import { buildResultsCoverageText } from '../../utils/resultsCoverage';
 import { useDevFixtureSearch } from '../../__fixtures__/useDevFixtureSearch';
 import { canRate } from '../../utils/ratingAccess';
+import { joinFilterValues, splitFilterValues } from '../../utils/filterValues';
 import { WanderingSpinner } from '../WanderingSpinner';
 
 interface SearchTabContentProps {
@@ -442,13 +443,11 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
 
   const [filteredOrgs, setFilteredOrgs] = useState<string[]>(() => {
     const params = new URLSearchParams(window.location.search);
-    const orgParam = params.get('carousel_org');
-    return orgParam ? orgParam.split(',') : [];
+    return splitFilterValues(params.get('carousel_org'));
   });
   const [filteredDocIds, setFilteredDocIds] = useState<string[]>(() => {
     const params = new URLSearchParams(window.location.search);
-    const docParam = params.get('carousel_doc');
-    return docParam ? docParam.split(',') : [];
+    return splitFilterValues(params.get('carousel_doc'));
   });
   const isUserFilterAction = useRef(false);
   const prevSearchIdRef = useRef(searchId);
@@ -581,9 +580,9 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
 
     // Sync carousel filter state to URL
     const url = new URL(window.location.href);
-    if (filteredOrgs.length > 0) url.searchParams.set('carousel_org', filteredOrgs.join(','));
+    if (filteredOrgs.length > 0) url.searchParams.set('carousel_org', joinFilterValues(filteredOrgs));
     else url.searchParams.delete('carousel_org');
-    if (filteredDocIds.length > 0) url.searchParams.set('carousel_doc', filteredDocIds.join(','));
+    if (filteredDocIds.length > 0) url.searchParams.set('carousel_doc', joinFilterValues(filteredDocIds));
     else url.searchParams.delete('carousel_doc');
     window.history.replaceState(null, '', url.toString());
 

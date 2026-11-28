@@ -27,7 +27,11 @@ from pipeline.utilities.embedding_client import RemoteEmbeddingClient  # noqa: E
 from ui.backend.services import search_models  # noqa: E402
 from ui.backend.services.search_wide import run_wide_search  # noqa: E402
 from ui.backend.utils.filter_helpers import build_doc_id_filter  # noqa: E402
-from ui.backend.utils.filter_helpers import collect_range_conditions
+from ui.backend.utils.filter_helpers import (
+    collect_range_conditions,
+    filter_match,
+    parse_filter_values,
+)
 from ui.backend.utils.language_codes import LANGUAGE_NAMES  # noqa: E402
 
 # Add parent directory to path
@@ -318,39 +322,26 @@ def _embed_query_vectors(
     return dense_vec, sparse_vec
 
 
-def _split_filter_values(value: Any) -> Optional[List[str]]:
-    if isinstance(value, str) and "," in value:
-        values = [item.strip() for item in value.split(",") if item.strip()]
-        if values:
-            return values
-    return None
-
-
-def _as_multi_values(value: Any) -> Optional[List[str]]:
-    if isinstance(value, (list, tuple, set)):
-        return [str(item) for item in value if item is not None]
-    return _split_filter_values(value)
-
-
 def _build_filter_condition(
     field: str, value: Any, text_match_fields: set[str]
-) -> Optional[models.FieldCondition]:
-    if value is None:
+) -> Optional[models.Condition]:
+    """Payload condition for one filter field (values OR within the field).
+
+    Text-match fields (titles) match each selected value as text; other fields
+    match the selected values exactly.
+    """
+    values = parse_filter_values(value)
+    if not values:
         return None
-    if field in text_match_fields:
-        return models.FieldCondition(
-            key=field,
-            match=models.MatchText(text=value),
-        )
-    multi_values = _as_multi_values(value)
-    return models.FieldCondition(
-        key=field,
-        match=(
-            models.MatchAny(any=multi_values)
-            if multi_values
-            else models.MatchValue(value=value)
-        ),
-    )
+    if field not in text_match_fields:
+        return models.FieldCondition(key=field, match=filter_match(values))
+    text_conditions: List[models.Condition] = [
+        models.FieldCondition(key=field, match=models.MatchText(text=str(text)))
+        for text in values
+    ]
+    if len(text_conditions) == 1:
+        return text_conditions[0]
+    return models.Filter(should=text_conditions)
 
 
 # Document-level fields that are not stored on chunks. They are resolved to a
@@ -384,7 +375,7 @@ def _build_query_filter(
             if field.endswith("_min") or field.endswith("_max"):
                 continue
             if field == "doc_id":
-                must_conditions.append(build_doc_id_filter(value, _as_multi_values))
+                must_conditions.append(build_doc_id_filter(value))
                 continue
             condition = _build_filter_condition(field, value, _TEXT_MATCH_FIELDS)
             if condition:
@@ -1134,8 +1125,10 @@ def _build_document_filter(
         for field, value in filters.items():
             if not value or field in {"title", "map_title"}:
                 continue
+            if not parse_filter_values(value):
+                continue
             must_conditions.append(
-                models.FieldCondition(key=field, match=models.MatchValue(value=value))
+                models.FieldCondition(key=field, match=filter_match(value))
             )
     return models.Filter(must=must_conditions) if must_conditions else None
 

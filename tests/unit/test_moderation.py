@@ -297,7 +297,7 @@ class TestListingSql:
             {"title": "girls"}, {"organization": "map_organization"}
         )
         assert clauses[0] == HIDDEN_SQL_CLAUSE
-        assert clauses[1] == "map_title ILIKE %s"
+        assert clauses[1] == "(map_title ILIKE %s)"
         assert params == ["%girls%"]
 
 

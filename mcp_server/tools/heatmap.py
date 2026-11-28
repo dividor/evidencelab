@@ -80,6 +80,8 @@ def text_table(grid: HeatmapGrid) -> str:
 def web_link(grid: HeatmapGrid, dataset: str) -> str:
     """Build the existing web Heatmapper link from configured origin and grid state."""
     from ui.backend.services.heatmap import safe_web_url
+    from ui.backend.services.heatmap_axes import facet_selection
+    from ui.backend.utils.filter_helpers import join_filter_values
 
     base = oauth._APP_BASE_URL
     if not safe_web_url(base):
@@ -106,7 +108,7 @@ def web_link(grid: HeatmapGrid, dataset: str) -> str:
     if request.row_dimension != "queries":
         filters[request.row_dimension] = request.row_values or []
     params.extend(
-        (field, ",".join(value) if isinstance(value, list) else value)
+        (field, join_filter_values(facet_selection(value)))
         for field, value in filters.items()
     )
     return urlunsplit((url.scheme, url.netloc, url.path or "/", urlencode(params), ""))

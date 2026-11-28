@@ -157,7 +157,7 @@ Semantic search returning raw document passages. Use when the calling agent want
 | `skill` | auto | Set to `"search"` to force this skill |
 | `data_source` | `"uneg"` | Collection to search |
 | `limit` | `10` | Max results (1–100) |
-| `filters` | `null` | JSON field filters — `{"organization": "UNICEF", "published_year": "2023"}` |
+| `filters` | `null` | JSON field filters — `{"organization": "UNICEF", "published_year": "2023"}`. A string is one value, even with commas in it; give several values as a list: `{"tag_sdg": ["SDG9 - Industry, Innovation and Infrastructure", "SDG16 - Peace, Justice and Strong Institutions"]}` |
 
 > **Skill selection:** if `skill` is not set, messages starting with "Search" route to `search`; everything else routes to `research`.
 

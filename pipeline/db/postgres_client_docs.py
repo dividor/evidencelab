@@ -530,31 +530,27 @@ class PostgresDocMixin:
         return [str(row[0]) for row in rows]
 
     def fetch_doc_ids_by_region(
-        self, region_selection: str, limit: int = 5000
+        self, region_names: List[str], limit: int = 5000
     ) -> List[str]:
-        """Fetch doc_ids whose region matches the given filter selection.
+        """Fetch doc_ids of documents in any of the given regions.
 
         Region is a document-level field (it is not stored on chunks), held as a
         ``"; "``-joined string of one or more regions, e.g.
-        ``"Asia and the Pacific; Eastern and Southern Africa"``.
-
-        The frontend joins multi-select filter values with commas, but region
-        names themselves contain commas (e.g. ``"Middle East, Northern Africa,
-        and Eastern Europe"``), so the selection cannot be split on commas.
-        Instead each document's individual region segments are matched against
-        the raw selection string by containment. WFP region names are mutually
-        distinct (no name is a substring of another), so this is unambiguous and
-        works for both single- and multi-select.
+        ``"Asia and the Pacific; Eastern and Southern Africa"``. A document
+        matches when one of its region names equals one of ``region_names``
+        (ignoring case and surrounding spaces). Region names may contain commas
+        (``"Middle East, Northern Africa, and Eastern Europe"``); the request
+        parser keeps them whole.
 
         Args:
-            region_selection: Raw region filter value from the request.
+            region_names: Selected region names (values OR together).
             limit: Maximum number of doc_ids to return.
 
         Returns:
             List of matching doc_id strings.
         """
-        selection = (region_selection or "").strip()
-        if not selection:
+        wanted = [name.strip().lower() for name in region_names if name.strip()]
+        if not wanted:
             return []
         query = f"""
             SELECT doc_id
@@ -563,15 +559,14 @@ class PostgresDocMixin:
               AND EXISTS (
                   SELECT 1
                   FROM unnest(string_to_array(map_region, '; ')) AS region_segment
-                  WHERE btrim(region_segment) <> ''
-                    AND %s ILIKE '%%' || btrim(region_segment) || '%%'
+                  WHERE lower(btrim(region_segment)) = ANY(%s)
               )
             LIMIT %s
         """
         rows: List[tuple] = []
         with self._get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(query, [selection, limit])
+                cur.execute(query, [wanted, limit])
                 rows = cur.fetchall()
         return [str(row[0]) for row in rows]
 
@@ -953,8 +948,9 @@ class PostgresDocMixin:
         by ``_column_clause``) or unknown.
         """
         if key == "title":
-            params.append(f"%{value}%")
-            return "map_title ILIKE %s"
+            titles = value if isinstance(value, list) else [value]
+            params.extend(f"%{title}%" for title in titles)
+            return "(" + " OR ".join(["map_title ILIKE %s"] * len(titles)) + ")"
         if key == "search":
             params.extend([f"%{value}%", f"%{value}%"])
             return "(map_title ILIKE %s OR sys_summary ILIKE %s)"

@@ -64,6 +64,10 @@ def _filters_description() -> str:
         parts.append(
             'Examples: {"organization": "UNDP", "published_year": "2024"} '
             'or {"tag_sdg": "SDG5 - Gender Equality", "country": "Kenya"}. '
+            "A string is one value, even if it contains commas; give several "
+            'values as a list, e.g. {"tag_sdg": ["SDG9 - Industry, Innovation '
+            'and Infrastructure", "SDG16 - Peace, Justice and Strong '
+            'Institutions"]}. '
             "TIP: Set include_facets=True to discover all available "
             "filter values and counts."
         )

@@ -29,6 +29,7 @@ from ui.backend.schemas import Facets, FacetValue
 from ui.backend.schemas.heatmap import HeatmapCellRequest, HeatmapRequest
 from ui.backend.services import heatmap, heatmap_axes
 from ui.backend.services.heatmap_search import CellHits, HeatmapHit
+from ui.backend.utils.filter_helpers import parse_filter_values
 
 pytestmark = pytest.mark.unit
 
@@ -52,6 +53,39 @@ def planned_grid(grid_request):
         facets={"published_year": [FacetValue(value="2024", count=10)]},
     )
     return heatmap_axes.plan_axes(grid_request, facets, 24)
+
+
+def test_web_link_when_values_contain_commas_then_web_app_reads_them_whole(
+    monkeypatch,
+):
+    monkeypatch.setattr(oauth, "_APP_BASE_URL", "https://example.org/evidence/")
+    sdg16 = "SDG16 - Peace, Justice and Strong Institutions"
+    request = HeatmapRequest(
+        data_source="uneg",
+        row_dimension="queries",
+        column_dimension="tag_sdg",
+        row_queries=["School meals"],
+        filters={"country": ["Congo, Dem. Rep.", "Kenya"], "organization": "A, B"},
+        column_values=[sdg16, "SDG1 - No Poverty"],
+    )
+    facets = Facets(
+        filter_fields={"tag_sdg": "SDG"},
+        facets={
+            "tag_sdg": [
+                FacetValue(value=sdg16, count=3),
+                FacetValue(value="SDG1 - No Poverty", count=2),
+            ]
+        },
+    )
+    plan = heatmap_axes.plan_axes(request, facets, 24)
+    grid = heatmap.assemble_grid(plan, [CellHits([], False), CellHits([], False)])
+    params = parse_qs(urlsplit(adapter.web_link(grid, "UNEG")).query)
+    assert parse_filter_values(params["country"][0]) == ["Congo, Dem. Rep.", "Kenya"]
+    assert parse_filter_values(params["organization"][0]) == ["A, B"]
+    assert sorted(parse_filter_values(params["tag_sdg"][0])) == [
+        "SDG1 - No Poverty",
+        sdg16,
+    ]
 
 
 @pytest.fixture

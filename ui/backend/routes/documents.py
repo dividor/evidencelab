@@ -34,6 +34,7 @@ from ui.backend.utils.app_state import (
 from ui.backend.utils.document_utils import normalize_document_payload
 from ui.backend.utils.documents_sys_merge import merge_sys_data_for_doc
 from ui.backend.utils.errors import server_error
+from ui.backend.utils.filter_helpers import parse_filter_values
 
 RATE_LIMIT_SEARCH, RATE_LIMIT_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
 celery_app = pipeline_tasks.app
@@ -185,9 +186,12 @@ def _build_document_filters(
     ocr_applied: Optional[str] = None,
 ) -> Dict[str, Any]:
     def _split_or_single(val: str) -> Any:
-        """Return a list if comma-separated, else a single string."""
-        parts = [v.strip() for v in val.split(",") if v.strip()]
-        return parts if len(parts) > 1 else val
+        """Return the selected values as a list when several, else the one value.
+
+        A comma inside a value arrives as ``\\,`` (see ``parse_filter_values``).
+        """
+        parts = parse_filter_values(val)
+        return parts if len(parts) > 1 else (parts[0] if parts else val)
 
     filters: Dict[str, Any] = {}
     if organization:
@@ -199,11 +203,9 @@ def _build_document_filters(
     if toc_approved is not None:
         filters["toc_approved"] = toc_approved
     if sdg:
-        filters["sdg"] = [s.strip() for s in sdg.split(",") if s.strip()]
+        filters["sdg"] = parse_filter_values(sdg)
     if cross_cutting_theme:
-        filters["cross_cutting_theme"] = [
-            c.strip() for c in cross_cutting_theme.split(",") if c.strip()
-        ]
+        filters["cross_cutting_theme"] = parse_filter_values(cross_cutting_theme)
     if language:
         filters["language"] = _split_or_single(language)
     if file_format:
@@ -211,7 +213,7 @@ def _build_document_filters(
     if status:
         filters["status"] = _split_or_single(status)
     if title:
-        filters["title"] = title
+        filters["title"] = _split_or_single(title)
     if search:
         filters["search"] = search
     if ocr_applied and isinstance(ocr_applied, str):

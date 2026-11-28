@@ -123,25 +123,41 @@ class TestResolveRegion:
         )
         assert "region" not in result
         assert result["doc_id"] == ["d1", "d2"]
-        pg.fetch_doc_ids_by_region.assert_called_once_with("Asia and the Pacific")
+        pg.fetch_doc_ids_by_region.assert_called_once_with(["Asia and the Pacific"])
 
-    def test_region_list_when_set_then_doc_ids_are_unioned(self):
+    def test_region_list_when_set_then_all_names_looked_up_together(self):
         pg = MagicMock()
-        pg.fetch_doc_ids_by_region.side_effect = [["d1", "d2"], ["d2", "d3"]]
+        pg.fetch_doc_ids_by_region.return_value = ["d2", "d1", "d3"]
         result = resolve_doc_level_filters(
             {"region": ["Asia and the Pacific", "Eastern Africa"]}, pg, SOURCE
         )
-        assert result["doc_id"] == ["d1", "d2", "d3"]  # union, sorted
-        assert pg.fetch_doc_ids_by_region.call_count == 2
+        assert result["doc_id"] == ["d1", "d2", "d3"]  # sorted
+        pg.fetch_doc_ids_by_region.assert_called_once_with(
+            ["Asia and the Pacific", "Eastern Africa"]
+        )
 
-    def test_region_name_with_comma_when_string_then_not_split(self):
+    def test_region_name_with_escaped_comma_when_string_then_kept_whole(self):
         pg = MagicMock()
         pg.fetch_doc_ids_by_region.return_value = ["d1"]
         resolve_doc_level_filters(
-            {"region": "Middle East, Northern Africa, and Eastern Europe"}, pg, SOURCE
+            {"region": "Middle East\\, Northern Africa\\, and Eastern Europe"},
+            pg,
+            SOURCE,
         )
         pg.fetch_doc_ids_by_region.assert_called_once_with(
-            "Middle East, Northern Africa, and Eastern Europe"
+            ["Middle East, Northern Africa, and Eastern Europe"]
+        )
+
+    def test_region_names_in_list_when_they_have_commas_then_kept_whole(self):
+        pg = MagicMock()
+        pg.fetch_doc_ids_by_region.return_value = ["d1"]
+        resolve_doc_level_filters(
+            {"region": ["Middle East, Northern Africa, and Eastern Europe"]},
+            pg,
+            SOURCE,
+        )
+        pg.fetch_doc_ids_by_region.assert_called_once_with(
+            ["Middle East, Northern Africa, and Eastern Europe"]
         )
 
     def test_region_when_no_docs_match_then_sentinel_doc_id(self):

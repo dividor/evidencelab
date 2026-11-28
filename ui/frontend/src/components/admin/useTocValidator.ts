@@ -2,6 +2,7 @@ import axios from 'axios';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import API_BASE_URL from '../../config';
 import type { TocValidationResult } from '../../types/api';
+import { splitFilterValues } from '../../utils/filterValues';
 
 const PAGE_SIZE = 25;
 /** Max page size the /documents endpoint allows — used when loading every doc. */
@@ -66,7 +67,7 @@ const passesColumn = (
   if (column === 'title') {
     return docTitle(doc).toLowerCase().includes(raw.toLowerCase());
   }
-  const selected = new Set(raw.split(',').map((v) => v.trim()));
+  const selected = new Set(splitFilterValues(raw));
   if (column === 'organization') return selected.has(docOrg(doc) || NONE_LABEL);
   if (column === 'status') return selected.has(docStatus(doc));
   return selected.has(reviewOf(doc, results));

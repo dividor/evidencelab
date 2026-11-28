@@ -41,7 +41,15 @@ class TestConvertRegionToDocIds:
         _convert_region_to_doc_ids(core, pg)
         assert "region" not in core
         assert set(core["doc_id"].split(",")) == {"d1", "d2"}
-        pg.fetch_doc_ids_by_region.assert_called_once_with("Asia and the Pacific")
+        pg.fetch_doc_ids_by_region.assert_called_once_with(["Asia and the Pacific"])
+
+    def test_region_when_several_with_commas_then_each_name_whole(self):
+        core = {"region": "Middle East\\, Northern Africa\\, and Eastern Europe,Asia"}
+        pg = _pg_returning(["d1"])
+        _convert_region_to_doc_ids(core, pg)
+        pg.fetch_doc_ids_by_region.assert_called_once_with(
+            ["Middle East, Northern Africa, and Eastern Europe", "Asia"]
+        )
 
     def test_region_when_no_docs_match_then_sentinel_doc_id(self):
         core = {"region": "Nowhere"}
@@ -104,24 +112,28 @@ def _make_docs_client(fetch_rows):
 class TestFetchDocIdsByRegion:
     def test_blank_selection_then_empty_without_query(self):
         client, cursor = _make_docs_client([])
-        assert client.fetch_doc_ids_by_region("   ") == []
+        assert client.fetch_doc_ids_by_region(["   "]) == []
         cursor.execute.assert_not_called()
 
     def test_selection_then_returns_doc_ids(self):
         client, cursor = _make_docs_client([("d1",), ("d2",)])
-        result = client.fetch_doc_ids_by_region("Asia and the Pacific")
+        result = client.fetch_doc_ids_by_region(["Asia and the Pacific"])
         assert result == ["d1", "d2"]
 
-    def test_selection_then_query_is_parameterized(self):
+    def test_selection_then_names_bound_whole_and_lowercased(self):
         client, cursor = _make_docs_client([])
         client.fetch_doc_ids_by_region(
-            "Middle East, Northern Africa, and Eastern Europe"
+            ["Middle East, Northern Africa, and Eastern Europe", " Asia "]
         )
         sql, params = cursor.execute.call_args[0]
         # The user selection must be a bound parameter, never interpolated.
         assert "Middle East" not in sql
-        assert params[0] == "Middle East, Northern Africa, and Eastern Europe"
-        assert "%s ILIKE" in sql
+        assert params[0] == [
+            "middle east, northern africa, and eastern europe",
+            "asia",
+        ]
+        assert "= ANY(%s)" in sql
+        assert "ILIKE" not in sql
 
 
 class TestConvertLanguageToDocIds:

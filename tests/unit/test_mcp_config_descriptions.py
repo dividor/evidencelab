@@ -138,7 +138,9 @@ async def test_search_accepts_dict_filters(monkeypatch):
     )
 
     assert isinstance(result, MCPSearchResponse)
-    assert captured_kwargs["filters"] == {"organization": "WFP"}
+    # An agent's string is one value: it reaches search as a one-item list, so a
+    # value with commas is never split.
+    assert captured_kwargs["filters"] == {"organization": ["WFP"]}
 
 
 def test_server_parses_string_filters():

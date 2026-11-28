@@ -1,4 +1,5 @@
 import React from 'react';
+import { joinFilterValues, splitFilterValues } from '../../utils/filterValues';
 
 const MULTISELECT_COLUMNS = new Set([
   'title',
@@ -96,8 +97,7 @@ export const DocumentsFilterPopover: React.FC<DocumentsFilterPopoverProps> = ({
 
   // For multiselect, track selected values as a set
   const [selectedValues, setSelectedValues] = React.useState<Set<string>>(() => {
-    const current = columnFilters[activeFilterColumn] || '';
-    return new Set(current ? current.split(',').map((v) => v.trim()) : []);
+    return new Set(splitFilterValues(columnFilters[activeFilterColumn]));
   });
 
   const options = React.useMemo(
@@ -126,7 +126,7 @@ export const DocumentsFilterPopover: React.FC<DocumentsFilterPopoverProps> = ({
     if (selectedValues.size === 0) {
       onClearFilter(activeFilterColumn);
     } else {
-      onApplyFilter(activeFilterColumn, Array.from(selectedValues).join(','));
+      onApplyFilter(activeFilterColumn, joinFilterValues(Array.from(selectedValues)));
     }
     onClose();
   };

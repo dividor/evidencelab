@@ -106,6 +106,10 @@ a JSON object:
 | Facet fields | the configured field name with a list of values | `{"country": ["Kenya"], "region": ["Asia and the Pacific"]}` |
 | Range fields | `<field>_min` / `<field>_max` (numbers) | `{"published_year_min": 2018, "published_year_max": 2022}` |
 
+Give values as lists, as above. A value written as one string instead is read
+like a search filter: values separated by commas, with `\,` for a comma inside a
+value (e.g. `"Middle East\\, Northern Africa\\, and Eastern Europe"` in JSON).
+
 Document-level fields — `doc_titles`, `region`, `language` and the source's
 `src_*` fields — are resolved to the matching document IDs at run time, exactly
 as the search page does, so you filter by the human-readable value rather than

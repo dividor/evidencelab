@@ -64,7 +64,7 @@ def core_filters(cell: CellSearch) -> dict[str, Any]:
         field: facet_selection(selection) for field, selection in cell.filters.items()
     }
     if "language" in filters:
-        filters["language"] = normalize_language_filter(",".join(filters["language"]))
+        filters["language"] = normalize_language_filter(filters["language"])
     return filters
 
 

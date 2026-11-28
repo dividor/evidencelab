@@ -1,5 +1,6 @@
 import React from 'react';
 import type { FilterColumn } from './useTocValidator';
+import { joinFilterValues, splitFilterValues } from '../../utils/filterValues';
 
 /** Friendly labels for the review-verdict filter options. */
 const REVIEW_LABELS: Record<string, string> = {
@@ -72,7 +73,7 @@ const MultiselectFilter: React.FC<{
   onClear: (column: FilterColumn) => void;
 }> = ({ column, currentValue, options, onApply, onClear }) => {
   const [selected, setSelected] = React.useState<Set<string>>(
-    () => new Set(currentValue ? currentValue.split(',').map((v) => v.trim()) : [])
+    () => new Set(splitFilterValues(currentValue))
   );
 
   const toggle = (value: string) =>
@@ -117,7 +118,7 @@ const MultiselectFilter: React.FC<{
       <div className="filter-actions">
         <button
           className="filter-apply-button"
-          onClick={() => onApply(column, Array.from(selected).join(','))}
+          onClick={() => onApply(column, joinFilterValues(Array.from(selected)))}
         >
           Apply{selected.size > 0 ? ` (${selected.size})` : ''}
         </button>
