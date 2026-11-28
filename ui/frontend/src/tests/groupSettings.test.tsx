@@ -38,6 +38,7 @@ const SEL_INPUT_TYPE_CHECKBOX = 'input[type="checkbox"]';
 const SEARCH_SETTINGS = 'Search Settings';
 const SAVE_SETTINGS = 'Save Settings';
 const SEARCH_AI_SUMMARY = 'Search AI Summary';
+const SEARCH_SUMMARY_PROMPT = 'Search AI Summary prompt';
 const DOC_SUMMARIES = 'Document Summaries';
 
 const URL_API_GROUPS_G2 = '/api/groups/g2';
@@ -66,8 +67,10 @@ describe('GroupSettingsManager', () => {
     const prompt = await screen.findByLabelText('Section prompt');
     await waitFor(() => expect(prompt).toHaveValue(defaultPrompt));
     const briefPanel = within(screen.getByRole('tabpanel', { name: 'Brief' }));
+    expect(briefPanel.getByLabelText(/Default section length/)).toHaveClass('filter-select');
     expect(briefPanel.getByRole('option', { name: 'On (default)' })).toHaveValue('');
     const citationControl = briefPanel.getByLabelText('Automatic citation check');
+    expect(citationControl).toHaveClass('filter-select');
     fireEvent.change(citationControl, { target: { value: 'false' } });
     fireEvent.change(prompt, { target: { value: customized } });
     fireEvent.click(screen.getByRole('button', { name: SAVE_SETTINGS }));
@@ -83,6 +86,52 @@ describe('GroupSettingsManager', () => {
     fireEvent.click(screen.getByRole('button', { name: SAVE_SETTINGS }));
     await waitFor(() => expect(mockedAxios.patch).toHaveBeenLastCalledWith(URL_API_GROUPS_G2, {
       search_settings: { briefTargetWords: 300 }, summary_prompt: '',
+    }));
+  });
+
+  test('shows the site summary prompt inline and saves a group override', async () => {
+    const sitePrompt = 'Use the available results.';
+    const customized = 'Synthesize the results in thematic paragraphs.';
+    mockedAxios.get.mockImplementation(async url => ({ data: url.endsWith('/summary-defaults')
+      ? { systemPrompt: sitePrompt }
+      : mockGroups }));
+    mockedAxios.patch.mockResolvedValue({ data: mockGroups[1] });
+
+    render(<GroupSettingsManager />);
+    fireEvent.click(await screen.findByRole('tab', { name: SEARCH_AI_SUMMARY }));
+    const prompt = await screen.findByLabelText(SEARCH_SUMMARY_PROMPT);
+    await waitFor(() => expect(prompt).toHaveValue(sitePrompt));
+    expect(screen.queryByRole('button', { name: 'Edit Prompt' })).not.toBeInTheDocument();
+    fireEvent.change(prompt, { target: { value: customized } });
+    fireEvent.click(screen.getByRole('button', { name: SAVE_SETTINGS }));
+
+    await waitFor(() => expect(mockedAxios.patch).toHaveBeenCalledWith(URL_API_GROUPS_G2, {
+      search_settings: {}, summary_prompt: customized,
+    }));
+  });
+
+  test('reset clears only the named group summary override and displays the inherited prompt', async () => {
+    const current = 'Custom group prompt.';
+    const inherited = 'Default group prompt.';
+    const groups = [
+      { ...mockGroups[0], summary_prompt: current },
+      { ...mockGroups[1], summary_prompt: inherited },
+    ];
+    mockedAxios.get.mockResolvedValue({ data: groups });
+    mockedAxios.patch.mockResolvedValue({ data: groups[0] });
+
+    render(<GroupSettingsManager />);
+    fireEvent.click(await screen.findByText('Analysts'));
+    fireEvent.click(screen.getByRole('tab', { name: SEARCH_AI_SUMMARY }));
+    const prompt = screen.getByLabelText(SEARCH_SUMMARY_PROMPT);
+    expect(prompt).toHaveValue(current);
+    fireEvent.click(screen.getByRole('button', { name: 'Reset search ai summary prompt to default' }));
+    expect(prompt).toHaveValue(inherited);
+    expect(mockedAxios.patch).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: SAVE_SETTINGS }));
+
+    await waitFor(() => expect(mockedAxios.patch).toHaveBeenCalledWith('/api/groups/g1', {
+      search_settings: mockGroups[0].search_settings, summary_prompt: '',
     }));
   });
 
