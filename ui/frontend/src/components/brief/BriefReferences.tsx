@@ -128,6 +128,7 @@ export const BriefReferences: React.FC<{
   references: BriefReference[];
   groups: BriefReferenceGroup[];
   grouping: ReferenceGrouping;
+  locked?: boolean;
   onGroupingChange: (grouping: ReferenceGrouping) => void;
   onSourceClick: SourceClick;
   /** Where the Word export's links point; the choice is shown when set. */
@@ -137,6 +138,7 @@ export const BriefReferences: React.FC<{
   references,
   groups,
   grouping,
+  locked,
   onGroupingChange,
   onSourceClick,
   wordLinkTarget,
@@ -152,6 +154,7 @@ export const BriefReferences: React.FC<{
           {GROUPING_OPTIONS.map((option) => (
             <label className="brief-footnotes-group-toggle" key={option}>
               <input
+                disabled={locked}
                 type="checkbox"
                 checked={grouping === option}
                 onChange={(e) => onGroupingChange(e.target.checked ? option : 'passage')}

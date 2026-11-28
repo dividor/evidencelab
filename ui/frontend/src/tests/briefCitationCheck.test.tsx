@@ -9,6 +9,10 @@ import type { BriefCitationCheckPassage } from '../types/testing';
 
 jest.mock('../config', () => ({ __esModule: true, default: '/api' }));
 jest.mock('axios');
+const TEST_TEXT_1 = 'Showing 3 of 3 passages.';
+const TEST_TEXT_2 = 'Expand Costs';
+const TEST_TEXT_3 = 'Expand Background';
+
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 const TS = '2026-09-24T10:00:00Z';
@@ -141,7 +145,7 @@ describe('BriefCheckDetail', () => {
   test('shows the summary, filters the table and expands a passage', async () => {
     const onResultClick = jest.fn();
     render(<BriefCheckDetail checkId={check.id} dataSource="wfp" onBack={jest.fn()} onResultClick={onResultClick} />);
-    await waitFor(() => expect(screen.getByText('Showing 3 of 3 passages.', { exact: false })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(TEST_TEXT_1, { exact: false })).toBeInTheDocument());
     expect(screen.getByText(/brief version 4/)).toBeInTheDocument();
     expect(screen.getByText(/· ran 1\.5 s/)).toBeInTheDocument();
     expect(screen.getByRole('note')).toHaveTextContent('its results describe version 4, not the brief as it is now');
@@ -177,7 +181,7 @@ describe('BriefCheckDetail', () => {
     expect(onResultClick).toHaveBeenCalledTimes(2);
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
-    expect(screen.getByText('Showing 3 of 3 passages.', { exact: false })).toBeInTheDocument();
+    expect(screen.getByText(TEST_TEXT_1, { exact: false })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: EXPORT })).toBeEnabled();
     // A check made before the count existed shows no tile for it.
     expect(screen.queryByText(SKIPPED_TILE)).toBeNull();
@@ -245,7 +249,7 @@ describe('BriefCheckDetail', () => {
 test('a saved-check URL opens the check directly and fetches its saved passages', async () => {
   window.history.replaceState(null, '', '/admin?admin_page=testing-brief&admin_check=chk1');
   render(<BriefTestingManager dataSource="wfp" modelCombo="Google Vertex" />);
-  expect(await screen.findByText('Showing 3 of 3 passages.', {exact:false})).toBeVisible();
+  expect(await screen.findByText(TEST_TEXT_1, {exact:false})).toBeVisible();
   expect(mockedAxios.get).toHaveBeenCalledWith('/api/testing/brief-checks/chk1');
 });
 
@@ -257,7 +261,7 @@ test('a full check opens its section grades and the evidence behind an uncited c
       assertion_results:[{type:'brief_factual',passed:false,score:0,message:'',
         claim_grades:[{claim:1,score:0,passed:false,reason:'No supporting citation.'}]}]}]}});
   render(<BriefCheckDetail checkId="chk1" dataSource="uneg" onBack={jest.fn()} />);
-  fireEvent.click(await screen.findByRole('button', {name:'Expand Costs'}));
+  fireEvent.click(await screen.findByRole('button', {name:TEST_TEXT_2}));
   fireEvent.click(screen.getByText('Factual support from citations'));
   expect(await screen.findByText('No supporting citation.')).toBeVisible();
   expect(screen.getByText('No citation on this sentence.')).toBeVisible();
@@ -272,19 +276,19 @@ test('shows every section before the optional passage report for a completed ful
     summary_stats: { ...check.summary_stats, section_counts: { pass: 1, fail: 1, error: 0 } },
     section_results: sections } });
   render(<BriefCheckDetail checkId={check.id} dataSource="uneg" onBack={jest.fn()} />);
-  expect(await screen.findByRole('button', {name:'Expand Background'})).toBeVisible();
+  expect(await screen.findByRole('button', {name:TEST_TEXT_3})).toBeVisible();
   expect(screen.getByRole('table', {name:'Section and brief'})).toBeVisible();
-  expect(screen.getByRole('button', {name:'Expand Costs'})).toBeVisible();
+  expect(screen.getByRole('button', {name:TEST_TEXT_2})).toBeVisible();
   expect(screen.getByText(/1 passed · 1 failed · 0 with errors/)).toBeVisible();
   const report = screen.getByText('Passage evidence and run statistics');
   expect(report.closest('details')).not.toHaveAttribute('open');
   fireEvent.click(screen.getByRole('button', { name: 'Show sections needing attention' }));
-  expect(screen.queryByRole('button', {name:'Expand Background'})).toBeNull();
-  expect(screen.getByRole('button', {name:'Expand Costs'})).toBeVisible();
+  expect(screen.queryByRole('button', {name:TEST_TEXT_3})).toBeNull();
+  expect(screen.getByRole('button', {name:TEST_TEXT_2})).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Show all sections' }));
-  expect(screen.getByRole('button', {name:'Expand Background'})).toBeVisible();
+  expect(screen.getByRole('button', {name:TEST_TEXT_3})).toBeVisible();
   fireEvent.click(report);
-  expect(screen.getByText('Showing 3 of 3 passages.', {exact:false})).toBeVisible();
+  expect(screen.getByText(TEST_TEXT_1, {exact:false})).toBeVisible();
 });
 
 test('a running check displays graded and queued sections in the same table', async () => {
@@ -299,9 +303,15 @@ test('a running check displays graded and queued sections in the same table', as
   const table = await screen.findByRole('table', {name:'Section and brief'});
   expect(table).toHaveTextContent('Factual Claim Mean Score');
   expect(table).toHaveTextContent('Factual Claim Pass Rate');
-  const completed = screen.getByRole('button',{name:'Expand Costs'}).closest('tr');
+  const completed = screen.getByRole('button',{name:TEST_TEXT_2}).closest('tr');
   expect(completed).toHaveTextContent('0.75');
   expect(completed).toHaveTextContent('50%');
   expect(table).toHaveTextContent('Running');
   expect(table).toHaveTextContent('Queued');
+});
+
+test('verbatim claims in result rows use the shared quotation style', async () => {
+  render(<BriefCheckDetail dataSource="wfp" checkId="chk1" onBack={jest.fn()} />);
+  const claim = await screen.findByText(GIRLS, { selector: 'q' });
+  expect(claim.closest('blockquote')).toHaveClass('claim-verbatim');
 });

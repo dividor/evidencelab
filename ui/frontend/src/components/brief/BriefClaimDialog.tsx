@@ -1,38 +1,28 @@
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { BriefFactCheckEvidence, BriefFactCheckMark } from '../../types/testing';
-import { ClaimAssessment, ClaimReference, EvidenceGaps } from './ClaimAssessment';
+import { ClaimScrollArea } from './ClaimScrollArea';
+import { ClaimAssessment, EvidenceGaps } from './ClaimAssessment';
 import type { FactEvidenceState } from './useBriefFactCheck';
 
 type OpenSource = (source: BriefFactCheckEvidence) => void;
 
 function SourceExcerpt({ source, onOpen }: { source: BriefFactCheckEvidence; onOpen?: OpenSource }) {
-  const excerpt = useRef<HTMLDivElement>(null);
-  const [expanded, setExpanded] = useState(false);
-  const [clipped, setClipped] = useState(false);
-  useLayoutEffect(() => {
-    const el = excerpt.current!;
-    if (expanded) return;
-    const measure = () => setClipped(el.clientHeight > 0 && el.scrollHeight > el.clientHeight + 1);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [expanded, source]);
-  return <ClaimReference number={source.citation} title={source.title} page={source.page}>
+  return <section className="brief-claim-source">
+    <div className="brief-claim-source-heading">
+      <a href={source.pdf_url || '#'} onClick={event => {
+        if (onOpen) { event.preventDefault(); onOpen(source); }
+      }}>
+        [{source.citation}] {source.title}{source.page != null && ` · p. ${source.page}`}
+      </a>
+    </div>
     {!source.quoted && <p>The judge quoted nothing from this excerpt.</p>}
-    <div ref={excerpt} className={`brief-fact-excerpt${expanded ? ' expanded' : ''}`}>
+    <div className="brief-fact-excerpt">
       {source.segments.map((segment, i) => segment.highlighted
         ? <mark key={i} className="brief-fact-quote">{segment.text}</mark>
         : <React.Fragment key={i}>{segment.text}</React.Fragment>)}
     </div>
-    <div className="brief-claim-source-actions">
-      {(clipped || expanded) && <button type="button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
-        {expanded ? 'See less' : 'See more'}
-      </button>}
-      {onOpen && <button type="button" onClick={() => onOpen(source)}>Open source</button>}
-    </div>
-  </ClaimReference>;
+  </section>;
 }
 
 function Sources({ evidence, onOpen }: { evidence: FactEvidenceState | null; onOpen?: OpenSource }) {
@@ -60,6 +50,7 @@ export function BriefClaimDialog({ mark, evidence, onClose, onOpenSource }: {
         if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) onClose();
       }}>
       <button type="button" className="brief-modal-close brief-claim-close" aria-label="Close claim" onClick={onClose}>×</button>
+      <ClaimScrollArea>
       {mark.grade && mark.claim_text != null ? (
         <ClaimAssessment number={mark.grade.claim} text={mark.claim_text} grade={mark.grade} showPass={false} />
       ) : <>
@@ -67,13 +58,14 @@ export function BriefClaimDialog({ mark, evidence, onClose, onOpenSource }: {
           {mark.confidence != null && <span>{Math.round(mark.confidence * 100)}% confidence</span>}
           <span>Judged against [{mark.citations}]</span>
         </div>
-        <p>{mark.passage}</p>
-        <p><strong>Judge assessment</strong> {mark.explanation}</p>
+        <blockquote className="claim-verbatim"><q>{mark.passage}</q></blockquote>
+        <section className="testing-claim-reason"><h4>Judge assessment</h4><p>{mark.explanation}</p></section>
         <EvidenceGaps verdict={mark.verdict} unmet={mark.problems} />
       </>}
       {mark.quote_not_in_source && <p>A quote the judge gave could not be found in the source.</p>}
       <h3>Sources</h3>
       <Sources evidence={evidence} onOpen={onOpenSource && (source => { onClose(); onOpenSource(source); })} />
+      </ClaimScrollArea>
     </dialog>, document.body,
   );
 }

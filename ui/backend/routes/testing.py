@@ -63,6 +63,7 @@ from ui.backend.schemas.testing import (
     TestExperimentRead,
     TestExperimentUpdate,
 )
+from ui.backend.services import brief_check_runs
 from ui.backend.services import brief_version_store as versions
 from ui.backend.services.ai_daily_limit import require_ai_allowance
 from ui.backend.services.brief_citation_model import BriefCitationError
@@ -80,12 +81,9 @@ from ui.backend.services.citation_check_runner import (
     build_review_workbook,
     count_cited_passages,
     fail_stale_checks,
-    resolve_judge_model,
-    run_check,
 )
 from ui.backend.services.citation_fidelity import researched_sections
 from ui.backend.services.experiment_liveness import fail_stale_runs
-from ui.backend.services.llm_choice import JUDGE, user_group_choice
 from ui.backend.services.test_runner import run_experiment
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 
@@ -737,45 +735,12 @@ async def create_brief_check(
 ) -> BriefCitationCheck:
     """Start a citation check of a brief in the background; the UI polls."""
     brief = await _accessible_brief(session, body.brief_id, admin)
-    combo = (body.model_combo or "").strip() or None
-    if combo is not None and combo not in _model_combo_names():
-        raise HTTPException(status_code=400, detail="Invalid model_combo")
-    # The judge the admin's groups choose (Group Settings > LLMs), else config.json's.
-    judge_model = await user_group_choice(session, admin, JUDGE) or resolve_judge_model(
-        combo
-    )
-    if not judge_model:
-        raise HTTPException(status_code=503, detail="No judge model is configured")
-    # The check judges the brief's current version and pins it: a brief with
-    # no version yet gets its baseline version in the same transaction.
     try:
-        version = await versions.ensure_version(session, brief)
+        return await brief_check_runs.start(
+            session, brief, admin, body.model_combo, background_tasks
+        )
     except BriefCitationError as exc:
         raise citation_http_error(exc)
-    check = BriefCitationCheck(
-        check_kind="full",
-        brief_id=brief.id,
-        brief_title=brief.title,
-        data_source=brief.data_source,
-        created_by_user_id=admin.id,
-        judge_model=judge_model,
-        model_combo=combo,
-        brief_version_id=version.id,
-        brief_version_number=version.number,
-        status=EXPERIMENT_PENDING,
-        summary_stats=None,
-    )
-    session.add(check)
-    await session.commit()
-    await session.refresh(check)
-    background_tasks.add_task(run_check, check.id)
-    return check
-
-
-def _model_combo_names() -> List[str]:
-    from pipeline.db.config import UI_MODEL_COMBOS
-
-    return list(UI_MODEL_COMBOS)
 
 
 @router.get(
@@ -862,13 +827,7 @@ async def cancel_brief_check(
 ) -> BriefCitationCheck:
     """Mark an in-flight check failed; the runner stops at its next passage."""
     check = await _get_check(session, check_id, admin)
-    if check.status in (EXPERIMENT_RUNNING, EXPERIMENT_PENDING):
-        check.status = EXPERIMENT_FAILED
-        check.finished_at = func.now()
-        check.summary_stats = {"error": "Cancelled by user"}
-        await session.commit()
-        await session.refresh(check)
-    return check
+    return await brief_check_runs.stop(session, check)
 
 
 @router.delete("/brief-checks/{check_id}", status_code=204, tags=["testing"])

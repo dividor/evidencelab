@@ -218,7 +218,7 @@ A flagged passage, with the problems the judge found:
 
 ![A flagged passage in detail](../images/admin/eval/brief-check-flagged.png)
 
-Once a check has completed, everyone who can open the brief sees a **Fact Checker** button beside **Export to Word** that highlights every judged passage in place in the colour of its verdict, with the verdict, the judge's reason and the cited excerpts available by clicking a claim (see [the Brief guide](../using-evidence-lab/brief.md#11-fact-checker)). The highlights follow the version the check judged: a section whose cited passages still read as the judge saw them keeps them, a section changed since is marked as not covered, and the button goes away only when no judged section is left unchanged.
+Everyone who can open the brief sees a **Fact Checker** menu in its toolbar. After a check completes, **Show Fact Checks** highlights each judged claim in place in the colour of its verdict, with the verdict, the judge's reason and the cited excerpts available by clicking a claim (see [the Brief guide](../using-evidence-lab/brief.md#11-fact-checker)). The highlights follow the version the check judged: a section whose cited passages still read as the judge saw them keeps them, a section changed since is marked as not covered, and **Show Fact Checks** is disabled when no judged section is left unchanged.
 
 > The judge sees only the stored excerpts, not the whole document. A passage can be flagged because the brief cites the wrong passage of the right document. Treat flags as a review list, not a final verdict.
 
@@ -258,7 +258,7 @@ Open **Factual support from citations** to read the claims in order. Each claim 
 
 A factual grade between zero and one is **Partially supported**. Its assessment identifies which part of the sentence the cited material supports and which detail remains unsubstantiated. Open the reference to read the surrounding passage. The experiment uses its configured threshold for pass or fail. For example, a score of 0.80 meets a threshold of 0.75 and falls short of 1.00. Both results have the same evidence verdict.
 
-Open **Relevance to the template and section** to see each reason for a deduction under **Negatives**. Expand **Positives** to see what matched the assignment. Expand **Section text and references** to read the draft and open individual cited excerpts. A qualitative finding can earn full relevance credit. Missing numbers count against relevance when the assignment asks for them. Earlier runs retain the assessment originally recorded.
+The relevance judge reads the full outline so each section is graded on its assigned topic. Instructions that apply throughout the brief, such as its audience or geographic scope, still apply to each section. Open **Relevance to the template and section** to see each reason for a deduction under **Negatives**. Expand **Positives** to see what matched the assignment. Expand **Section text and references** to read the draft and open individual cited excerpts. A qualitative finding can earn full relevance credit. Missing numbers count against relevance when the assignment asks for them. Earlier runs retain the assessment originally recorded.
 
 Open **Cross-section repetition** to compare each match. **Source** shows the passage from the other section. **Target** shows the passage from the draft being graded. Expand either side to see the matching words highlighted in the full section saved with the run. The judge explains what finding the passages share. Older runs keep the original section-level assessment.
 

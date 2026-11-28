@@ -425,14 +425,22 @@ class BriefFactCheckSection(BaseModel):
     note: str
 
 
-class BriefFactCheckRead(BaseModel):
-    """What the Fact Checker button needs: the completed check that still
-    covers at least one section of the brief (``None`` when there is none,
-    so the button stays hidden), the version it judged and the brief's
-    current version, a note on how they relate, the sections the check no
-    longer covers, the legend of verdict colours with their counts, and the
-    marks (every judged passage of a covered section)."""
+class BriefCheckStart(BaseModel):
+    model_combo: Optional[str] = Field(default=None, max_length=255)
 
+
+class BriefCheckRun(BaseModel):
+    id: uuid.UUID
+    status: str
+    stopped: bool
+    progress: Optional[Dict[str, Any]] = None
+
+
+class BriefFactCheckRead(BaseModel):
+    """Available check actions, active progress and completed results for the open brief."""
+
+    start_disabled_reason: Optional[str] = None
+    active_run: Optional[BriefCheckRun] = None
     check: Optional[BriefCitationCheckRead] = None
     brief_version: Optional[int] = None
     current_version: Optional[int] = None

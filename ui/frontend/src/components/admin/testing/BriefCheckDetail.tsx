@@ -1,3 +1,4 @@
+import '../../brief/claimAssessment.css';
 import type { BriefSectionReview, RunProgress } from '../../../types/testing';
 import { RunStats, RunProgressBar } from './BriefScoreStats';
 import { RemainingSections, ResultRow, ResultTable } from './ResultTable';
@@ -364,7 +365,7 @@ const PassageRow: React.FC<{ passage: BriefCitationCheckPassage; onOpen?: OpenSo
         </td>
         <td>{passage.passage_id}</td>
         <td>{passage.brief_section}</td>
-        <td className="testing-check-passage">{passage.passage}</td>
+        <td className="testing-check-passage"><blockquote className="claim-verbatim"><q>{passage.passage}</q></blockquote></td>
         <td>
           <CitationLinks passage={passage} onOpen={onOpen} />
         </td>

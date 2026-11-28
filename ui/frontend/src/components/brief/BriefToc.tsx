@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { IconGrip, IconPlus } from './BriefIcons';
+import { IconArrowLeft, IconGrip, IconPlus } from './BriefIcons';
 import { BriefSection } from './briefTypes';
 import { UseBriefReturn } from './useBrief';
 
@@ -166,6 +166,7 @@ const TocRow: React.FC<TocRowProps> = ({ section, num, brief, canEdit, active })
 };
 
 interface BriefTocProps {
+  onBack?: () => void;
   brief: UseBriefReturn;
   canEdit: boolean;
 }
@@ -176,7 +177,7 @@ interface BriefTocProps {
  * sibling moves), and the per-row controls add a (named) sub-heading or delete.
  * The Contents row also carries the heading-numbering toggle.
  */
-export const BriefToc: React.FC<BriefTocProps> = ({ brief, canEdit }) => {
+export const BriefToc: React.FC<BriefTocProps> = ({ brief, canEdit, onBack }) => {
   const { sections, numbers, numberHeadings } = brief;
   const activeId = useActiveSection(sections);
   const [addingHeading, setAddingHeading] = useState(false);
@@ -204,6 +205,7 @@ export const BriefToc: React.FC<BriefTocProps> = ({ brief, canEdit }) => {
   };
   return (
     <nav className="brief-toc" aria-label="Brief contents">
+      {onBack && <button type="button" className="brief-back-btn" onClick={onBack}><IconArrowLeft /> Brief Central</button>}
       <div className="brief-toc-head">
         <span className="brief-toc-head-label">Contents</span>
         <button
@@ -211,6 +213,7 @@ export const BriefToc: React.FC<BriefTocProps> = ({ brief, canEdit }) => {
           className="brief-num-toggle-inline"
           role="switch"
           aria-checked={numberHeadings}
+          disabled={!canEdit}
           aria-label="Number headings"
           onClick={() => brief.setNumberHeadings(!numberHeadings)}
           title="Show numbering before each heading"

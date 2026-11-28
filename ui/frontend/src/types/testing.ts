@@ -344,12 +344,17 @@ export interface BriefFactCheckLegendItem {
   count: number;
 }
 
-// GET /briefs/{id}/fact-check: the newest completed check while it still
-// covers part of the brief (null when there is none, so the button stays
-// hidden), the version it judged and the brief's current version, a note on
-// how they relate, the sections it no longer covers, the legend of verdict
-// colours, and the marks to paint (every judged passage, any verdict).
+// Live check progress is fetched separately from the completed claim marks.
+export interface BriefCheckRun {
+  id: string;
+  status: CheckStatus;
+  stopped: boolean;
+  progress?: RunProgress | null;
+}
+
 export interface BriefFactCheckRead {
+  start_disabled_reason?: string | null;
+  active_run?: BriefCheckRun | null;
   check: BriefCitationCheck | null;
   brief_version?: number | null;
   current_version?: number | null;

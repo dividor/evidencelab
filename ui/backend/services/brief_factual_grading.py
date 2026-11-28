@@ -185,7 +185,7 @@ def _repair_prompt(template, pending, sources, issues, ungraded):
     )
 
 
-async def _grade_batch(claims, sources, context, template, system, output, model):
+async def _grade_batch(claims, sources, context, template, output, model):
     from ui.backend.services.test_runner import _judge_call
 
     accepted, issues, prompts = {}, {}, []
@@ -193,6 +193,7 @@ async def _grade_batch(claims, sources, context, template, system, output, model
     for _ in range(2):
         pending = [c for c in claims if c["claim"] not in accepted]
         labels = {label for c in pending for label in c["citations"]}
+        system = template.render(system=True, example_claim=pending[0]["claim"])
         prompt = template.render(
             **context,
             claims=pending,
@@ -210,7 +211,8 @@ async def _grade_batch(claims, sources, context, template, system, output, model
         ):
             if issue:
                 issues[number] = issue
-                ungraded[number] = _unresolved_grade(number, grade, issue)
+                if grade is not None or number not in ungraded:
+                    ungraded[number] = _unresolved_grade(number, grade, issue)
             else:
                 accepted[number] = grade
                 issues.pop(number, None)
@@ -224,7 +226,6 @@ async def _grade_batch(claims, sources, context, template, system, output, model
 async def grade_factual_claims(output, rubric, model):
     claims, sources = _claim_inputs(output)
     template = assistant_prompt_templates.get_template("brief_factual_grading.j2")
-    system = template.render(system=True)
     grades, prompts = [], []
     for start in range(0, len(claims), 8):
         batch = claims[start : start + 8]
@@ -238,7 +239,7 @@ async def grade_factual_claims(output, rubric, model):
             },
         )
         results, sent = await _grade_batch(
-            batch, sources, context, template, system, output, model
+            batch, sources, context, template, output, model
         )
         grades.extend(results)
         prompts.append(sent)
