@@ -15,6 +15,8 @@ from jinja2 import Environment, FileSystemLoader
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from ui.backend.services.agent_passages import passage_for_agent
+
 # Add utils to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from utils.llm_factory import (  # noqa: E402
@@ -84,6 +86,22 @@ _brief_revise_system_template = jinja_env.get_template("brief_revise_system.j2")
 _brief_revise_user_template = jinja_env.get_template("brief_revise_user.j2")
 
 
+def _prompt_results(
+    results: List[Dict[str, Any]], max_results: int
+) -> List[Dict[str, Any]]:
+    """The top ``max_results`` results as the summary model reads them.
+
+    Each passage loses the report's own paragraph numbers ("118. "), footnote
+    markers ("[^5]") and bracketed references ("[12]"), which models cite as if
+    they were result numbers. The results passed in are not changed, so the
+    page, the References list and exports keep the report's own text.
+    """
+    return [
+        {**result, "text": passage_for_agent(result["text"])}
+        for result in results[:max_results]
+    ]
+
+
 def render_prompt(
     query: str,
     results: List[Dict[str, Any]],
@@ -102,8 +120,8 @@ def render_prompt(
     Returns:
         The fully rendered prompt text with system and user messages
     """
-    # Limit to top N results
-    top_results = results[:max_results]
+    # Limit to top N results, as the model reads them
+    top_results = _prompt_results(results, max_results)
 
     # Render prompts from templates (use override if provided)
     system_prompt = system_prompt_override or _system_template.render()
@@ -139,8 +157,8 @@ async def stream_ai_summary(
         ``trace_url`` when LLM tracing is active.
     """
     try:
-        # Limit to top N results
-        top_results = results[:max_results]
+        # Limit to top N results, as the model reads them
+        top_results = _prompt_results(results, max_results)
 
         # Render prompts from templates (use override if provided)
         system_prompt = system_prompt_override or _system_template.render()
@@ -253,8 +271,8 @@ async def generate_ai_summary_with_usage(
     when the provider reports usage.
     """
     try:
-        # Limit to top N results
-        top_results = results[:max_results]
+        # Limit to top N results, as the model reads them
+        top_results = _prompt_results(results, max_results)
 
         # Render prompts from templates (use override if provided)
         system_prompt = system_prompt_override or _system_template.render()
