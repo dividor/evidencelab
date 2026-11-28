@@ -3,10 +3,11 @@
 import base64
 import json
 import re
+from collections.abc import Iterator
 from html import escape
 
 import pytest
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page, expect, sync_playwright
 
 from mcp_server.resources.heatmap import load_heatmap_html
 
@@ -137,10 +138,22 @@ def set_custom_branding(tmp_path, monkeypatch, title):
     monkeypatch.setenv("MCP_BRANDING_DIR", str(tmp_path))
 
 
+@pytest.fixture
+def app_page() -> Iterator[Page]:
+    """Stop Playwright's event loop before later async tests use the thread."""
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            yield browser.new_page()
+        finally:
+            browser.close()
+
+
 @pytest.mark.parametrize("title", ["Evidence Lab", "Evaluation Library"])
 def test_heatmap_view_renders_and_forwards_actions(
-    page: Page, title, tmp_path, monkeypatch
+    app_page: Page, title, tmp_path, monkeypatch
 ):
+    page = app_page
     custom = title == "Evaluation Library"
     monkeypatch.delenv("MCP_BRANDING_DIR", raising=False)
     if custom:

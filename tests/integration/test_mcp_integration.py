@@ -7,9 +7,13 @@ HTTP POST to the MCP endpoint.
 
 import json
 import os
+from uuid import uuid4
 
 import pytest
 import requests
+from qdrant_client.models import PointStruct
+
+from pipeline.db import Database
 
 MCP_URL = os.getenv("MCP_BASE_URL", "http://mcp:8001") + "/mcp"
 API_KEY = os.getenv("API_SECRET_KEY", os.getenv("REACT_APP_API_KEY", ""))
@@ -59,6 +63,54 @@ def _structured_tool(name: str, request: dict) -> dict:
     return result["structuredContent"]
 
 
+@pytest.fixture
+def heatmap_documents():
+    """Three indexed documents across two organizations and two years."""
+    db = Database(DATA_SOURCE)
+    run_id = uuid4().hex
+    organizations = [f"Heatmap fixture {run_id} {letter}" for letter in ("A", "B")]
+    years = ["2023", "2024"]
+    points = []
+    try:
+        for organization, year in (
+            (organizations[0], years[0]),
+            (organizations[0], years[1]),
+            (organizations[1], years[1]),
+        ):
+            doc_id = str(uuid4())
+            metadata = {
+                "map_title": f"Heatmap fixture document {doc_id}",
+                "map_organization": organization,
+                "map_published_year": year,
+            }
+            points.append(PointStruct(id=doc_id, vector={}, payload=metadata))
+            db.pg.upsert_doc(
+                doc_id=doc_id,
+                src_doc_raw_metadata={},
+                map_fields=metadata,
+                sys_summary=None,
+                sys_fields={
+                    "sys_status": "indexed",
+                    "sys_filepath": f"/data/{DATA_SOURCE}/{doc_id}.pdf",
+                    "sys_parsed_folder": f"/data/{DATA_SOURCE}/parsed/{doc_id}",
+                    "sys_language": "en",
+                },
+            )
+        db.client.upsert(
+            collection_name=db.documents_collection, points=points, wait=True
+        )
+        yield organizations, years
+    finally:
+        if points:
+            db.client.delete(
+                collection_name=db.documents_collection,
+                points_selector=[point.id for point in points],
+                wait=True,
+            )
+            for point in points:
+                db.pg.delete_docs_by_title(f"Heatmap fixture document {point.id}")
+
+
 class TestMCPIntegration:
     """MCP server integration tests using pipeline-ingested data."""
 
@@ -94,28 +146,23 @@ class TestMCPIntegration:
         assert '<script type="module">' in resource["text"]
         assert "<title>Evidence Lab Heatmapper</title>" in resource["text"]
 
-    def test_heatmap_document_counts_and_drill_down_match_web_calls(self):
+    def test_heatmap_document_counts_and_drill_down_match_web_calls(
+        self, heatmap_documents
+    ):
+        organizations, years = heatmap_documents
         query = {"data_source": DATA_SOURCE}
-        facets = requests.get(
-            f"{API_URL}/facets",
-            params=query,
-            headers={"X-API-Key": API_KEY},
-            timeout=30,
-        )
-        facets.raise_for_status()
-        values = facets.json()["facets"]
         grid = _structured_tool(
             "heatmap",
             {
                 **query,
                 "row_dimension": "organization",
-                "row_values": [item["value"] for item in values["organization"][:2]],
+                "row_values": organizations,
                 "column_dimension": "published_year",
-                "column_values": [
-                    item["value"] for item in values["published_year"][:2]
-                ],
+                "column_values": years,
+                "filters": {"organization": organizations},
             },
         )
+        assert grid["counts"] == [[1, 1], [0, 1]]
         checked = []
         for row_index, row in enumerate(grid["rows"]["values"]):
             for column_index, column in enumerate(grid["columns"]["values"]):
