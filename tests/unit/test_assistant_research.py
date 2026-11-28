@@ -48,6 +48,7 @@ async def run_research(
     check_citations=True,
     system_prompt_override=None,
     target_words=None,
+    continuation="",
 ):
     llm = MagicMock()
     replies = None if callable(responses) else iter(responses)
@@ -155,6 +156,10 @@ async def run_research(
             ]
             return AIMessage(
                 content=json.dumps({"scope_issues": [], "sentences": checks})
+            )
+        if messages[0].content.startswith("Develop one additional paragraph"):
+            return AIMessage(
+                content=_fixture_excerpt_labels(continuation, messages[-1].content)
             )
         reply = responses(messages) if replies is None else next(replies)
         if messages[0].content.startswith("Write the prose of one section"):
@@ -1026,6 +1031,47 @@ async def test_brief_keeps_the_checked_draft_when_revision_yields_less_evidence(
 
 
 @pytest.mark.asyncio
+async def test_brief_develops_a_reviewed_paragraph_without_replacing_its_findings():
+    first = "The pressure dropped during the overnight test"
+    detail = "The log showed a steady decline over three hours"
+    final = "The morning readings confirmed the loss persisted"
+    events, _, model = await run_research(
+        [
+            '{"queries":[]}',
+            _brief_draft((first, 1, first)),
+            _brief_draft((first, 1, first)),
+        ],
+        [[point(1, f"{first}. {detail}. {final}.")]],
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": "Test results"}], current=0
+        ),
+        target_words=25,
+        continuation=_brief_draft(
+            (first, 1, first), (detail, 1, detail), (final, 1, final)
+        ),
+    )
+    answer = next(e["token"] for e in events if e["type"] == "token")
+    assert answer == f"{first} [1].\n\n{detail} [1]. {final} [1]."
+    requests = [call.args[0] for call in model.ainvoke.await_args_list]
+    selections = [
+        r[-1].content for r in requests if r[0].content.startswith("Select passages")
+    ]
+    assert (
+        len(selections) == 2
+        and f'Already covered in the section: "{first}."' in selections[-1]
+    )
+    addition = [
+        r for r in requests if r[0].content.startswith("Develop one additional")
+    ]
+    assert len(addition) == 1 and first in addition[0][-1].content
+    assert "18 words of additional supported prose" in addition[0][-1].content
+    assert any(
+        r[0].content.startswith("Review whether") and final in r[-1].content
+        for r in requests
+    )
+
+
+@pytest.mark.asyncio
 async def test_brief_attempts_more_detail_when_four_findings_are_too_short():
     findings = [
         "The programme operated in three districts",
@@ -1271,7 +1317,47 @@ async def test_brief_edits_an_overlong_draft_before_losing_its_last_finding():
     words = sum(len(f.split()) for f in (start, detail, end))
     assert len(prompts) == 2 and f"draft has {words} words" in prompts[1]
     assert "target is 19 words" in prompts[1]
-    assert "16 to 22 words" in prompts[0].split("Source 1:")[-1]
+    assert "Aim for 19 words of supported prose" in prompts[0].split("Source 1:")[-1]
+    assert next(e["token"] for e in events if e["type"] == "token") == (
+        f"{start} [1]. {end} [1]."
+    )
+
+
+@pytest.mark.asyncio
+async def test_brief_expands_checked_prose_when_raw_draft_exceeds_target():
+    start = "The motor stopped twice"
+    end = "Replacing the damaged switch restored continuous operation"
+    rejected = (
+        "The installation had previously set a record for uninterrupted operation "
+        "during periods of exceptionally high demand"
+    )
+    events, _, model = await run_research(
+        [
+            '{"queries":[]}',
+            _brief_draft((start, 1, start), (rejected, 1, start)),
+            _brief_draft((start, 1, start), (end, 1, end)),
+        ],
+        [[point(1, f"{start}. {end}.")]],
+        scope_check=lambda _, rows: [
+            {
+                "id": row["id"],
+                "subject": "Motor performance",
+                "reason": "Check the observation against the maintenance log.",
+                "keep": rejected not in row["text"],
+                "source_matches_assignment": rejected not in row["text"],
+            }
+            for row in rows
+        ],
+        brief_section=BriefSectionPrompt(outline=[{"title": "Recovery"}], current=0),
+        target_words=12,
+    )
+    revision = [
+        call.args[0][-1].content
+        for call in model.ainvoke.await_args_list
+        if call.args[0][0].content.startswith("Write the prose of one section")
+    ][1]
+    assert "about 8 more words of distinct evidence" in revision
+    assert "Edit this draft as a complete section" not in revision
     assert next(e["token"] for e in events if e["type"] == "token") == (
         f"{start} [1]. {end} [1]."
     )
@@ -1909,6 +1995,9 @@ async def test_brief_selects_direct_evidence_even_when_citation_checking_is_off(
             and relevant in prompt
             and remedies in prompt
         )
+        if "Already covered in the section:" in prompt:
+            assert relevant in prompt and "addition aims for about" in prompt
+            return []
         assert "about 150 words" in prompt
         assert labels == [1, 2]
         if "previous selection" in prompt:
@@ -1952,7 +2041,11 @@ async def test_brief_selects_direct_evidence_even_when_citation_checking_is_off(
         check_citations=False,
         target_words=150,
     )
-    draft_prompt = llm.ainvoke.await_args_list[-1].args[0][-1].content
+    draft_prompt = next(
+        call.args[0][-1].content
+        for call in llm.ainvoke.await_args_list
+        if call.args[0][0].content.startswith("Write the prose of one section")
+    )
     assert relevant in draft_prompt and earlier not in draft_prompt
     assert remedies not in draft_prompt
     assert next(event["token"] for event in events if event["type"] == "token") == (
@@ -2158,6 +2251,50 @@ async def test_brief_checks_a_scope_revision_against_its_original_citation():
     assert next(event["token"] for event in events if event["type"] == "token") == (
         observation + " [1]."
     )
+
+
+@pytest.mark.asyncio
+async def test_narrowed_finding_is_checked_against_its_selected_original_source():
+    action = "The team replaced a seal"
+    observed = "The pressure dropped overnight"
+    mixed = f"{observed} and the team replaced a seal [1, 2]."
+
+    def scope(_prompt, rows):
+        assert {q["citation"] for q in rows[0]["supporting_quotes"]} == {1, 2}
+        return [
+            {
+                "id": rows[0]["id"],
+                "subject": "Pressure",
+                "reason": "The repair belongs under another heading.",
+                "keep": False,
+                "covers_other_heading": True,
+                "in_scope_revision": observed,
+                "revision_citations": [2],
+            }
+        ]
+
+    def verify(prompt):
+        row = _review_rows(prompt)[0]
+        assert row["text"] == observed + " [2]."
+        assert row["prepared_quotes"] == [{"citation": 2, "quote": observed + "."}]
+        return {
+            "scope_issues": [],
+            "sentences": [{"id": row["id"], "status": "supported", "quotes": []}],
+        }
+
+    events, _, _ = await run_research(
+        ['{"queries":[]}', mixed],
+        [[point(1, action + "."), point(2, observed + ".")]],
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": "Pressure changes"}], current=0
+        ),
+        scope_check=scope,
+        check=verify,
+    )
+    assert next(e["token"] for e in events if e["type"] == "token").startswith(observed)
+    assert [
+        s["chunkId"] for e in events if e["type"] == "sources" for s in e["sources"]
+    ] == ["chunk-2"]
 
 
 @pytest.mark.asyncio

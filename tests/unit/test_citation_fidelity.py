@@ -88,6 +88,23 @@ class TestMarkdownParsing:
             "Rose by 10 points. Also here."
         )
 
+    @pytest.mark.parametrize(
+        ("given", "expected"),
+        [
+            (
+                "The system detected the charge [1], [2], [3], [4].",
+                "The system detected the charge.",
+            ),
+            ("Two sources [1, 2]; [?4] agree.", "Two sources agree."),
+            ("The gauge rose [1], then fell [2].", "The gauge rose, then fell."),
+            ("See [appendix], [3] for context.", "See [appendix], for context."),
+        ],
+    )
+    def test_stripping_marker_lists_preserves_the_sentences_punctuation(
+        self, given, expected
+    ):
+        assert strip_citation_markers(given) == expected
+
     def test_strip_inline_markdown_when_bold_spans_sentences_then_plain_prose(self):
         # The splitter does not cut at "foods.**", so the passage holds both
         # sentences and the bold markers; the reader sees neither marker.

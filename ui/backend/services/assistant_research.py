@@ -19,7 +19,10 @@ from starlette.concurrency import run_in_threadpool
 from typing_extensions import Annotated
 
 from ui.backend.auth.schemas import BriefSectionPrompt
-from ui.backend.services.assistant_brief_writer import write_grounded_brief
+from ui.backend.services.assistant_brief_writer import (
+    develop_short_brief,
+    write_grounded_brief,
+)
 from ui.backend.services.assistant_grounding import (
     Passage,
     ReviewRequest,
@@ -525,8 +528,6 @@ class ResearchWorkflow:
             review_scope=self._request_json,
             target_words=target,
         )
-        draft = await write(evidence=evidence)
-
         prose_issues = partial(
             review_brief_prose,
             assignment={
@@ -540,6 +541,20 @@ class ResearchWorkflow:
             config=config,
             request=self._request_json,
         )
+        draft = await self._reviewed_brief_draft(write, prose_issues, evidence, target)
+        result = await develop_short_brief(draft, target, evidence, write, prose_issues)
+        logger.info(
+            "Brief section words: target=%s reviewed=%d final=%d",
+            target,
+            len(strip_citation_markers(draft).split()),
+            len(strip_citation_markers(result).split()),
+        )
+        return result
+
+    async def _reviewed_brief_draft(
+        self, write, prose_issues, evidence, target: int | None
+    ) -> str:
+        draft = await write(evidence=evidence)
         editorial_issues = await prose_issues(draft)
         enough_words = (
             not target or len(strip_citation_markers(draft).split()) >= 0.85 * target

@@ -22,6 +22,7 @@ from ui.backend.services.assistant_grounding import (
     InvalidAssistantResponse,
     Passage,
     ReviewRequest,
+    TruncatedAssistantResponse,
     check_answer_citations,
     citation_check_batches,
     numbered_sentences,
@@ -30,7 +31,10 @@ from ui.backend.services.assistant_grounding import (
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.brief_citation_model import cited_numbers_in_order
 from ui.backend.services.brief_evidence_selection import select_brief_evidence
-from ui.backend.services.brief_excerpt_citations import cite_missing_excerpts
+from ui.backend.services.brief_excerpt_citations import (
+    cite_missing_excerpts,
+    expand_excerpt_ranges,
+)
 from ui.backend.services.brief_repetition import remove_repeated_brief_findings
 from ui.backend.services.brief_section_prompt import (
     brief_child_headings,
@@ -58,6 +62,7 @@ class FindingScopeAssessment(BaseModel):
     keep: bool
     covers_other_heading: bool
     in_scope_revision: str | None = None
+    revision_citations: list[int] = Field(default_factory=list)
 
 
 class FindingScopeDecision(FindingScopeAssessment):
@@ -260,12 +265,12 @@ async def _review_finding_scope(
         "other_headings": [
             s.title for i, s in enumerate(section.outline) if i != section.current
         ],
-        "whole_section": draft if len(batches) > 1 else "",
     }
 
     def request_for(batch):
         return template.render(
             **assignment,
+            whole_section=draft if len(batch) < len(sentences) else "",
             sentences=[
                 _finding_for_scope(row, evidence, prepared_quotes, similar)
                 for row in batch
@@ -284,14 +289,18 @@ async def _review_finding_scope(
         return FindingScopeDecision(id=row["id"], **assessment.model_dump())
 
     async def review_batch(batch: list[dict]) -> list[FindingScopeDecision]:
-        async with concurrency:
-            result: FindingScopeReview = await review(
-                system, request_for(batch), [], config, _FINDING_SCOPE
-            )
-        if sorted(row.id for row in result.reviews) == [row["id"] for row in batch]:
-            return result.reviews
-        # Ambiguous attribution invalidates the batch. Recheck each sentence
-        # on its own so the request itself identifies which finding was graded.
+        try:
+            async with concurrency:
+                result: FindingScopeReview = await review(
+                    system, request_for(batch), [], config, _FINDING_SCOPE
+                )
+            decisions = result.reviews
+        except TruncatedAssistantResponse:
+            decisions = []
+        if sorted(row.id for row in decisions) == [row["id"] for row in batch]:
+            return decisions
+        # A cut-off or misnumbered batch cannot establish a verdict. Grade
+        # each original sentence before accepting any finding from this batch.
         return list(await asyncio.gather(*(review_one(row) for row in batch)))
 
     decisions = await asyncio.gather(*(review_batch(batch) for batch in batches))
@@ -344,11 +353,11 @@ def _apply_scope_review(
             continue
         original = row["text"]
         issues.append(f"Rejected finding: {original} Reason: {review.reason}")
-        revision = (review.in_scope_revision or "").strip().rstrip(".")
-        if _valid_scope_revision(revision, row, prepared_quotes):
-            revised = f"{revision} [{row['citations'][0]}]."
+        proposal = _sourced_scope_revision(review, row, prepared_quotes)
+        if proposal:
+            revised, quotes = proposal
             revisions[original] = revised
-            prepared_quotes[revised] = prepared_quotes[original]
+            prepared_quotes[revised] = quotes
             approved.add(row["id"])
     text = retain_supported_sentences(draft, sentences, approved)
     for original, revised in revisions.items():
@@ -356,20 +365,31 @@ def _apply_scope_review(
     return text, issues
 
 
-def _valid_scope_revision(
-    revision: str,
+def _sourced_scope_revision(
+    review: FindingScopeAssessment,
     row: dict,
     prepared_quotes: dict[str, list[EvidenceQuote]],
-) -> bool:
-    return (
-        bool(revision)
+) -> tuple[str, list[EvidenceQuote]] | None:
+    revision = (review.in_scope_revision or "").strip().rstrip(".")
+    if not (
+        revision
         and len(revision) <= 550
         and not revision.startswith(("#", "-", "*"))
         and "[" not in revision
         and len(split_sentences(revision)) == 1
-        and len(row["citations"]) == 1
-        and row["text"] in prepared_quotes
-    )
+    ):
+        return None
+    labels = set(review.revision_citations)
+    original = row["citations"]
+    if not labels and len(original) == 1:
+        labels = set(original)
+    if not labels or not labels.issubset(original):
+        return None
+    quotes = [q for q in prepared_quotes.get(row["text"], []) if q.citation in labels]
+    if {q.citation for q in quotes} != labels:
+        return None
+    markers = ", ".join(str(label) for label in original if label in labels)
+    return f"{revision} [{markers}].", quotes
 
 
 async def _verify_draft_findings(
@@ -459,15 +479,45 @@ async def _match_draft_citations(
     raw, passages, quotes, config, review_scope, last_attempt, stream
 ):
     """Request a writer correction if the matcher cannot assign verifiable labels."""
+    labels = set(quotes)
+    raw = expand_excerpt_ranges(raw, labels)
     try:
         matched = await cite_missing_excerpts(
-            raw, passages, set(quotes), config, review_scope
+            raw, passages, labels, config, review_scope
         )
     except InvalidAssistantResponse:
         if last_attempt:
             stream({"type": "brief_editorial_review", "issues": [_MISSING_CITATION]})
         return raw, not last_attempt
     return matched, False
+
+
+def _prior_paragraph_findings(text: str, heading: str) -> list[tuple[str, str]]:
+    return [
+        (heading, strip_citation_markers(sentence))
+        for sentence in split_sentences(text)
+    ]
+
+
+async def develop_short_brief(draft, target, evidence, write, review_prose):
+    """Develop a reviewed short section once, preserving the verified paragraphs."""
+    words = len(strip_citation_markers(draft).split())
+    if not words or not target or words >= target * 0.85:
+        return draft
+    addition = await write(
+        evidence=evidence, target_words=target - words, continuation=draft
+    )
+    if not addition:
+        return draft
+    if _exceeds_word_budget(
+        words + len(strip_citation_markers(addition).split()), target
+    ):
+        return draft
+    separator = " " if len(split_sentences(addition)) == 1 else "\n\n"
+    combined = f"{draft}{separator}{addition}"
+    if await review_prose(combined, final=True):
+        return draft
+    return combined
 
 
 async def write_grounded_brief(
@@ -483,6 +533,7 @@ async def write_grounded_brief(
     review_scope: ReviewRequest,
     target_words: int | None = None,
     earlier_text: str = "",
+    continuation: str = "",
     editorial_issues: list[str] | None = None,
 ) -> str:
     """Write independently sourced findings and optionally check their support."""
@@ -491,6 +542,7 @@ async def write_grounded_brief(
     focus = {
         "heading": section.outline[section.current].title,
         "guidance": brief_section_research_focus(section),
+        "covered": strip_citation_markers(continuation),
     }
     evidence, (passages, quotes), subject = await select_brief_evidence(
         assignment,
@@ -506,7 +558,10 @@ async def write_grounded_brief(
     template = assistant_prompt_templates.get_template("brief_evidence_draft.j2")
     introduces = brief_child_headings(section)
     system = template.render(
-        system=True, target_words=target_words, introduces=introduces
+        system=True,
+        target_words=target_words,
+        introduces=introduces,
+        continuation=continuation,
     )
     stream = get_stream_writer()
     existing = _written_sibling_findings(section)
@@ -516,7 +571,10 @@ async def write_grounded_brief(
         else {}
     )
     selected_sources = {source for source, _ in quotes.values()}
-    other_claims = {match_key(finding) for _, finding in existing}
+    prior = _prior_paragraph_findings(
+        continuation, section.outline[section.current].title
+    )
+    other_claims = {match_key(finding) for _, finding in existing + prior}
     issues = list(editorial_issues or [])
     accepted = earlier_text
     # A known editorial defect may need a shorter correction.
@@ -526,12 +584,14 @@ async def write_grounded_brief(
     minimum_words = target_words * 0.85 if target_words else 1
     repair_draft = ""
     draft_words = 0
-    for attempt in range(2):
+    attempts = 1 if continuation else 2
+    for attempt in range(attempts):
         messages = [
             SystemMessage(content=system),
             HumanMessage(
                 content=template.render(
                     assignment=assignment,
+                    continuation=strip_citation_markers(continuation),
                     focus=focus,
                     subject=subject,
                     writing_guide=writing_guide,
@@ -555,7 +615,7 @@ async def write_grounded_brief(
             quotes,
             config,
             review_scope,
-            attempt == 1,
+            attempt + 1 == attempts,
             stream,
         )
         if retry_citations:
@@ -563,7 +623,6 @@ async def write_grounded_brief(
             repair_draft = raw
             draft_words = len(strip_citation_markers(raw).split())
             continue
-        draft_words = len(strip_citation_markers(raw).split())
         text, issues, prepared_quotes = _brief_draft_text(
             raw,
             evidence,
@@ -591,11 +650,15 @@ async def write_grounded_brief(
             words, written_words, repair_draft, minimum_words, issues
         ):
             accepted, written_words = candidate, words
+        draft_words = len(strip_citation_markers(text).split())
         if attempt == 0 and _exceeds_word_budget(draft_words, target_words):
-            repair_draft = raw
+            repair_draft = _revision_notes(text, selected_sources)
             continue
         if written_words >= minimum_words:
             break
     return await remove_repeated_brief_findings(
-        accepted, config, review_scope, existing
+        accepted,
+        config,
+        review_scope,
+        existing + prior,
     )

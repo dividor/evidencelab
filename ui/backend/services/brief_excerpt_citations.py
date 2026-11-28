@@ -1,5 +1,7 @@
 """Recover omitted excerpt references before a Brief draft is checked."""
 
+import re
+
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
@@ -24,6 +26,39 @@ class ExcerptMatches(BaseModel):
 
 
 _MATCHES: TypeAdapter[ExcerptMatches] = TypeAdapter(ExcerptMatches)
+
+
+_NUMERIC_MARKER = re.compile(r"\[([0-9, \t–—-]+)\]")
+_EXCERPT_INTERVAL = re.compile(r"([0-9]+)\s*[-–—]\s*([0-9]+)")
+
+
+def expand_excerpt_ranges(draft: str, labels: set[int]) -> str:
+    """Expand only ranges made entirely of labels in this writer's evidence."""
+    known = {str(label): label for label in labels}
+
+    def expand(marker: re.Match) -> str:
+        body = marker[1]
+        if not any(dash in body for dash in "-–—"):
+            return marker[0]
+        numbers = []
+        for item in body.split(","):
+            item = item.strip()
+            if item in known:
+                numbers.append(known[item])
+                continue
+            interval = _EXCERPT_INTERVAL.fullmatch(item)
+            if not interval or interval[1] not in known or interval[2] not in known:
+                return marker[0]
+            first, last = known[interval[1]], known[interval[2]]
+            if not 0 <= last - first < len(labels):
+                return marker[0]
+            span = range(first, last + 1)
+            if not labels.issuperset(span):
+                return marker[0]
+            numbers.extend(span)
+        return "[" + ", ".join(str(n) for n in dict.fromkeys(numbers)) + "]"
+
+    return _NUMERIC_MARKER.sub(expand, draft)
 
 
 async def cite_missing_excerpts(
