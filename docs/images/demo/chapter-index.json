@@ -1,0 +1,73 @@
+{
+  "fps": 24,
+  "chapters": [
+    {
+      "title": "Search",
+      "subtitle": "Getting the basics right with AI-powered search",
+      "file": "search.mp4",
+      "start_frame": 0,
+      "frames": 996
+    },
+    {
+      "title": "Research Assistant",
+      "subtitle": "Do your research conversationally",
+      "file": "research-assistant.mp4",
+      "start_frame": 996,
+      "frames": 460
+    },
+    {
+      "title": "Brief",
+      "subtitle": "Human-guided deep research",
+      "file": "brief.mp4",
+      "start_frame": 1456,
+      "frames": 2320
+    },
+    {
+      "title": "Heatmapper",
+      "subtitle": "Find patterns in your documents",
+      "file": "heatmapper.mp4",
+      "start_frame": 3776,
+      "frames": 563
+    },
+    {
+      "title": "Environment",
+      "subtitle": "LLM usage and environmental impact",
+      "file": "environment.mp4",
+      "start_frame": 4339,
+      "frames": 520
+    },
+    {
+      "title": "Pipeline",
+      "subtitle": "Low-cost document processing and AI tagging",
+      "file": "pipeline.mp4",
+      "start_frame": 4859,
+      "frames": 419
+    },
+    {
+      "title": "Evaluation",
+      "subtitle": "In-app AI evaluation",
+      "file": "evaluation.mp4",
+      "start_frame": 5278,
+      "frames": 750
+    },
+    {
+      "title": "Manage your docs",
+      "subtitle": "Use AI to augment document data",
+      "file": "documents.mp4",
+      "start_frame": 6028,
+      "frames": 653
+    },
+    {
+      "title": "Admin",
+      "subtitle": "Configure and monitor the system",
+      "file": "admin.mp4",
+      "start_frame": 6681,
+      "frames": 377
+    }
+  ],
+  "outro": {
+    "file": "outro.mp4",
+    "start_frame": 7058,
+    "frames": 117
+  }
+}
