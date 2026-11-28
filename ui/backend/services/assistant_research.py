@@ -542,7 +542,14 @@ class ResearchWorkflow:
             request=self._request_json,
         )
         draft = await self._reviewed_brief_draft(write, prose_issues, evidence, target)
-        return await develop_short_brief(draft, target, evidence, write, prose_issues)
+        result = await develop_short_brief(draft, target, evidence, write, prose_issues)
+        logger.info(
+            "Brief section words: target=%s reviewed=%d final=%d",
+            target,
+            len(strip_citation_markers(draft).split()),
+            len(strip_citation_markers(result).split()),
+        )
+        return result
 
     async def _reviewed_brief_draft(
         self, write, prose_issues, evidence, target: int | None

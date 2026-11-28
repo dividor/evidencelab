@@ -2254,6 +2254,50 @@ async def test_brief_checks_a_scope_revision_against_its_original_citation():
 
 
 @pytest.mark.asyncio
+async def test_narrowed_finding_is_checked_against_its_selected_original_source():
+    action = "The team replaced a seal"
+    observed = "The pressure dropped overnight"
+    mixed = f"{observed} and the team replaced a seal [1, 2]."
+
+    def scope(_prompt, rows):
+        assert {q["citation"] for q in rows[0]["supporting_quotes"]} == {1, 2}
+        return [
+            {
+                "id": rows[0]["id"],
+                "subject": "Pressure",
+                "reason": "The repair belongs under another heading.",
+                "keep": False,
+                "covers_other_heading": True,
+                "in_scope_revision": observed,
+                "revision_citations": [2],
+            }
+        ]
+
+    def verify(prompt):
+        row = _review_rows(prompt)[0]
+        assert row["text"] == observed + " [2]."
+        assert row["prepared_quotes"] == [{"citation": 2, "quote": observed + "."}]
+        return {
+            "scope_issues": [],
+            "sentences": [{"id": row["id"], "status": "supported", "quotes": []}],
+        }
+
+    events, _, _ = await run_research(
+        ['{"queries":[]}', mixed],
+        [[point(1, action + "."), point(2, observed + ".")]],
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": "Pressure changes"}], current=0
+        ),
+        scope_check=scope,
+        check=verify,
+    )
+    assert next(e["token"] for e in events if e["type"] == "token").startswith(observed)
+    assert [
+        s["chunkId"] for e in events if e["type"] == "sources" for s in e["sources"]
+    ] == ["chunk-2"]
+
+
+@pytest.mark.asyncio
 async def test_brief_removes_a_repeated_finding_without_dropping_a_distinct_measurement():
     quote = "Two pumps lost pressure overnight and three lost pressure at midday"
     first = "Two pumps lost pressure during the overnight test"

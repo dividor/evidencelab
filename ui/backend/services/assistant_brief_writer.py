@@ -62,6 +62,7 @@ class FindingScopeAssessment(BaseModel):
     keep: bool
     covers_other_heading: bool
     in_scope_revision: str | None = None
+    revision_citations: list[int] = Field(default_factory=list)
 
 
 class FindingScopeDecision(FindingScopeAssessment):
@@ -352,11 +353,11 @@ def _apply_scope_review(
             continue
         original = row["text"]
         issues.append(f"Rejected finding: {original} Reason: {review.reason}")
-        revision = (review.in_scope_revision or "").strip().rstrip(".")
-        if _valid_scope_revision(revision, row, prepared_quotes):
-            revised = f"{revision} [{row['citations'][0]}]."
+        proposal = _sourced_scope_revision(review, row, prepared_quotes)
+        if proposal:
+            revised, quotes = proposal
             revisions[original] = revised
-            prepared_quotes[revised] = prepared_quotes[original]
+            prepared_quotes[revised] = quotes
             approved.add(row["id"])
     text = retain_supported_sentences(draft, sentences, approved)
     for original, revised in revisions.items():
@@ -364,20 +365,31 @@ def _apply_scope_review(
     return text, issues
 
 
-def _valid_scope_revision(
-    revision: str,
+def _sourced_scope_revision(
+    review: FindingScopeAssessment,
     row: dict,
     prepared_quotes: dict[str, list[EvidenceQuote]],
-) -> bool:
-    return (
-        bool(revision)
+) -> tuple[str, list[EvidenceQuote]] | None:
+    revision = (review.in_scope_revision or "").strip().rstrip(".")
+    if not (
+        revision
         and len(revision) <= 550
         and not revision.startswith(("#", "-", "*"))
         and "[" not in revision
         and len(split_sentences(revision)) == 1
-        and len(row["citations"]) == 1
-        and row["text"] in prepared_quotes
-    )
+    ):
+        return None
+    labels = set(review.revision_citations)
+    original = row["citations"]
+    if not labels and len(original) == 1:
+        labels = set(original)
+    if not labels or not labels.issubset(original):
+        return None
+    quotes = [q for q in prepared_quotes.get(row["text"], []) if q.citation in labels]
+    if {q.citation for q in quotes} != labels:
+        return None
+    markers = ", ".join(str(label) for label in original if label in labels)
+    return f"{revision} [{markers}].", quotes
 
 
 async def _verify_draft_findings(

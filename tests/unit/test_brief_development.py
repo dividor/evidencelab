@@ -5,9 +5,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 from ui.backend.services.assistant_brief_writer import (
+    FindingScopeAssessment,
     _brief_draft_text,
+    _sourced_scope_revision,
     develop_short_brief,
 )
+from ui.backend.services.assistant_grounding import EvidenceQuote
 from ui.backend.services.brief_repetition import RepeatedSentence
 from ui.backend.services.citation_fidelity import match_key
 
@@ -96,3 +99,20 @@ def test_conversion_proof_must_quote_the_earlier_amount():
         }
     )
     assert not clause.covers("The inspection took 48 hours.", [match_key(earlier)])
+
+
+@pytest.mark.parametrize("labels", [[], [3], [1, 3], [2]])
+def test_scope_edit_requires_original_source_labels_and_a_verified_quote(labels):
+    row = {"text": "A mixed finding [1, 2].", "citations": [1, 2]}
+    review = FindingScopeAssessment(
+        subject="Test",
+        reason="Narrow the finding",
+        keep=False,
+        source_matches_assignment=True,
+        unsupported_phrases=["always"],
+        covers_other_heading=False,
+        in_scope_revision="The device ran",
+        revision_citations=labels,
+    )
+    quotes = {row["text"]: [EvidenceQuote(citation=1, quote="The device ran.")]}
+    assert _sourced_scope_revision(review, row, quotes) is None
