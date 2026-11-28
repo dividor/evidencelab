@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { BriefAskAi } from './BriefAskAi';
 import { BriefAction, BriefActionMenu } from './BriefActionMenu';
 
@@ -9,28 +9,40 @@ function ActionButtons({ actions, primary = false, locked = false }: { actions: 
   ))}</>;
 }
 
-function useCompactActions() {
-  const [compact, setCompact] = useState(() => window.innerWidth <= 1024);
+// The seven expanded actions need about 1,305 CSS pixels, plus room for
+// longer history counts. Measure the toolbar after side panels take their space.
+const EXPANDED_ACTIONS_MIN_WIDTH = 1360;
+
+export function useDocumentActionLayout() {
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [compact, setCompact] = useState(true);
+
   useEffect(() => {
-    const resize = () => setCompact(window.innerWidth <= 1024);
-    window.addEventListener('resize', resize);
-    return () => window.removeEventListener('resize', resize);
+    const toolbar = toolbarRef.current;
+    if (!toolbar) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setCompact(entry.contentRect.width < EXPANDED_ACTIONS_MIN_WIDTH);
+    });
+    observer.observe(toolbar);
+    return () => observer.disconnect();
   }, []);
-  return compact;
+
+  return { toolbarRef, compact };
 }
 
-export function DocumentAiActions({ actions, disabled }: { actions: BriefAction[]; disabled: boolean }) {
-  return useCompactActions()
+export function DocumentAiActions({ actions, disabled, compact }: {
+  actions: BriefAction[]; disabled: boolean; compact: boolean;
+}) {
+  return compact
     ? <BriefAskAi label="Ask AI for the whole brief" buttonClass="brief-regen-all" actions={actions} disabled={disabled} />
     : <div className="brief-secondary-start" role="group" aria-label="Whole brief AI actions">
         <ActionButtons actions={actions} primary locked={disabled} />
       </div>;
 }
 
-export function BriefDocumentActions({ actions }: { actions: BriefAction[] }) {
-  const compact = useCompactActions();
+export function BriefDocumentActions({ actions, compact }: { actions: BriefAction[]; compact: boolean }) {
   if (!actions.length) return null;
-  if (compact) return <BriefActionMenu label="More actions" buttonText="More Actions"
+  if (compact) return <BriefActionMenu label="More actions" buttonText="More"
     buttonClass="brief-regen-all brief-more-actions" actions={actions} />;
   return <div className="brief-expanded-actions">
     <div className="brief-secondary-start"><ActionButtons actions={actions.filter(action => action.align !== 'end')} /></div>

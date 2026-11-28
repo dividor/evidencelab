@@ -378,6 +378,16 @@ def test_ui_layout_when_screen_opened_then_fits_and_is_readable(
             page.get_by_text("Load a saved brief").click()
             page.get_by_text(BRIEF_TITLE).first.click()
             page.get_by_text(SAVED_BRIEF_LOADED).first.wait_for(timeout=30000)
+            toolbar = page.get_by_role("group", name="Whole document actions")
+            buttons = toolbar.get_by_role("button")
+            assert buttons.count() > 0
+            offsets = [
+                (box["y"] + box["height"] / 2)
+                for button in buttons.all()
+                if (box := button.bounding_box()) is not None
+            ]
+            assert offsets and max(offsets) - min(offsets) <= 1, "Brief toolbar wraps"
+
         problems = layout_problems(page)
     finally:
         page.context.close()

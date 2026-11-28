@@ -3,7 +3,7 @@ import { SearchResult, SourceReference } from '../../types/api';
 import { CitedMarkdown, CitedReferences, RequestCitationHighlight } from '../citations/CitedContent';
 import { IconClock, IconCopy, IconDownload, IconEdit, IconFactCheck, IconRefresh, IconShare, IconSparkle } from './BriefIcons';
 import { BriefActionMenu, BriefAction } from './BriefActionMenu';
-import { BriefDocumentActions, DocumentAiActions } from './BriefDocumentActions';
+import { BriefDocumentActions, DocumentAiActions, useDocumentActionLayout } from './BriefDocumentActions';
 import { BriefAskAi } from './BriefAskAi';
 import { BriefSectionFrame } from './BriefSectionFrame';
 import { BriefClaimDialog } from './BriefClaimDialog';
@@ -877,6 +877,7 @@ const HeaderActions: React.FC<{
   factCheck,
   onHistory,
 }) => {
+  const { toolbarRef, compact } = useDocumentActionLayout();
   const { sections } = brief;
   const hasSections = sections.length > 0;
   const aiActions = [{
@@ -899,12 +900,12 @@ const HeaderActions: React.FC<{
   if (onExportWord) moreActions.push({ label: exportBusy ? 'Exporting…' : 'Export to Word', icon: IconDownload, onSelect: onExportWord, align: 'end', disabled: !hasSections || exportBusy });
   if (brief.remote && hasSections) moreActions.push({ label: 'Document History' + (brief.versionCount ? ' (' + brief.versionCount + ')' : ''), icon: IconClock, onSelect: onHistory, align: 'end' });
   return (
-    <div className="brief-doc-header-actions" aria-label="Whole document actions">
+    <div ref={toolbarRef} className="brief-doc-header-actions" role="group" aria-label="Whole document actions">
       {!readOnly && hasSections && (
-        <DocumentAiActions actions={aiActions} disabled={!canEditStructure} />
+        <DocumentAiActions actions={aiActions} disabled={!canEditStructure} compact={compact} />
       )}
       {factCheck && <FactCheckButton factCheck={factCheck} />}
-      <BriefDocumentActions actions={moreActions} />
+      <BriefDocumentActions actions={moreActions} compact={compact} />
     </div>
   );
 };
