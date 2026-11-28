@@ -9,12 +9,12 @@ from typing import Annotated, Any, Literal, Protocol, TypeVar
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import (
-    AfterValidator,
     BaseModel,
     BeforeValidator,
     ConfigDict,
     Field,
     TypeAdapter,
+    create_model,
 )
 
 from ui.backend.services.agent_passages import (
@@ -47,18 +47,24 @@ class EvidenceQuote(BaseModel):
     quote: str
 
 
-class SentenceCheck(BaseModel):
+class CitationVerdict(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    id: int = Field(ge=1)
     status: Literal["supported", "non_factual", "evidence_gap", "unsupported"]
     quotes: list[EvidenceQuote] = Field(default_factory=list)
     issue: str = ""
 
 
-class CitationCheck(BaseModel):
+class SentenceCheck(CitationVerdict):
+    id: int = Field(ge=1)
+
+
+class CitationScope(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    sentences: list[SentenceCheck]
     scope_issues: list[str]
+
+
+class CitationCheck(CitationScope):
+    sentences: list[SentenceCheck]
 
 
 class BriefProseCheck(BaseModel):
@@ -306,18 +312,27 @@ async def check_answer_citations(
             question=question,
             search_focus=search_focus,
             sentences=group,
-            sentence_ids=sentence_ids,
+            verdict_fields=[f"sentence_{number}" for number in sentence_ids],
             evidence=render_evidence(list(cited.values())),
         )
         async with concurrency:
             try:
-                verdict: CitationCheck = await request_json(
+                batch: CitationScope = await request_json(
                     system, request, [], config, _citation_check_schema(sentence_ids)
                 )
             except InvalidAssistantResponse:
                 if not prepared_quotes:
                     raise
                 return ["The checker could not verify this group of findings."], set()
+        verdict = CitationCheck(
+            scope_issues=batch.scope_issues,
+            sentences=[
+                SentenceCheck(
+                    id=number, **getattr(batch, f"sentence_{number}").model_dump()
+                )
+                for number in sentence_ids
+            ],
+        )
         return citation_issues(
             group,
             {
@@ -342,17 +357,13 @@ async def check_answer_citations(
     )
 
 
-def _citation_check_schema(sentence_ids: list[int]) -> TypeAdapter[CitationCheck]:
-    expected = sorted(sentence_ids)
-
-    def check_ids(verdict: CitationCheck) -> CitationCheck:
-        if sorted(check.id for check in verdict.sentences) != expected:
-            raise ValueError(
-                "Return exactly one check for every requested sentence ID."
-            )
-        return verdict
-
-    return TypeAdapter(Annotated[CitationCheck, AfterValidator(check_ids)])
+def _citation_check_schema(sentence_ids: list[int]) -> TypeAdapter[CitationScope]:
+    batch_model = create_model(
+        "CitationBatch",
+        __base__=CitationScope,
+        **{f"sentence_{number}": (CitationVerdict, ...) for number in sentence_ids},
+    )
+    return TypeAdapter(batch_model)
 
 
 def citation_check_batches(sentences: list[dict]) -> Iterable[list[dict]]:

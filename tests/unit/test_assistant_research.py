@@ -166,7 +166,9 @@ async def run_research(
         if messages[0].content.startswith("Check whether the proposed answer"):
             prompt = messages[-1].content
             if check is not None:
-                return AIMessage(content=json.dumps(check(prompt)))
+                return AIMessage(
+                    content=json.dumps(_citation_tool_result(check(prompt)))
+                )
             rows = _review_rows(prompt)
             excerpts = dict(re.findall(r"(?m)^\[(\d+)\] [^\n]+\n([^\n]+)", prompt))
             checks = [
@@ -185,7 +187,9 @@ async def run_research(
                 for row in rows
             ]
             return AIMessage(
-                content=json.dumps({"scope_issues": [], "sentences": checks})
+                content=json.dumps(
+                    _citation_tool_result({"scope_issues": [], "sentences": checks})
+                )
             )
         if messages[0].content.startswith("Develop one additional paragraph"):
             return AIMessage(
@@ -265,6 +269,15 @@ async def test_outline_survey_when_research_finishes_then_only_sources_are_retur
 
 def _review_rows(prompt):
     return json.loads(prompt.split("Sentences to check: ", 1)[1].splitlines()[0])
+
+
+def _citation_tool_result(review):
+    fields = {key: value for key, value in review.items() if key != "sentences"}
+    for check in review["sentences"]:
+        verdict = check.copy()
+        sentence_id = verdict.pop("id")
+        fields[f"sentence_{sentence_id}"] = verdict
+    return fields
 
 
 def _fixture_source_lines(prompt, label):
@@ -880,8 +893,8 @@ async def test_assistant_streams_only_what_the_checker_retained_even_without_iss
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("invalid_ids", [[], [1, 1], [1, 9]])
-async def test_citation_check_retries_when_sentence_ids_do_not_match(invalid_ids):
+@pytest.mark.parametrize("invalid_ids", [[], [9], [1, 9]])
+async def test_citation_check_retries_when_verdict_fields_do_not_match(invalid_ids):
     excerpt = "The pilot reached 60 percent of schools."
     answer = "The pilot reached 60 percent of schools [1]."
     requests = []
@@ -906,7 +919,7 @@ async def test_citation_check_retries_when_sentence_ids_do_not_match(invalid_ids
     )
 
     assert len(requests) == 2
-    assert "each sentence ID in [1]" in requests[0]
+    assert 'Fill each required verdict field ["sentence_1"]' in requests[0]
     assert "Correct these validation errors" in requests[1]
     assert (
         next(event["token"] for event in events if event["type"] == "token") == answer
