@@ -27,6 +27,7 @@ from pipeline.db import (
     get_default_filter_fields,
     load_datasources_config,
 )
+from pipeline.db.postgres_client_base import PostgresPoolTimeout
 from pipeline.utilities.tasks import app as celery_app
 from ui.backend import schemas as _api_schemas
 from ui.backend.routes import assistant as assistant_routes
@@ -80,6 +81,13 @@ from ui.backend.utils.app_limits import (
     rate_limit_exceeded_handler,
 )
 from ui.backend.utils.app_state import get_db_for_source, get_pg_for_source, logger
+from ui.backend.utils.errors import (
+    API_DEBUG,
+    BUSY_DETAIL,
+    INTERNAL_ERROR_DETAIL,
+    INVALID_REQUEST_DETAIL,
+    value_error_detail,
+)
 from ui.backend.utils.llm_footprint import validate_footprint_settings
 
 # Add parent directory to path for imports
@@ -250,7 +258,6 @@ API_GZIP_LEVEL = int(os.environ.get("API_GZIP_LEVEL", "6"))
 _main_logger = logging.getLogger(__name__)
 
 # Debug flag — when true, exception handlers return full error details.
-API_DEBUG = os.environ.get("API_DEBUG", "false").lower() in ("1", "true", "yes")
 
 
 class RequestBodyLimitMiddleware(BaseHTTPMiddleware):
@@ -264,10 +271,6 @@ class RequestBodyLimitMiddleware(BaseHTTPMiddleware):
                 content={"detail": "Request body too large"},
             )
         return await call_next(request)
-
-
-# Safe ValueError prefixes whose details can be shown to clients.
-_SAFE_VALUE_ERROR_PREFIXES = ("Invalid data_source:",)
 
 
 @app.exception_handler(RequestValidationError)
@@ -285,15 +288,21 @@ async def request_validation_handler(request: Request, exc: RequestValidationErr
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError):
     """Convert ValueError to HTTP 400 — sanitise detail in production."""
-    msg = str(exc)
-    if API_DEBUG or any(msg.startswith(p) for p in _SAFE_VALUE_ERROR_PREFIXES):
-        return JSONResponse(status_code=400, content={"detail": msg})
+    detail = value_error_detail(exc)
+    if detail == INVALID_REQUEST_DETAIL:
+        _main_logger.warning(
+            "ValueError on %s %s: %s", request.method, request.url.path, exc
+        )
+    return JSONResponse(status_code=400, content={"detail": detail})
+
+
+@app.exception_handler(PostgresPoolTimeout)
+async def postgres_pool_timeout_handler(request: Request, exc: PostgresPoolTimeout):
+    """A request that waited too long for a database connection: busy, not broken."""
     _main_logger.warning(
-        "ValueError on %s %s: %s", request.method, request.url.path, msg
+        "No database connection for %s %s: %s", request.method, request.url.path, exc
     )
-    return JSONResponse(
-        status_code=400, content={"detail": "Invalid request parameters"}
-    )
+    return JSONResponse(status_code=503, content={"detail": BUSY_DETAIL})
 
 
 @app.exception_handler(Exception)
@@ -302,7 +311,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
     _main_logger.exception(
         "Unhandled exception on %s %s", request.method, request.url.path
     )
-    detail = str(exc) if API_DEBUG else "Internal server error"
+    detail = str(exc) if API_DEBUG else INTERNAL_ERROR_DETAIL
     return JSONResponse(status_code=500, content={"detail": detail})
 
 

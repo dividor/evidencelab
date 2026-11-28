@@ -1,7 +1,7 @@
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 from qdrant_client.http import models as qmodels
 
 from pipeline.db import resolve_data_source
@@ -15,6 +15,7 @@ from ui.backend.routes.stats_timeline import (
 )
 from ui.backend.utils.app_limits import get_rate_limits
 from ui.backend.utils.app_state import get_db_for_source, get_pg_for_source, logger
+from ui.backend.utils.errors import server_error
 
 RATE_LIMIT_SEARCH, RATE_LIMIT_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
 router = APIRouter()
@@ -650,8 +651,7 @@ def get_stats(
         _pipeline_cache[f"stats:{source}"] = result
         return result
     except Exception as e:
-        logger.error(f"Stats error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "Stats error", logger) from e
 
 
 def _compute_sankey(data_source: Optional[str]) -> dict:
@@ -695,8 +695,8 @@ def get_sankey_data(
         _pipeline_cache[f"sankey:{source}"] = result
         return result
     except Exception as e:
-        logger.error(f"Sankey error: {e}")
         if _is_missing_table_error(e):
+            logger.error(f"Sankey error: {e}")
             empty_links: Dict[str, List[Any]] = {
                 "source": [],
                 "target": [],
@@ -715,7 +715,7 @@ def get_sankey_data(
                     "layer4_count": 0,
                 },
             }
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "Sankey error", logger) from e
 
 
 def _compute_timeline(data_source: Optional[str]) -> dict:
@@ -756,10 +756,10 @@ def get_timeline_data(
         _pipeline_cache[f"timeline:{source}"] = result
         return result
     except Exception as e:
-        logger.exception("Timeline error")
         if _is_missing_table_error(e):
+            logger.exception("Timeline error")
             return _timeline_build_histograms([], {})
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "Timeline error", logger) from e
 
 
 def warm_pipeline_cache(data_source: str) -> None:
