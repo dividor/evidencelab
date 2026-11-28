@@ -23,11 +23,9 @@ const resolveSourceUrl = (result: SearchResult): string =>
   result.report_url ||
   result.metadata?.report_url ||
   result.metadata?.map_report_url ||
-  result.metadata?.src_doc_raw_metadata?.report_url ||
   result.pdf_url ||
   result.metadata?.pdf_url ||
   result.metadata?.map_pdf_url ||
-  result.metadata?.src_doc_raw_metadata?.pdf_url ||
   '';
 
 /** Build a map from original citation number to { url, sequential }. The

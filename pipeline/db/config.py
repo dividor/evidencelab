@@ -324,8 +324,8 @@ def get_summarize_config(data_source: str) -> Dict[str, Any]:
     raise ValueError(f"No pipeline.summarize config for data source {data_source!r}")
 
 
-def get_default_filter_fields(data_source: str) -> Dict[str, str]:
-    """Get default filter fields for a data source (core field -> display label)."""
+def _find_datasource_config(data_source: str) -> Dict[str, Any]:
+    """Return the config.json entry whose ``data_subdir`` is ``data_source``."""
     config = load_datasources_config()
     # Handle new config structure (datasources key) or legacy structure
     datasources = config.get("datasources", config)
@@ -338,8 +338,22 @@ def get_default_filter_fields(data_source: str) -> Dict[str, str]:
             isinstance(domain_config, dict)
             and domain_config.get("data_subdir") == data_source
         ):
-            return domain_config.get("default_filter_fields", {})
+            return domain_config
     return {}
+
+
+def get_default_filter_fields(data_source: str) -> Dict[str, str]:
+    """Get default filter fields for a data source (core field -> display label)."""
+    return _find_datasource_config(data_source).get("default_filter_fields", {})
+
+
+def get_metadata_panel_fields(data_source: str) -> Dict[str, str]:
+    """Get the metadata panel fields of a data source (field -> display label).
+
+    These are the document fields the search result's metadata panel shows, so
+    a search result always carries them whatever else it leaves out.
+    """
+    return _find_datasource_config(data_source).get("metadata_panel_fields", {})
 
 
 def get_src_field_mapping(data_source: str) -> Dict[str, str]:

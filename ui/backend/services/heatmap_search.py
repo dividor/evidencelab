@@ -16,6 +16,7 @@ from ui.backend.routes.search import (
 )
 from ui.backend.schemas import SearchResult
 from ui.backend.services.heatmap_axes import facet_selection
+from ui.backend.services.result_shape import ResultShape
 from ui.backend.services.search_defaults import (
     SYSTEM_SEARCH_DEFAULTS,
     default_section_types,
@@ -134,6 +135,8 @@ def prepare_paragraph_hits(db, pg, results, query: str, source: str) -> CellHits
         field_boost_fields=defaults["field_boost_fields"],
         auto_min_score=defaults["auto_min_score"],
         deduplicate=defaults["deduplicate"],
+        # A cell counts and lists documents; it never opens a result.
+        shape=ResultShape.for_source(source, lean=True),
     )
     hits = [hit_from_result(result) for result in (built or [])]
     return CellHits(

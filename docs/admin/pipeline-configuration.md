@@ -37,6 +37,7 @@ The `application` section controls global behavior:
       "short_query_dense_weight": 0.25,
       "highlight_threshold": 0.6,
       "page_size": 50,
+      "heatmap_cell_limit": 1000,
       "default_dense_model": "e5_large"
     }
   }
@@ -53,6 +54,7 @@ The `application` section controls global behavior:
 | `search.short_query_dense_weight` | float | Override dense weight for very short queries (1–2 words) |
 | `search.highlight_threshold` | float | Minimum similarity score for a phrase to be highlighted |
 | `search.page_size` | int | Default number of results per page |
+| `search.heatmap_cell_limit` | int | Results one Heatmap cell asks for, at most the API's `SEARCH_MAX_LIMIT`. Baked into the web app at build time, so rebuild the ui after changing it. See [Search response size](performance-and-scaling.md#search-response-size) |
 | `search.default_dense_model` | string | Fallback embedding model name if no datasource specifies one |
 
 ---

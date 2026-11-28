@@ -850,7 +850,7 @@ def _fake_search_route(monkeypatch, captured, warning=None):
             note_search_warning(warning)
         return ["raw"]
 
-    def _fetch_and_build_results(pg, raw, source, limit, min_chunk_size):
+    def _fetch_and_build_results(pg, raw, source, limit, min_chunk_size, shape):
         return [{"chunk_id": "c1", "text": "hello"}]
 
     def _apply_post_retrieval_boosts(built, *args):

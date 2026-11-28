@@ -29,8 +29,8 @@ def get_search_max_limit() -> int:
 
     An empty-query search loads that many passages into the API's memory, so
     an unbounded value lets one request exhaust it. The web interface asks
-    for at most the heatmap's cell limit (REACT_APP_HEATMAP_LIMIT, 1000 by
-    default); keep this at or above that.
+    for at most the heatmap's cell limit (``application.search.heatmap_cell_limit``
+    in config.json, 1000 by default); keep this at or above that.
     """
     return int(os.environ.get("SEARCH_MAX_LIMIT", "10000"))
 

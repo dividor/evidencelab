@@ -51,6 +51,7 @@ from ui.backend.services.citations import render_reference_lines
 from ui.backend.services.evaluation_metrics import compute_summary_stats
 from ui.backend.services.evaluation_metrics import progress_stats as _progress_stats
 from ui.backend.services.llm_choice import CITATION_CHECK, JUDGE, group_choice
+from ui.backend.services.result_shape import ResultShape
 from ui.backend.services.search_defaults import (
     SYSTEM_SEARCH_DEFAULTS,
     default_section_types,
@@ -210,7 +211,9 @@ async def _run_search(
     finally:
         search_warnings.reset(token)
     effective_limit = wide_limit * wide_group_size if wide_search else limit
-    built = _fetch_and_build_results(pg, raw, source, effective_limit, min_chunk_size)
+    built = _fetch_and_build_results(
+        pg, raw, source, effective_limit, min_chunk_size, ResultShape.for_source(source)
+    )
     if not built:
         return _search_output(query, [], warnings)
     boosted = _apply_post_retrieval_boosts(

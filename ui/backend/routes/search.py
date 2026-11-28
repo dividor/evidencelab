@@ -16,6 +16,7 @@ from pipeline.db import (
 from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.routes.highlight import infer_paragraphs_from_bboxes
 from ui.backend.schemas import Facets, FacetValue, SearchResponse, SearchResult
+from ui.backend.services.result_shape import ResultShape
 from ui.backend.services.search import (
     get_search_facets,
     scroll_filtered_chunks,
@@ -432,9 +433,11 @@ def _build_search_results(
     data_source: Optional[str],
     limit: int,
     min_chunk_size: int,
+    shape: ResultShape,
 ):
     # Build SearchResult objects from Qdrant results joined with doc/chunk metadata.
     # Skips results whose doc is missing from cache or whose text is too short.
+    # ``shape`` decides which document fields and chunk-level data each carries.
     filtered_results = []
     for result in results:
         doc_id_raw = result.payload.get("doc_id") or result.payload.get("sys_doc_id")
@@ -470,7 +473,6 @@ def _build_search_results(
                     if chunk_payload.get("sys_page_num") is not None
                     else 0
                 ),
-                chunk_elements=chunk_payload.get("sys_chunk_elements"),
                 headings=chunk_payload.get("sys_headings") or [],
                 section_type=(
                     chunk_payload.get("tag_section_type")
@@ -478,11 +480,16 @@ def _build_search_results(
                 ),
                 score=result.score,
                 item_types=chunk_payload.get("sys_item_types"),
-                bbox=chunk_bboxes,
-                elements=chunk_payload.get("sys_elements"),
-                table_data=chunk_payload.get("sys_table_data"),
-                tables=chunk_payload.get("sys_tables"),
-                images=chunk_payload.get("sys_images"),
+                **shape.chunk_fields(
+                    {
+                        "chunk_elements": chunk_payload.get("sys_chunk_elements"),
+                        "bbox": chunk_bboxes,
+                        "elements": chunk_payload.get("sys_elements"),
+                        "table_data": chunk_payload.get("sys_table_data"),
+                        "tables": chunk_payload.get("sys_tables"),
+                        "images": chunk_payload.get("sys_images"),
+                    }
+                ),
                 title=clean_text(normalized_doc.get("title", "Unknown")),
                 organization=normalized_doc.get("organization"),
                 year=(
@@ -491,7 +498,7 @@ def _build_search_results(
                     else None
                 ),
                 language=normalized_doc.get("language"),
-                metadata=_search_result_metadata(normalized_doc),
+                metadata=shape.metadata(normalized_doc),
             )
         )
 
@@ -499,19 +506,6 @@ def _build_search_results(
             break
 
     return filtered_results
-
-
-def _search_result_metadata(document: Dict[str, Any]) -> Dict[str, Any]:
-    """Keep document metadata useful to readers without nested storage copies."""
-    metadata = {
-        key: value for key, value in document.items() if key != "abstractive_summary"
-    }
-    system_data = metadata.get("sys_data")
-    if isinstance(system_data, dict) and "sys_data" in system_data:
-        metadata["sys_data"] = {
-            key: value for key, value in system_data.items() if key != "sys_data"
-        }
-    return metadata
 
 
 def _filter_match(value: Any) -> Union[qmodels.MatchAny, qmodels.MatchValue]:
@@ -710,7 +704,9 @@ def _parse_boost_fields(raw: Optional[str]) -> Dict[str, float]:
     return config
 
 
-def _fetch_and_build_results(pg, results, data_source, limit, min_chunk_size):
+def _fetch_and_build_results(
+    pg, results, data_source, limit, min_chunk_size, shape: ResultShape
+):
     """Build doc/chunk caches and construct SearchResult list. Returns None if no docs."""
     t_doc = time.time()
     doc_cache = _build_doc_cache(pg, results)
@@ -728,7 +724,7 @@ def _fetch_and_build_results(pg, results, data_source, limit, min_chunk_size):
     )
     t_build = time.time()
     built = _build_search_results(
-        results, doc_cache, chunk_cache, data_source, limit, min_chunk_size
+        results, doc_cache, chunk_cache, data_source, limit, min_chunk_size, shape
     )
     logger.info(
         "[TIMING] build_results: %.3fs (%s results)", time.time() - t_build, len(built)
@@ -774,9 +770,16 @@ def prepare_chunk_results(
     field_boost_fields,
     auto_min_score,
     deduplicate,
+    shape: ResultShape,
 ):
-    """Build and rank the same display results for Search and Heatmapper."""
-    built = _fetch_and_build_results(pg, results, data_source, limit, min_chunk_size)
+    """Build and rank the same display results for Search and Heatmapper.
+
+    ``shape`` decides what each result carries (see ``ResultShape``); a caller
+    that only counts and lists documents asks for the lean shape.
+    """
+    built = _fetch_and_build_results(
+        pg, results, data_source, limit, min_chunk_size, shape
+    )
     if built is None:
         return None
     return _apply_post_retrieval_boosts(
@@ -904,6 +907,14 @@ async def search(
         description="Comma-separated core field names to boost (e.g. 'country,organization'). "
         "Each field gets a 0.5 weight multiplier.",
     ),
+    lean: bool = Query(
+        False,
+        description=(
+            "Lean results for callers that never open a result: no chunk "
+            "elements, tables, images or bounding boxes, and no document "
+            "summary or classified contents in metadata"
+        ),
+    ),
 ):
     """
     Perform semantic search over document chunks.
@@ -916,6 +927,7 @@ async def search(
     source = resolve_data_source(data_source if isinstance(data_source, str) else None)
     db = get_db_for_source(source)
     pg = get_pg_for_source(source)
+    shape = ResultShape.for_source(source, lean=lean)
 
     try:
         core_filters = _build_core_filters(
@@ -991,6 +1003,7 @@ async def search(
             field_boost_fields=field_boost_fields,
             auto_min_score=auto_min_score,
             deduplicate=deduplicate,
+            shape=shape,
         )
         if filtered_results is None:
             return SearchResponse(results=[], total=0, query=q, filters={})

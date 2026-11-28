@@ -72,6 +72,7 @@ async def mcp_search(
         _build_doc_cache,
         _build_search_results,
     )
+    from ui.backend.services.result_shape import ResultShape
     from ui.backend.services.search import search_chunks
     from ui.backend.utils.app_state import get_db_for_source, get_pg_for_source
 
@@ -114,6 +115,7 @@ async def mcp_search(
             data_source=source,
             limit=limit,
             min_chunk_size=0,
+            shape=ResultShape.for_source(source),
         )
 
         return search_results
