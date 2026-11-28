@@ -5,6 +5,14 @@ on:
     branches: [ main, 'release-*', copilot/** ]
   pull_request:
     branches: [ main, 'release-*' ]
+  # Every Monday, and by hand (Actions, CI, Run workflow), the security jobs
+  # scan main again: code-quality, security-scan, sbom and container-scan, with
+  # the same rules that block a pull request. A new advisory against code that
+  # hasn't changed then fails a run, and GitHub emails whoever last changed this
+  # schedule. The tests run only on pushes and pull requests.
+  schedule:
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
 
 permissions: {}
 
@@ -259,6 +267,7 @@ jobs:
           exit-code: '1'
 
   tests:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     needs: code-quality
     env:
@@ -684,6 +693,7 @@ jobs:
     # Checks the cloud deployment templates: formatting, validity, and the
     # plan-only tests in deploy/<cloud>/tests (mocked providers, no cloud
     # account).
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     needs: code-quality
     strategy:
@@ -715,6 +725,7 @@ jobs:
         run: terraform test
 
   ui-tests:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     needs: tests
     steps:
