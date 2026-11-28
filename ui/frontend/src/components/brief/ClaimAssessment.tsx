@@ -1,4 +1,5 @@
 import React from 'react';
+import './claimAssessment.css';
 import type { AssertionResult } from '../../types/testing';
 import { VERDICT_LABEL, VERDICT_TONE } from '../admin/testing/citationCheckFormat';
 import { formatScore } from '../admin/testing/testingFormat';
@@ -31,7 +32,7 @@ export function ClaimAssessment({ number, text, grade, threshold, showPass = tru
       <strong>Claim {number}</strong>
       {grade && <ClaimScore grade={grade} threshold={threshold} showPass={showPass} />}
     </div>
-    <div>{text}</div>
+    <blockquote className="claim-verbatim"><q>{text}</q></blockquote>
     {grade && <p className="testing-claim-reason"><strong>Judge assessment</strong> {grade.reason}</p>}
     {grade && <EvidenceGaps verdict={grade.verdict} unmet={grade.unmet} />}
   </>;

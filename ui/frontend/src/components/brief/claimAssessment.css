@@ -1,0 +1,12 @@
+.claim-verbatim {
+  margin: .65rem 0 .85rem;
+  padding: .8rem 1rem;
+  border: 0;
+  border-radius: .4rem;
+  background: color-mix(in srgb, var(--brand-accent) 6%, var(--brand-surface));
+  color: var(--brand-text-primary);
+  font-style: italic;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.claim-verbatim q { quotes: "“" "”" "‘" "’"; }
