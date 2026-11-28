@@ -105,7 +105,9 @@ def judged_passages(
         return None
     out: List[JudgedPassage] = []
     for row, (section_id, passage) in zip(rows, passages):
-        if row.passage != passage.passage_clean:
+        # Rows of older checks keep the sentence's markdown; newer checks
+        # store the prose, as ``passage_clean`` gives it.
+        if strip_inline_markdown(row.passage) != passage.passage_clean:
             return None
         out.append((section_id, passage, row))
     return out
@@ -241,8 +243,8 @@ def _citations(passage: CitedPassage) -> str:
 def fact_check_marks(cov: Coverage) -> List[Dict[str, Any]]:
     """The passages to highlight: every judged passage of a covered section,
     whatever its verdict, with the judge's reasoning. The passage is given
-    as it reads on screen: the check stores the sentence with its markdown
-    (a bold claim keeps its ``**``), while the document searches rendered
+    as it reads on screen: older checks stored the sentence with its markdown
+    (a bold claim kept its ``**``), while the document searches rendered
     text, which has none of it."""
     marks: List[Dict[str, Any]] = []
     for section_id, pairs in cov.covered.items():

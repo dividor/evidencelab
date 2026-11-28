@@ -28,6 +28,7 @@ from ui.backend.auth.testing_models import (
     CAPABILITY_BRIEF,
     CAPABILITY_SEARCH,
     EXPERIMENT_COMPLETED,
+    EXPERIMENT_DRAFT,
     EXPERIMENT_FAILED,
     EXPERIMENT_PENDING,
     EXPERIMENT_RUNNING,
@@ -50,6 +51,7 @@ from ui.backend.services.brief_template_evaluation import (
 from ui.backend.services.citations import render_reference_lines
 from ui.backend.services.evaluation_metrics import compute_summary_stats
 from ui.backend.services.evaluation_metrics import progress_stats as _progress_stats
+from ui.backend.services.job_liveness import write_while
 from ui.backend.services.llm_choice import CITATION_CHECK, JUDGE, group_choice
 from ui.backend.services.search_defaults import (
     SYSTEM_SEARCH_DEFAULTS,
@@ -964,38 +966,87 @@ def _mirror_run_to_experiment(experiment: TestExperiment, run: TestRun) -> None:
     experiment.finished_at = run.finished_at
 
 
+# Several api copies may share the database, so a run owns its rows only
+# while they still say running: every write below is conditional on that
+# (``job_liveness.write_while``), and a run that a cancel or orphan recovery
+# failed meanwhile stops, keeping that record.
+_ACTIVE = (EXPERIMENT_RUNNING, EXPERIMENT_PENDING)
+
+
 async def _fail_run(
     session, experiment: TestExperiment, run: TestRun, message: str
 ) -> None:
-    run.status = EXPERIMENT_FAILED
-    run.finished_at = _utcnow()
-    run.summary_stats = {"error": message[:500]}
-    _mirror_run_to_experiment(experiment, run)
-    await session.commit()
+    """Fail a run (and its experiment) this runner still owns."""
+    run_id, experiment_id = run.id, experiment.id
+    now = _utcnow()
+    error = {"error": message[:500]}
+    await write_while(
+        session,
+        TestRun,
+        run_id,
+        _ACTIVE,
+        status=EXPERIMENT_FAILED,
+        finished_at=now,
+        summary_stats=error,
+    )
+    await write_while(
+        session,
+        TestExperiment,
+        experiment_id,
+        _ACTIVE,
+        status=EXPERIMENT_FAILED,
+        finished_at=now,
+        summary_stats=error,
+    )
 
 
 async def _mark_failed(session, experiment: TestExperiment, message: str) -> None:
     """Catastrophic-failure path: fail the experiment and any running run."""
+    experiment_id = experiment.id
     # The triggering error may have left the session in a failed transaction;
-    # roll back so these status writes can commit.
+    # roll back so these status writes can commit. The rollback expires the
+    # experiment's attributes, hence the id kept above.
     await session.rollback()
-    experiment = await session.get(TestExperiment, experiment.id) or experiment
+    now = _utcnow()
+    error = {"error": message[:500]}
     await session.execute(
         update(TestRun)
         .where(
-            TestRun.experiment_id == experiment.id,
+            TestRun.experiment_id == experiment_id,
             TestRun.status == EXPERIMENT_RUNNING,
         )
-        .values(
-            status=EXPERIMENT_FAILED,
-            finished_at=_utcnow(),
-            summary_stats={"error": message[:500]},
-        )
+        .values(status=EXPERIMENT_FAILED, finished_at=now, summary_stats=error)
+        .execution_options(synchronize_session=False)
     )
-    experiment.status = EXPERIMENT_FAILED
-    experiment.finished_at = _utcnow()
-    experiment.summary_stats = {"error": message[:500]}
+    await session.execute(
+        update(TestExperiment)
+        .where(
+            TestExperiment.id == experiment_id,
+            TestExperiment.status.in_(list(_ACTIVE)),
+        )
+        .values(status=EXPERIMENT_FAILED, finished_at=now, summary_stats=error)
+        .execution_options(synchronize_session=False)
+    )
     await session.commit()
+
+
+async def _publish_progress(
+    session, run: TestRun, completed: int, total: int, sections=None
+) -> bool:
+    """Store the run's progress, with whatever rows the session holds. False
+    when the run is no longer ours (cancelled, or failed as orphaned by
+    another api copy); the pending rows are then dropped."""
+    run_id = run.id
+    if await write_while(
+        session,
+        TestRun,
+        run_id,
+        (EXPERIMENT_RUNNING,),
+        summary_stats=_progress_stats(completed, total, sections),
+    ):
+        return True
+    logger.info("Test run %s was stopped by another writer", run_id)
+    return False
 
 
 def _active_case_plan(
@@ -1034,7 +1085,11 @@ def _build_result_row(
 
 
 async def _record_run_usage(
-    experiment: TestExperiment, run: TestRun, dataset: TestDataset, cfg: Dict[str, Any]
+    experiment: TestExperiment,
+    run: TestRun,
+    dataset: TestDataset,
+    cfg: Dict[str, Any],
+    stats: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Mirror a finished run's token totals into a ``user_activity`` row.
 
@@ -1054,7 +1109,9 @@ async def _record_run_usage(
     from utils.llm_factory import resolve_effective_model_key
 
     try:
-        stats = run.summary_stats or {}
+        # The runner passes the stats it just wrote: the session's copy of the
+        # run is not synchronised with its conditional writes.
+        stats = stats if stats is not None else (run.summary_stats or {})
         usage = {
             # The supported_llms key, as each call's usage is labelled, even
             # when the experiment names the model by its provider id.
@@ -1088,27 +1145,46 @@ async def _record_run_usage(
         logger.warning("Failed to record evaluation run usage", exc_info=True)
 
 
+# Statuses a runner may take over. The Run route queues as pending; a draft
+# or completed experiment can be executed directly (tests, scripts).
+_CLAIMABLE = (EXPERIMENT_PENDING, EXPERIMENT_DRAFT, EXPERIMENT_COMPLETED)
+
+
 async def _execute(
     session, experiment: TestExperiment, triggered_by_user_id=None
 ) -> None:
     dataset = await session.get(TestDataset, experiment.dataset_id)
     started = time.time()
+    # A rolled-back write expires the row's attributes, so keep what is needed
+    # afterwards in locals.
+    experiment_id = experiment.id
     # Each execution is a new run; prior runs and their results are preserved.
     # The run is attributed to whoever clicked Run (falling back to the
     # experiment's creator for programmatic invocations) so token usage is
     # charged to the actual spender.
     run = TestRun(
-        experiment_id=experiment.id,
-        run_number=await _next_run_number(session, experiment.id),
+        experiment_id=experiment_id,
+        run_number=await _next_run_number(session, experiment_id),
         status=EXPERIMENT_RUNNING,
         started_at=_utcnow(),
         created_by_user_id=triggered_by_user_id or experiment.created_by_user_id,
     )
     session.add(run)
-    experiment.status = EXPERIMENT_RUNNING
-    experiment.started_at = run.started_at
-    experiment.finished_at = None
-    await session.commit()
+    # The experiment is ours only while nobody else holds it: a running row
+    # belongs to another api copy, and a failed one was cancelled, or failed
+    # as orphaned, after it was queued.
+    claimed = await write_while(
+        session,
+        TestExperiment,
+        experiment_id,
+        _CLAIMABLE,
+        status=EXPERIMENT_RUNNING,
+        started_at=run.started_at,
+        finished_at=None,
+    )
+    if not claimed:
+        logger.info("Experiment %s is running or was stopped; not run", experiment_id)
+        return
     await session.refresh(run)
 
     if dataset is None:
@@ -1117,18 +1193,9 @@ async def _execute(
     # Resolve the chosen model combo into concrete embedding/summary/reranker
     # models, then overlay any "run as group" settings, so the run matches the
     # search UI / that group's configuration.
-    requested = dict(experiment.config or {})
-    if dataset.capability == CAPABILITY_BRIEF:
-        from pipeline.db.config import UI_MODEL_COMBOS, get_default_model_combo
-        from ui.backend.services.brief_experiment import configure_brief
-
-        requested.pop("brief_topic", None)  # Older experiments stored a separate topic.
-        requested["capability"] = CAPABILITY_BRIEF
-        requested["model_combo"] = (
-            requested.get("model_combo") or get_default_model_combo()
-        )
-        configure_brief(requested, UI_MODEL_COMBOS[requested["model_combo"]])
-    config = await _apply_group(session, effective_config(requested))
+    config = await _apply_group(
+        session, effective_config(_requested_config(experiment, dataset))
+    )
     problem = await _apply_judge_choice(session, config, triggered_by_user_id)
     problem = problem or _unlisted_model_problem(config)
     if problem:
@@ -1152,89 +1219,116 @@ async def _execute(
     # progress (and stream each result) as the run advances. Committing per case
     # — safe because the session is created with expire_on_commit=False — lets
     # the polling UI report how far along the run is instead of a blind "running".
-    if dataset.capability == CAPABILITY_BRIEF:
-        try:
-            plan = await template_plan(session, config, matrix)
-        except TemplateSelectionError as exc:
-            await _fail_run(session, experiment, run, str(exc))
-            return
-    else:
-        plan = _active_case_plan(
-            matrix, await _load_cases(session, dataset.id), dataset.capability
-        )
+    try:
+        plan, sections = await _plan_with_sections(session, dataset, config, matrix)
+    except TemplateSelectionError as exc:
+        await _fail_run(session, experiment, run, str(exc))
+        return
     total = len(plan)
-    sections = (
-        [
-            {
-                "template": case.template.name,
-                "heading": case.headings[case.position].title,
-                "number": case.number,
-            }
-            for case, _ in plan
-        ]
-        if dataset.capability == CAPABILITY_BRIEF
-        else None
-    )
-    run.summary_stats = _progress_stats(0, total, sections)
-    await session.commit()
+    if not await _publish_progress(session, run, 0, total, sections):
+        return
 
     case_results: List[Dict[str, Any]] = []
     for completed, (case, assertions) in enumerate(plan, start=1):
-        if isinstance(case, TemplateSection):
-            outcome = await case.evaluate(assertions, runner, judge_factory)
-        else:
-            outcome = await evaluate_case(case.input, assertions, runner, judge_factory)
+        outcome = await _evaluate_planned(case, assertions, runner, judge_factory)
         case_results.append(outcome)
         session.add(_build_result_row(experiment, run, case, outcome))
-        run.summary_stats = _progress_stats(completed, total, sections)
-        await session.commit()
+        if not await _publish_progress(session, run, completed, total, sections):
+            return
 
-    run.summary_stats = compute_summary_stats(
-        case_results, int((time.time() - started) * 1000)
-    )
+    stats = _final_stats(dataset, case_results, started)
+    if await _complete_run(session, run, experiment_id, stats):
+        await _record_run_usage(experiment, run, dataset, config, stats)
+
+
+def _requested_config(
+    experiment: TestExperiment, dataset: TestDataset
+) -> Dict[str, Any]:
+    """The experiment's stored config, completed for a Brief experiment with
+    the model combo's brief settings."""
+    requested = dict(experiment.config or {})
+    if dataset.capability == CAPABILITY_BRIEF:
+        from pipeline.db.config import UI_MODEL_COMBOS, get_default_model_combo
+        from ui.backend.services.brief_experiment import configure_brief
+
+        requested.pop("brief_topic", None)  # Older experiments stored a separate topic.
+        requested["capability"] = CAPABILITY_BRIEF
+        requested["model_combo"] = (
+            requested.get("model_combo") or get_default_model_combo()
+        )
+        configure_brief(requested, UI_MODEL_COMBOS[requested["model_combo"]])
+    return requested
+
+
+async def _plan_with_sections(
+    session, dataset: TestDataset, config: Dict[str, Any], matrix: Dict[str, Any]
+) -> Tuple[List[Tuple[Any, List[Dict[str, Any]]]], Optional[List[Dict[str, Any]]]]:
+    """The cases to run, in order, and for a Brief experiment the template
+    sections they stand for (shown as the remaining work while it runs).
+    Raises ``TemplateSelectionError`` when no template section matches."""
+    if dataset.capability != CAPABILITY_BRIEF:
+        cases = await _load_cases(session, dataset.id)
+        return _active_case_plan(matrix, cases, dataset.capability), None
+    plan = await template_plan(session, config, matrix)
+    sections = [
+        {
+            "template": case.template.name,
+            "heading": case.headings[case.position].title,
+            "number": case.number,
+        }
+        for case, _ in plan
+    ]
+    return plan, sections
+
+
+async def _evaluate_planned(case, assertions, runner, judge_factory) -> Dict[str, Any]:
+    if isinstance(case, TemplateSection):
+        return await case.evaluate(assertions, runner, judge_factory)
+    return await evaluate_case(case.input, assertions, runner, judge_factory)
+
+
+def _final_stats(
+    dataset: TestDataset, case_results: List[Dict[str, Any]], started: float
+) -> Dict[str, Any]:
+    """The run's aggregate stats; a Brief run also carries its factual-claim
+    metrics."""
+    stats = compute_summary_stats(case_results, int((time.time() - started) * 1000))
     if dataset.capability == CAPABILITY_BRIEF:
         from ui.backend.services.brief_score_metrics import factual_claim_metrics
 
-        run.summary_stats = {**run.summary_stats, **factual_claim_metrics(case_results)}
-    run.status = EXPERIMENT_COMPLETED
-    run.finished_at = _utcnow()
-    _mirror_run_to_experiment(experiment, run)
-    await session.commit()
-    await _record_run_usage(experiment, run, dataset, config)
+        stats = {**stats, **factual_claim_metrics(case_results)}
+    return stats
 
 
-async def recover_orphaned_runs(session_factory=None) -> None:
-    """Fail any runs/experiments still marked running/pending.
-
-    Runs execute as in-process background tasks that do NOT survive an api
-    restart (deploy, crash, OOM). On startup any such row is therefore orphaned
-    — mark it failed so the UI never shows a permanently "running" run.
-    """
-    factory = session_factory or async_session_factory
-    message = "api restarted mid-run (orphaned background task)"
-    active = [EXPERIMENT_RUNNING, EXPERIMENT_PENDING]
-    try:
-        async with factory() as session:
-            result = await session.execute(
-                update(TestRun)
-                .where(TestRun.status.in_(active))
-                .values(
-                    status=EXPERIMENT_FAILED,
-                    finished_at=_utcnow(),
-                    summary_stats={"error": message},
-                )
-            )
-            await session.execute(
-                update(TestExperiment)
-                .where(TestExperiment.status.in_(active))
-                .values(status=EXPERIMENT_FAILED)
-            )
-            await session.commit()
-            recovered = getattr(result, "rowcount", 0) or 0
-            if recovered:
-                logger.info("Recovered %s orphaned test run(s)", recovered)
-    except Exception:
-        logger.exception("Failed to recover orphaned test runs")
+async def _complete_run(
+    session, run: TestRun, experiment_id, stats: Dict[str, Any]
+) -> bool:
+    """Mark the run completed and mirror it onto its experiment for the
+    list/summary view, while both still say running. False when another
+    writer (Cancel, orphan recovery) took the run meanwhile."""
+    now = _utcnow()
+    run_id, run_started = run.id, run.started_at
+    if not await write_while(
+        session,
+        TestRun,
+        run_id,
+        (EXPERIMENT_RUNNING,),
+        status=EXPERIMENT_COMPLETED,
+        finished_at=now,
+        summary_stats=stats,
+    ):
+        return False
+    await write_while(
+        session,
+        TestExperiment,
+        experiment_id,
+        (EXPERIMENT_RUNNING,),
+        status=EXPERIMENT_COMPLETED,
+        started_at=run_started,
+        finished_at=now,
+        summary_stats=stats,
+    )
+    return True
 
 
 async def run_experiment(

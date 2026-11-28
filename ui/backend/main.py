@@ -349,7 +349,7 @@ async def startup_event():
     # did not survive, so a "running" row on startup is always stale.
     if USER_MODULE:
         from ui.backend.services.citation_check_runner import recover_orphaned_checks
-        from ui.backend.services.test_runner import recover_orphaned_runs
+        from ui.backend.services.experiment_liveness import recover_orphaned_runs
 
         await recover_orphaned_runs()
         await recover_orphaned_checks()

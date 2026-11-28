@@ -4,7 +4,10 @@ Kept as a tiny dependency-free module so the stats math is unit-testable
 without importing the live run engine (which pulls in search/LLM services).
 """
 
-from typing import Any, Dict, List
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from ui.backend.services.job_liveness import progress_stats as liveness_progress
 
 RESULT_PASS = "pass"
 RESULT_FAIL = "fail"
@@ -62,14 +65,18 @@ def outcome_stats(case_results):
     }
 
 
-def progress_stats(completed: int, total: int, sections=None) -> Dict[str, Any]:
-    """A lightweight progress marker stored in a run's ``summary_stats`` while it
-    is in flight, so the polling UI can show "completed of total cases".
+def progress_stats(
+    completed: int, total: int, sections=None, now: Optional[datetime] = None
+) -> Dict[str, Any]:
+    """A lightweight progress marker stored in a run's or check's
+    ``summary_stats`` while it is in flight, so the polling UI can show
+    "completed of total" and, when ``sections`` is given, the work still to
+    do. Its ``at`` stamp is the job's heartbeat (``job_liveness``).
 
     It is replaced by the real aggregate stats (``compute_summary_stats``) once
     the run finishes, so a running run never carries pass/score numbers.
     """
-    progress = {"completed": completed, "total": total}
+    stats = liveness_progress(completed, total, now)
     if sections is not None:
-        progress["remaining_sections"] = sections[completed:]
-    return {"progress": progress}
+        stats["progress"]["remaining_sections"] = sections[completed:]
+    return stats

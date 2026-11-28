@@ -88,6 +88,8 @@ export interface RunProgress {
   remaining_sections?: { template: string; heading: string; number?: string }[];
   completed: number;
   total: number;
+  // When the runner last reported progress (its heartbeat).
+  at?: string;
 }
 
 export interface FactualClaimMetrics {
@@ -202,6 +204,8 @@ export interface CheckSummaryStats extends FactualClaimMetrics {
   flagged_share?: number;
   quote_not_in_source?: number;
   not_judged?: number;
+  // Reference-list lines in the brief's sections the check left out.
+  reference_lines_skipped?: number;
   by_section?: CheckSectionStats[];
   duration_ms?: number;
   prompt_tokens?: number;

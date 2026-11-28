@@ -31,7 +31,10 @@ async def _has_status(session, check, expected):
 
 
 async def run_full_check(session, check):
-    from ui.backend.services.citation_check_runner import _record_check_usage
+    from ui.backend.services.citation_check_runner import (
+        _record_check_usage,
+        count_skipped_reference_lines,
+    )
 
     started = time.monotonic()
     brief = await session.get(Brief, check.brief_id)
@@ -60,6 +63,7 @@ async def run_full_check(session, check):
     ]
     check.section_results = []
     check.summary_stats = progress_stats(0, total, outline)
+    skipped = count_skipped_reference_lines(content)
     await session.commit()
     sections, usage = [], []
     offset = 0
@@ -87,7 +91,7 @@ async def run_full_check(session, check):
         check.summary_stats = progress_stats(len(sections), total, outline)
         if len(sections) == total:
             check.summary_stats = await run_in_threadpool(
-                claim_summary, sections, usage, started, check.judge_model
+                claim_summary, sections, usage, started, check.judge_model, skipped
             )
             check.status = "completed"
             check.finished_at = datetime.now(timezone.utc)
@@ -95,19 +99,24 @@ async def run_full_check(session, check):
     await _record_check_usage(check)
 
 
-def claim_summary(sections, usage, started, model):
+def claim_summary(sections, usage, started, model, reference_lines_skipped=0):
     rows = [row for _, _, row in claim_passages(sections)]
     return {
-        **full_summary(rows, sections, usage, started, model),
+        **full_summary(rows, sections, usage, started, model, reference_lines_skipped),
         "claim_record_version": 1,
     }
 
 
-def full_summary(rows, sections, usage, started, model):
+def full_summary(rows, sections, usage, started, model, reference_lines_skipped=0):
     from ui.backend.services.citation_check_runner import summarise
     from ui.backend.utils.llm_costs import compute_cost
 
-    stats = summarise(rows, int((time.monotonic() - started) * 1000), model)
+    stats = summarise(
+        rows,
+        int((time.monotonic() - started) * 1000),
+        model,
+        reference_lines_skipped,
+    )
     prompt = sum(e.get("prompt_tokens") or 0 for e in usage)
     completion = sum(e.get("completion_tokens") or 0 for e in usage)
     cost = compute_cost(model, prompt, completion)

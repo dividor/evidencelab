@@ -1,12 +1,19 @@
-"""Present saved Brief checks, export their results, and dispatch new checks."""
+"""Present saved Brief checks, export their results, and dispatch new checks.
+
+Several api copies may share the database (every cloud layout runs two or
+more). A check runs inside one of them: ``run_check`` hands a pending check to
+``saved_brief_check_runner``, which writes progress with a heartbeat, and
+``fail_stale_checks`` fails only the checks whose heartbeat stopped
+(``job_liveness``), so another copy starting up leaves a live check alone.
+"""
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from io import BytesIO
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import update
+from sqlalchemy import select
 
 from ui.backend.auth.db import async_session_factory
 from ui.backend.auth.testing_models import (
@@ -19,6 +26,7 @@ from ui.backend.services.citation_fidelity import (
     FLAGGED_VERDICTS,
     JUDGE_VERDICTS,
     CitedPassage,
+    count_reference_lines,
     extract_cited_passages,
     judgement_row,
     researched_sections,
@@ -27,12 +35,20 @@ from ui.backend.services.citation_fidelity import (
     verify_quotes,
     write_review_workbook,
 )
+from ui.backend.services.job_liveness import (
+    is_stale,
+    orphan_message,
+    utcnow,
+    write_while,
+)
 
 logger = logging.getLogger(__name__)
 
+_ACTIVE = (CHECK_RUNNING, CHECK_PENDING)
+
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return utcnow()
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +66,15 @@ def brief_passages(content: Dict[str, Any]) -> List[CitedPassage]:
 
 def count_cited_passages(content: Dict[str, Any]) -> int:
     return len(brief_passages(content))
+
+
+def count_skipped_reference_lines(content: Dict[str, Any]) -> int:
+    """Reference-list lines in the researched sections that the check leaves
+    out (``citation_fidelity.count_reference_lines``)."""
+    return sum(
+        count_reference_lines(section.get("content") or "")
+        for section in researched_sections(content)
+    )
 
 
 def source_rows(passage: CitedPassage) -> List[Dict[str, Any]]:
@@ -128,10 +153,14 @@ def _section_row(section: str, rows: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def summarise(
-    rows: List[Dict[str, Any]], duration_ms: int, judge_model: Optional[str]
+    rows: List[Dict[str, Any]],
+    duration_ms: int,
+    judge_model: Optional[str],
+    reference_lines_skipped: int = 0,
 ) -> Dict[str, Any]:
     """The check's summary: verdict counts, flagged share, per-section rows
-    (notebook cell 17), token totals and cost."""
+    (notebook cell 17), token totals, cost and the reference-list lines the
+    check left out."""
     from ui.backend.utils.llm_costs import compute_cost
 
     sections: List[str] = []
@@ -154,6 +183,7 @@ def summarise(
         "flagged_share": total["flagged_share"],
         "quote_not_in_source": sum(1 for r in rows if r["quote_not_in_source"]),
         "not_judged": sum(1 for r in rows if r.get("error_message")),
+        "reference_lines_skipped": reference_lines_skipped,
         "by_section": by_section,
         "duration_ms": duration_ms,
         "prompt_tokens": prompt,
@@ -283,11 +313,24 @@ async def _record_check_usage(check: BriefCitationCheck) -> None:
         logger.warning("Failed to record brief check usage", exc_info=True)
 
 
-async def _fail(session: Any, check: BriefCitationCheck, message: str) -> None:
-    check.status = CHECK_FAILED
-    check.finished_at = _utcnow()
-    check.summary_stats = {"error": message}
-    await session.commit()
+async def _write_while(
+    session: Any, check_id: uuid.UUID, statuses: Tuple[str, ...], **values: Any
+) -> bool:
+    return await write_while(session, BriefCitationCheck, check_id, statuses, **values)
+
+
+async def _fail(session: Any, check_id: uuid.UUID, message: str) -> None:
+    """Fail a check this runner still owns. A failed flush may have left the
+    session in a dead transaction, so roll back before writing."""
+    await session.rollback()
+    await _write_while(
+        session,
+        check_id,
+        _ACTIVE,
+        status=CHECK_FAILED,
+        finished_at=_utcnow(),
+        summary_stats={"error": message},
+    )
 
 
 async def run_check(
@@ -304,7 +347,9 @@ async def run_check(
             return
         if check.check_kind != "full":
             await _fail(
-                session, check, "Start a new saved Brief check to assess this version."
+                session,
+                check.id,
+                "Start a new saved Brief check to assess this version.",
             )
             return
         from ui.backend.services.saved_brief_check_runner import run_full_check
@@ -313,26 +358,45 @@ async def run_check(
             await run_full_check(session, check)
         except Exception:
             logger.exception("Brief citation check %s failed unexpectedly", check_id)
-            await _fail(session, check, "Check failed")
+            await _fail(session, check_id, "Check failed")
+
+
+async def fail_stale_checks(session: Any, now: Optional[datetime] = None) -> int:
+    """Fail the pending/running checks that have shown no progress for
+    ``job_liveness.STALE_AFTER``: their background task is gone (the api copy
+    running it stopped). A check with a fresh heartbeat belongs to a live
+    runner, possibly on another api copy, and is left alone. Returns how many
+    were failed."""
+    now = now or _utcnow()
+    result = await session.execute(
+        select(BriefCitationCheck).where(BriefCitationCheck.status.in_(list(_ACTIVE)))
+    )
+    stale = [
+        check
+        for check in result.scalars().all()
+        if check.status in _ACTIVE
+        and is_stale(check.summary_stats, check.started_at, check.created_at, now)
+    ]
+    for check in stale:
+        check.status = CHECK_FAILED
+        check.finished_at = now
+        check.summary_stats = {
+            "error": orphan_message(
+                check.summary_stats, check.started_at, check.created_at, now
+            )
+        }
+    if stale:
+        await session.commit()
+    return len(stale)
 
 
 async def recover_orphaned_checks(session_factory: Any = None) -> None:
-    """Fail checks still pending/running after an API restart (their
-    background task did not survive), like ``recover_orphaned_runs``."""
+    """At api start, fail the checks whose task is gone (``fail_stale_checks``).
+    Not every running check: another api copy may be running it."""
     factory = session_factory or async_session_factory
     try:
         async with factory() as session:
-            result = await session.execute(
-                update(BriefCitationCheck)
-                .where(BriefCitationCheck.status.in_([CHECK_RUNNING, CHECK_PENDING]))
-                .values(
-                    status=CHECK_FAILED,
-                    finished_at=_utcnow(),
-                    summary_stats={"error": "api restarted mid-check (orphaned task)"},
-                )
-            )
-            await session.commit()
-            recovered = getattr(result, "rowcount", 0) or 0
+            recovered = await fail_stale_checks(session)
             if recovered:
                 logger.info("Recovered %s orphaned brief citation check(s)", recovered)
     except Exception:
@@ -344,6 +408,8 @@ __all__ = [
     "brief_passages",
     "build_review_workbook",
     "count_cited_passages",
+    "count_skipped_reference_lines",
+    "fail_stale_checks",
     "passage_record",
     "recover_orphaned_checks",
     "resolve_judge_model",

@@ -43,6 +43,12 @@ UNRESOLVED_RE = re.compile(r"\[\?(\d+)\]")
 # items) break sentences too — same as SENTENCE_SPLIT_RE in briefHighlights.ts.
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+|\n+")
 
+# A line that opens with a citation marker is a reference-list entry
+# ("[3] WFP. 2023. Evaluation of …") written into the section, not a claim:
+# in brief prose a marker follows the sentence it supports. Such lines are
+# left out of the check and counted, so the summary can say so.
+REFERENCE_LINE_RE = re.compile(r"^\s*\[\??\d+(?:,\s*\d+)*\]\s")
+
 # A leading "-- h1 > h2 -- " line is the chunk's heading breadcrumb.
 SECTION_BREADCRUMB_RE = re.compile(r"^\s*--\s*(.+?)\s*--\s*$")
 
@@ -118,6 +124,32 @@ def strip_inline_markdown(text: str) -> str:
     return re.sub(r"\s{2,}", " ", out).strip()
 
 
+def plain_text(markdown: str) -> str:
+    """One sentence of section markdown as the reader sees it: the judge and
+    the review table get the same prose as the Fact Checker marks."""
+    return strip_inline_markdown(markdown)
+
+
+def _lines(markdown: str) -> List[str]:
+    return markdown.replace("\r\n", "\n").split("\n")
+
+
+def reference_lines(markdown: str) -> List[str]:
+    """The reference-list lines of a section (``REFERENCE_LINE_RE``)."""
+    return [line for line in _lines(markdown) if REFERENCE_LINE_RE.match(line)]
+
+
+def count_reference_lines(markdown: str) -> int:
+    return len(reference_lines(markdown))
+
+
+def drop_reference_lines(markdown: str) -> str:
+    """The section markdown without its reference-list lines."""
+    return "\n".join(
+        line for line in _lines(markdown) if not REFERENCE_LINE_RE.match(line)
+    )
+
+
 def parse_section_breadcrumb(text: str) -> Tuple[Optional[str], str]:
     """Split a stored excerpt into (heading breadcrumb, body)."""
     lines = text.replace("\r\n", "\n").split("\n")
@@ -175,7 +207,9 @@ class CitedPassage:
 
     @property
     def passage_clean(self) -> str:
-        return strip_citation_markers(self.passage)
+        """The passage as prose: markers and inline markdown removed. This is
+        what the judge reads and what the review table shows."""
+        return plain_text(strip_citation_markers(self.passage))
 
     @property
     def dangling(self) -> bool:
@@ -191,6 +225,7 @@ def extract_cited_passages(
     Sources are matched by the ``index`` the markdown refers to. A number
     with no matching source is recorded in ``missing_indices`` rather than
     silently dropped, so dangling citations surface in the review.
+    Reference-list lines (``reference_lines``) are not claims and are left out.
     """
     sources_by_index = {
         src["index"]: src
@@ -198,7 +233,7 @@ def extract_cited_passages(
         if src.get("index") is not None
     }
     passages: List[CitedPassage] = []
-    content = section.get("content") or ""
+    content = drop_reference_lines(section.get("content") or "")
     blocks = re.split(r"\n\s*\n", content) if include_uncited else [content]
     for sentence in (s for block in blocks for s in split_sentences(block)):
         indices = extract_cited_numbers(sentence)
