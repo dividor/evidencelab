@@ -9,9 +9,8 @@ job uses the model the request names (its model combo's) or config.json's
 default for it.
 
 The API decides, not the browser, so usage records and the activity log hold
-the model that actually ran. A user in several groups gets the first choice
-by group name, the same rule as every other group setting
-(:mod:`ui.backend.services.group_settings`).
+the model that actually ran. Named groups take precedence over the default
+group, with group name breaking ties.
 """
 
 import logging
@@ -69,35 +68,38 @@ def validate_group_model_choices(settings: Optional[Dict[str, Any]]) -> None:
 
 
 def group_choice(groups: Sequence[Any], job: str) -> Optional[str]:
-    """The model the first group (by name) chooses for ``job``, or None.
+    """Choose from named groups first and the default group last.
 
-    ``groups`` must be ordered by name, as
-    :func:`ui.backend.services.group_settings.user_groups` returns them. A
-    choice config.json no longer lists fails the request with a message naming
-    the group and the model, rather than switching to another model unasked.
+    Within each group, citation checking uses the group's evaluation judge
+    when the group has no explicit citation checker.
     """
-    key = JOB_SETTING[job]
-    for group in groups:
-        value = (group.search_settings or {}).get(key)
-        if not value:
-            continue
-        if value not in db_config.SUPPORTED_LLMS:
-            logger.error(
-                "Group %r chooses %r for %s, which config.json does not list",
-                group.name,
-                value,
-                job,
-            )
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"The group '{group.name}' uses the model '{value}' for "
-                    f"{JOB_LABEL[job]}, but this site no longer offers it. An "
-                    "administrator must choose another in Group Settings > LLMs."
-                ),
-            )
-        return str(value)
+    jobs = (CITATION_CHECK, JUDGE) if job == CITATION_CHECK else (job,)
+    for group in sorted(groups, key=lambda item: (item.is_default, item.name)):
+        settings = group.search_settings or {}
+        for candidate in jobs:
+            value = settings.get(JOB_SETTING[candidate])
+            if value:
+                return _validate_group_choice(group.name, candidate, value)
     return None
+
+
+def _validate_group_choice(group_name: str, job: str, value: str) -> str:
+    if value not in db_config.SUPPORTED_LLMS:
+        logger.error(
+            "Group %r chooses %r for %s, which config.json does not list",
+            group_name,
+            value,
+            job,
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"The group '{group_name}' uses the model '{value}' for "
+                f"{JOB_LABEL[job]}, but this site no longer offers it. An "
+                "administrator must choose another in Group Settings > LLMs."
+            ),
+        )
+    return value
 
 
 async def user_group_choice(session: Any, user: Any, job: str) -> Optional[str]:
@@ -107,11 +109,7 @@ async def user_group_choice(session: Any, user: Any, job: str) -> Optional[str]:
         return None
     from ui.backend.services.group_settings import user_groups
 
-    groups = await user_groups(session, user.id)
-    selected = group_choice(groups, job)
-    if job == CITATION_CHECK and selected is None:
-        return group_choice(groups, JUDGE)
-    return selected
+    return group_choice(await user_groups(session, user.id), job)
 
 
 def _stage_model(combo: Dict[str, Any], stage: str) -> Optional[str]:

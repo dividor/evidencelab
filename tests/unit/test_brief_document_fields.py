@@ -5,7 +5,11 @@ import json
 import pytest
 
 from ui.backend.services.assistant_graph import _format_search_result
-from ui.backend.services.assistant_grounding import render_evidence
+from ui.backend.services.assistant_grounding import (
+    MalformedAssistantToolResponse,
+    TruncatedAssistantResponse,
+    render_evidence,
+)
 from ui.backend.services.brief_evidence_selection import select_brief_evidence
 from ui.backend.services.brief_repetition import remove_repeated_brief_findings
 
@@ -86,9 +90,10 @@ async def test_repetition_requires_evidence_for_every_clause_before_removing_a_f
 
 
 @pytest.mark.parametrize("count", [1, 7])
-async def test_truncated_selection_reduces_only_the_affected_request(count):
-    from ui.backend.services.assistant_grounding import TruncatedAssistantResponse
-
+@pytest.mark.parametrize(
+    "error_type", [TruncatedAssistantResponse, MalformedAssistantToolResponse]
+)
+async def test_unusable_selection_reduces_only_the_affected_request(count, error_type):
     seen = []
     evidence = {
         n: {"title": "Probe readings", "text": f"Sampling interval was {n} minutes."}
@@ -99,7 +104,7 @@ async def test_truncated_selection_reduces_only_the_affected_request(count):
         labels = json.loads(prompt.split("Available labels: ")[1].splitlines()[0])
         seen.append(labels)
         if len(labels) > 3 or count == 1:
-            raise TruncatedAssistantResponse("Test model exhausted its output budget")
+            raise error_type("The provider could not return this selection")
         return schema.validate_python(
             {
                 "section_subject": "Sampling interval",
@@ -114,7 +119,7 @@ async def test_truncated_selection_reduces_only_the_affected_request(count):
         "How often were samples taken?", evidence, {}, review, None
     )
     if count == 1:
-        with pytest.raises(TruncatedAssistantResponse):
+        with pytest.raises(error_type):
             await pending
         assert seen == [[1]]
     else:

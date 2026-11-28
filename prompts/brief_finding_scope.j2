@@ -12,7 +12,8 @@ When the quote supports a narrower observation that directly answers this headin
 Review the single sentence supplied. Return one JSON object with these fields:
 {"subject":"actual group in the cited source","reason":"brief comparison","source_matches_assignment":true,"unsupported_phrases":[],"covers_other_heading":false,"keep":false}
 {% else %}
-Return JSON with one review for each supplied id, using this shape:
+Return one review for each supplied id. Include the subject in each review, even when the subject matches a previous review.
+Use this shape:
 {"reviews":[{"id":1,"subject":"actual group in the cited source","reason":"brief comparison","source_matches_assignment":true,"unsupported_phrases":[],"covers_other_heading":false,"keep":false}]}
 {% endif %}
 {%- else -%}

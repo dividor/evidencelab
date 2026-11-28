@@ -15,6 +15,36 @@ pytestmark = pytest.mark.unit
 QUESTION = "What explains differences in malnutrition coverage and costs?"
 
 
+def _bind_test_response_tool(llm):
+    def bind_tools(tools, *, tool_choice):
+        parameters = tools[0]["parameters"]
+        wrapped = parameters.get("required") == ["result"]
+
+        async def call_tool(messages, **kwargs):
+            reply = await llm.ainvoke(messages, **kwargs)
+            try:
+                result = json.loads(reply.content)
+            except json.JSONDecodeError:
+                return reply
+            if not wrapped and not isinstance(result, dict):
+                return reply
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": tool_choice,
+                        "args": {"result": result} if wrapped else result,
+                        "id": "result-1",
+                    }
+                ],
+                response_metadata=reply.response_metadata,
+            )
+
+        return SimpleNamespace(ainvoke=call_tool)
+
+    llm.bind_tools.side_effect = bind_tools
+
+
 def point(number, text):
     return SimpleNamespace(
         id=f"chunk-{number}",
@@ -167,6 +197,7 @@ async def run_research(
         return AIMessage(content=reply)
 
     llm.ainvoke = AsyncMock(side_effect=model)
+    _bind_test_response_tool(llm)
     with (
         patch("ui.backend.utils.app_state.validate_data_source", return_value="wfp"),
         patch("ui.backend.services.assistant_service._get_llm", return_value=llm),
@@ -845,6 +876,40 @@ async def test_assistant_streams_only_what_the_checker_retained_even_without_iss
 
     assert next(e["token"] for e in events if e["type"] == "token") == (
         "## Coverage\n\nThe pilot reached 60 percent of schools [1]."
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid_ids", [[], [1, 1], [1, 9]])
+async def test_citation_check_retries_when_sentence_ids_do_not_match(invalid_ids):
+    excerpt = "The pilot reached 60 percent of schools."
+    answer = "The pilot reached 60 percent of schools [1]."
+    requests = []
+
+    def judge(prompt):
+        requests.append(prompt)
+        ids = invalid_ids if len(requests) == 1 else [1]
+        return {
+            "scope_issues": [],
+            "sentences": [
+                {
+                    "id": sentence_id,
+                    "status": "supported",
+                    "quotes": [{"citation": 1, "quote": excerpt}],
+                }
+                for sentence_id in ids
+            ],
+        }
+
+    events, _, _ = await run_research(
+        ['{"queries":[]}', answer], [[point(1, excerpt)]], check=judge
+    )
+
+    assert len(requests) == 2
+    assert "each sentence ID in [1]" in requests[0]
+    assert "Correct these validation errors" in requests[1]
+    assert (
+        next(event["token"] for event in events if event["type"] == "token") == answer
     )
 
 
@@ -1894,7 +1959,7 @@ async def test_invalid_planner_reply_is_corrected_before_synthesis():
     assert search.call_count == 1
     correction = llm.ainvoke.await_args_list[1].args[0][-1].content
     assert "previous reply did not match" in correction
-    assert "json_invalid" in correction
+    assert "expected_one_result_tool_call" in correction
     assert events[-1]["type"] == "done"
 
 
@@ -2656,9 +2721,17 @@ def test_word_budget_only_requests_condensation_above_target_tolerance():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("stop_reason", ["length", "stop"])
-async def test_invalid_structured_reply_distinguishes_truncation_from_malformed_json(
-    stop_reason,
+@pytest.mark.parametrize(
+    ("metadata", "truncated"),
+    [
+        ({"finish_reason": "length"}, True),
+        ({"stopReason": "max_tokens"}, True),
+        ({"finish_reason": "STOP"}, False),
+    ],
+)
+async def test_invalid_structured_reply_distinguishes_truncation_from_missing_tool_call(
+    metadata,
+    truncated,
 ):
     from ui.backend.services.assistant_grounding import (
         InvalidAssistantResponse,
@@ -2669,29 +2742,27 @@ async def test_invalid_structured_reply_distinguishes_truncation_from_malformed_
 
     model = MagicMock()
     model.ainvoke = AsyncMock(
-        return_value=AIMessage(
-            content='{"queries": [', response_metadata={"finish_reason": stop_reason}
-        )
+        return_value=AIMessage(content='{"queries": [', response_metadata=metadata)
     )
+    _bind_test_response_tool(model)
     workflow = ResearchWorkflow(
         model, None, "", "", ResearchLimits(1), "", "", None, False, model
     )
     with pytest.raises(InvalidAssistantResponse) as raised:
         await workflow._request_json("plan", "requests", [], {}, FOLLOW_UP)
-    assert isinstance(raised.value, TruncatedAssistantResponse) == (
-        stop_reason == "length"
-    )
+    assert isinstance(raised.value, TruncatedAssistantResponse) is truncated
     assert model.ainvoke.await_count == 2
 
 
 @pytest.mark.asyncio
-async def test_structured_excerpt_list_accepts_a_fenced_json_array():
+async def test_structured_excerpt_list_wraps_an_array_for_the_response_tool():
     from pydantic import TypeAdapter
 
     from ui.backend.services.assistant_research import ResearchLimits, ResearchWorkflow
 
     model = MagicMock()
-    model.ainvoke = AsyncMock(return_value=AIMessage(content="```json\n[1, 3]\n```"))
+    model.ainvoke = AsyncMock(return_value=AIMessage(content="[1, 3]"))
+    _bind_test_response_tool(model)
     workflow = ResearchWorkflow(
         model, None, "", "", ResearchLimits(1), "", "", None, False, model
     )
@@ -2699,3 +2770,46 @@ async def test_structured_excerpt_list_accepts_a_fenced_json_array():
         "Select excerpts", "", [], {}, TypeAdapter(list[int])
     ) == [1, 3]
     assert model.ainvoke.await_count == 1
+    tools = model.bind_tools.call_args.args[0]
+    assert model.bind_tools.call_args.kwargs["tool_choice"] == "submit_result"
+    assert tools[0]["parameters"]["type"] == "object"
+    assert tools[0]["parameters"]["properties"]["result"]["type"] == "array"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "invalid_calls",
+    [
+        [{"name": "other_tool", "args": {"result": [1]}, "id": "bad-name"}],
+        [
+            {"name": "submit_result", "args": {"result": [1]}, "id": "first"},
+            {"name": "submit_result", "args": {"result": [2]}, "id": "second"},
+        ],
+        [{"name": "submit_result", "args": {"result": "1"}, "id": "bad-value"}],
+    ],
+)
+async def test_structured_response_retries_invalid_tool_calls(invalid_calls):
+    from pydantic import TypeAdapter
+
+    from ui.backend.services.assistant_research import ResearchLimits, ResearchWorkflow
+
+    model = MagicMock()
+    invoke = AsyncMock(
+        side_effect=[
+            AIMessage(content="", tool_calls=invalid_calls),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": "submit_result", "args": {"result": [3]}, "id": "valid"}
+                ],
+            ),
+        ]
+    )
+    model.bind_tools.return_value = SimpleNamespace(ainvoke=invoke)
+    workflow = ResearchWorkflow(
+        model, None, "", "", ResearchLimits(1), "", "", None, False, model
+    )
+    assert await workflow._request_json(
+        "Select excerpts", "Select cited excerpts.", [], {}, TypeAdapter(list[int])
+    ) == [3]
+    assert "Correct these validation errors" in invoke.await_args.args[0][-1].content

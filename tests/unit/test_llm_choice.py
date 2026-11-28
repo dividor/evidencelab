@@ -59,8 +59,10 @@ def configured(monkeypatch):
     )
 
 
-def _group(name, **settings):
-    return SimpleNamespace(name=name, search_settings=settings or None)
+def _group(name, *, is_default=False, **settings):
+    return SimpleNamespace(
+        name=name, is_default=is_default, search_settings=settings or None
+    )
 
 
 class TestValidateGroupModelChoices:
@@ -84,17 +86,38 @@ class TestValidateGroupModelChoices:
 class TestGroupChoice:
     def test_choice_when_several_groups_then_first_by_name_wins(self):
         groups = [
+            _group("OEV", summaryModel="nova-2-lite"),
+            _group("Default", is_default=True, summaryModel="sonnet"),
             _group("Analysts", summaryModel="nova-pro"),
-            _group("Default", summaryModel="sonnet"),
         ]
         assert llm_choice.group_choice(groups, llm_choice.SUMMARY) == "nova-pro"
 
-    def test_choice_when_first_group_leaves_it_unset_then_next_group(self):
+    def test_choice_when_default_is_first_then_named_group_wins(self):
         groups = [
+            _group("Default", is_default=True, judgeModel="nova-pro"),
+            _group("OEV", judgeModel="nova-2-lite"),
+        ]
+        assert llm_choice.group_choice(groups, llm_choice.JUDGE) == "nova-2-lite"
+
+    def test_choice_when_named_group_leaves_it_unset_then_default_group(self):
+        groups = [
+            _group("Default", is_default=True, judgeModel="sonnet"),
             _group("Analysts", rerank=True),
-            _group("Default", judgeModel="sonnet"),
         ]
         assert llm_choice.group_choice(groups, llm_choice.JUDGE) == "sonnet"
+
+    def test_citation_choice_when_named_group_inherits_then_uses_its_judge(self):
+        groups = [
+            _group("Default", is_default=True, citationCheckModel="sonnet"),
+            _group("OEV", judgeModel="nova-2-lite"),
+        ]
+        assert (
+            llm_choice.group_choice(groups, llm_choice.CITATION_CHECK) == "nova-2-lite"
+        )
+
+    def test_citation_choice_when_explicit_then_overrides_the_same_groups_judge(self):
+        groups = [_group("OEV", citationCheckModel="sonnet", judgeModel="nova-2-lite")]
+        assert llm_choice.group_choice(groups, llm_choice.CITATION_CHECK) == "sonnet"
 
     def test_choice_when_no_group_chooses_then_none(self):
         assert llm_choice.group_choice([_group("Default")], llm_choice.BRIEF) is None
