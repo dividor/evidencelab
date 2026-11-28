@@ -87,7 +87,7 @@ After any of these actions, the section shows its changes like tracked changes i
 
 The change waits for you to keep or reject it, even if you reload the page or come back later; doing anything else to the section accepts it. When you come back to it, the section shows just the new text; to keep or reject it then, click its row, marked *awaiting review*, in the Section History. A rejected change stays in the section's Section History, marked *rejected*, so it can still be viewed or restored.
 
-On wide screens the brief toolbar shows the whole-document AI actions as buttons. On small screens, open **Ask AI** to find them. **Regenerate All** runs the research for every section again, with the option to change the instructions, voice or length. **Get Updates for All Sections** updates every researched section. Review these changes in [Document History](#document-history).
+The brief toolbar keeps its actions on one row. When the toolbar is narrow, open **Ask AI** for whole-document AI actions and **More** for sharing, templates, export, and history. **Regenerate All** runs the research for every section again, with the option to change the instructions, voice or length. **Get Updates for All Sections** updates every researched section. Review these changes in [Document History](#document-history).
 
 Each researched section shows its word count next to its heading, and the line under the brief title shows the total.
 

@@ -72,28 +72,49 @@ test('the Brief header groups the existing whole-brief actions under Ask AI', ()
   expect(brief.updateAll).toHaveBeenCalledTimes(1);
 });
 
-test('whole-brief AI actions are buttons on wide screens and move into Ask AI on phones', () => {
-  const originalWidth = window.innerWidth;
-  const resize = (width: number) => {
-    Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
-    act(() => { window.dispatchEvent(new Event('resize')); });
-  };
+test('the same viewport compacts toolbar actions when its available width shrinks', () => {
+  const reports = new Map<Element, (width: number) => void>();
+  const measure = jest.spyOn(window, 'ResizeObserver').mockImplementation(callback => {
+    const observer = {
+      observe: (target: Element) => {
+        reports.set(target, width => {
+          const size = { inlineSize: width, blockSize: 44 };
+          const contentRect = {
+            x: 0, y: 0, width, height: 44, top: 0, bottom: 44, left: 0, right: width, toJSON: () => ({}),
+          };
+          callback([{ target, contentRect, borderBoxSize: [size],
+            contentBoxSize: [size], devicePixelContentBoxSize: [size] }], observer);
+        });
+      },
+      unobserve: jest.fn(),
+      disconnect: jest.fn(),
+    };
+    return observer;
+  });
   try {
-    resize(1440);
     const brief = makeBrief();
     const regenerate = jest.fn();
-    render(<BriefDocument brief={brief} showToc={false} onRegenerateAll={regenerate} />);
+    const { unmount } = render(<BriefDocument brief={brief} showToc={false} onRegenerateAll={regenerate} />);
+    const toolbar = screen.getByRole('group', { name: 'Whole document actions' });
+    const reportWidth = reports.get(toolbar);
+    expect(reportWidth).toBeDefined();
+
+    act(() => { reportWidth?.(1440); });
     fireEvent.click(getButton(REGENERATE_ALL));
     expect(regenerate).toHaveBeenCalledTimes(1);
     fireEvent.click(getButton('AI Get Updates for All Sections'));
     expect(brief.updateAll).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('button', { name: wholeBriefAskAi })).toBeNull();
-    resize(390);
+
+    act(() => { reportWidth?.(960); });
     expect(screen.queryByRole('button', { name: REGENERATE_ALL })).toBeNull();
     fireEvent.click(getButton(wholeBriefAskAi));
     expect(getButton(REGENERATE_ALL)).toBeVisible();
+
+    unmount();
+    expect(measure.mock.results.some(({ value }) => value.disconnect.mock.calls.length > 0)).toBe(true);
   } finally {
-    resize(originalWidth);
+    measure.mockRestore();
   }
 });
 
