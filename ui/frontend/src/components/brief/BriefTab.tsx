@@ -421,6 +421,7 @@ export const BriefTab: React.FC<BriefTabProps> = ({
   const factCheck = useBriefFactCheck(
     checkableBriefId(loggedIn, brief.currentBriefId),
     brief.contentRevision,
+    modelCombo,
   );
   const {
     showComments,

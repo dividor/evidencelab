@@ -811,26 +811,15 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   );
 };
 
-// "Fact Checker": shown only while a completed citation check still covers
-// part of the brief as it is now. Pressed, it highlights every passage the
-// check judged in the colour of its verdict; the tooltip says which version
-// was checked.
-const factCheckTitle = (factCheck: UseBriefFactCheckReturn): string => {
-  const what =
-    "Highlight every cited passage in the colour of the citation check's verdict; " +
-    "select a claim to read its assessment and sources.";
-  return factCheck.note ? `${what} ${factCheck.note}` : what;
-};
-
-const FactCheckButton: React.FC<{ factCheck: UseBriefFactCheckReturn }> = ({ factCheck }) => (
-  <button
-    className="brief-export-word brief-fact-check"
-    onClick={factCheck.toggle}
-    aria-pressed={factCheck.active}
-    title={factCheckTitle(factCheck)}
-  >
-    <IconFactCheck /> Fact Checker
-  </button>
+const FactCheckButton = ({ factCheck }: { factCheck: UseBriefFactCheckReturn }) => (
+  <BriefActionMenu label="Fact Checker" buttonText="Fact Checker" icon={IconFactCheck}
+    buttonClass="brief-export-word brief-fact-check" actions={[
+      { label: 'Check Facts', icon: IconFactCheck, onSelect: factCheck.start,
+        disabled: !!factCheck.disabledReason || !!factCheck.run || factCheck.busy,
+        title: factCheck.disabledReason || undefined },
+      { label: factCheck.active ? 'Hide results' : 'Display Results', icon: IconFactCheck,
+        onSelect: factCheck.toggle, disabled: !factCheck.available, title: factCheck.note },
+    ]} />
 );
 
 // The document-level action row: regenerate/update all, share, save-as-template
@@ -889,7 +878,7 @@ const HeaderActions: React.FC<{
           disabled={!canEditStructure}
         />
       )}
-      {factCheck?.available && <FactCheckButton factCheck={factCheck} />}
+      {factCheck && <FactCheckButton factCheck={factCheck} />}
       <BriefDocumentActions actions={moreActions} />
     </div>
   );
@@ -931,32 +920,43 @@ const ResearchStatusBar: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => {
   const current = brief.sections.find((s) => s.status === 'researching');
   if (!current) return null;
   const total = brief.regeneration?.total ?? brief.sections.length;
-  return (
+  return <ProgressBar label={`${current.revising ? 'Revising' : 'Researching'} “${current.title}”`}
+    count={brief.regenerating ? `${brief.updatedCount} of ${total} updated` : `${brief.doneCount}/${total} sections`}
+    percent={brief.totalProgress} stop={brief.stopResearch} stopLabel="Stop all research" />;
+};
+
+function FactCheckProgress({ check }: { check: UseBriefFactCheckReturn }) {
+  if (!check.run) return null;
+  const progress = check.run.progress;
+  const heading = progress?.remaining_sections?.[0]?.heading;
+  return <ProgressBar label={heading ? `Checking “${heading}”` : 'Checking facts…'}
+    count={progress ? `${progress.completed} of ${progress.total} sections checked` : 'Starting…'}
+    percent={progress?.total ? 100 * progress.completed / progress.total : 0}
+    stop={check.stop} stopLabel="Stop fact check" stopping={check.busy || check.run.stopped} />;
+}
+
+const ProgressBar = ({ label, count, percent, stop, stopLabel, stopping }: {
+  label: string; count: string; percent: number; stop: () => void; stopLabel: string; stopping?: boolean;
+}) => (
     <div className="brief-status-bar" role="status">
       <span className="brief-spinner brief-status-bar-spinner" />
       <div className="brief-status-bar-main">
         <div className="brief-status-bar-label">
-          {current.revising ? 'Revising' : 'Researching'} “{current.title}”
-          <span className="brief-status-bar-count">
-            {brief.regenerating
-              ? `${brief.updatedCount} of ${total} updated`
-              : `${brief.doneCount}/${total} sections`}
-          </span>
+          {label}<span className="brief-status-bar-count">{count}</span>
         </div>
         <div className="brief-status-bar-track">
-          <div className="brief-status-bar-fill" style={{ width: `${brief.totalProgress}%` }} />
+          <div className="brief-status-bar-fill" style={{ width: `${percent}%` }} />
         </div>
       </div>
       <button
         className="brief-status-bar-stop"
-        onClick={brief.stopResearch}
-        title="Stop all research"
+        onClick={stop} disabled={stopping}
+        aria-label={stopLabel} title={stopLabel}
       >
-        ■ Stop
+        {stopping ? 'Stopping…' : '■ Stop'}
       </button>
     </div>
   );
-};
 
 // The selection the reader just made inside a section, or null. The section
 // is resolved from the DOM so nested markup (links, citations) still traces
@@ -1180,6 +1180,14 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
             factCheck={factCheck}
             onHistory={() => setVersionsOpen(true)}
           />
+        {factCheck?.active && <div className="brief-fact-legend" role="group" aria-label="Fact check results">
+          <strong>Showing fact check results</strong>
+          {factCheck.legend.filter(item => item.count > 0).map(item => <span key={item.verdict} className="brief-fact-legend-item">
+            <span className={`brief-fact-swatch brief-fact-mark-${item.verdict}`} />{item.label} {item.count}
+          </span>)}
+          <button type="button" className="brief-fact-hide" onClick={factCheck.toggle}>Hide results</button>
+        </div>}
+        {factCheck?.notice && <p role="status">{factCheck.notice}</p>}
         <div className="brief-doc-header-top">
           <div className="brief-eyebrow">EVIDENCE BRIEF</div>
 
@@ -1264,7 +1272,10 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
         onWordLinkTargetChange={brief.setWordLinkTarget}
       />
 
-      <ResearchStatusBar brief={brief} />
+      <div className="brief-progress-stack">
+        <ResearchStatusBar brief={brief} />
+        {factCheck && <FactCheckProgress check={factCheck} />}
+      </div>
       {factCheck?.selectedClaim && <BriefClaimDialog
         mark={factCheck.selectedClaim}
         onClose={factCheck.closeClaim}
