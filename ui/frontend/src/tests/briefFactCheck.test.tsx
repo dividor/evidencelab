@@ -19,7 +19,7 @@ jest.mock('../hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }
 const CREATED_AT = '2026-11-01T00:00:00Z';
 const DOC_ONE_LABEL = '[1] Doc One · p. 3';
 const OPEN_BRIEF = 'Open this brief';
-const EXPORT_WORD = 'Export to Word';
+const MORE_ACTIONS = 'More actions';
 const FACT_MARK_SELECTOR = '.brief-fact-mark';
 const MISSING_PERIOD = 'The comparison period is missing.';
 const FACT_LEGEND = 'Fact Checker legend';
@@ -143,7 +143,7 @@ const openBrief = async () => {
   render(<BriefTab dataSource="wfp" />);
   fireEvent.click(await screen.findByTitle(OPEN_BRIEF));
   await waitFor(() => expect(mockGet).toHaveBeenCalledWith(BRIEF_URL));
-  await screen.findByText(EXPORT_WORD);
+  await screen.findByRole('button', { name: MORE_ACTIONS, exact: true });
 };
 
 describe('Fact Checker on an open brief', () => {
@@ -195,7 +195,7 @@ describe('Fact Checker on an open brief', () => {
     expect(screen.getByRole('status', { name: 'Loading' })).toHaveClass('search-loading-wandering');
     expect(screen.queryByTitle(OPEN_BRIEF)).toBeNull();
     await act(async () => finish({ data: remoteBrief }));
-    expect(await screen.findByText(EXPORT_WORD)).toBeVisible();
+    expect(await screen.findByRole('button', { name: MORE_ACTIONS, exact: true })).toBeVisible();
     expect(screen.queryByRole('status', { name: 'Loading' })).toBeNull();
   });
 
@@ -203,7 +203,7 @@ describe('Fact Checker on an open brief', () => {
     mockGet.mockImplementation(answer(noCheck));
     const { rerender } = render(<BriefTab dataSource="wfp" />);
     fireEvent.click(await screen.findByTitle(OPEN_BRIEF));
-    await screen.findByText(EXPORT_WORD);
+    await screen.findByRole('button', { name: MORE_ACTIONS, exact: true });
     const admin = '/admin?admin_page=testing&admin_testing=experiments';
     window.history.pushState(null, '', admin);
     rerender(<BriefTab dataSource="wfp" isActive={false} />);
@@ -234,7 +234,7 @@ describe('Fact Checker on an open brief', () => {
     expect(card).toHaveTextContent('Score 0.50');
     expect(card).not.toHaveTextContent(/Fail|Required/);
     expect(card).toHaveTextContent('School meals raised attendance [1].');
-    expect(card).toHaveTextContent('Judge assessment');
+    expect(screen.getByRole('heading', { name: 'Judge assessment' }).nextElementSibling).toHaveTextContent(WHY);
     expect(card).toHaveTextContent('What the evidence does not establish');
     expect(card).toHaveTextContent(MISSING_PERIOD);
     expect(await screen.findByRole('link', { name: DOC_ONE_LABEL })).toHaveAttribute('href', '#');
@@ -260,11 +260,7 @@ describe('Fact Checker on an open brief', () => {
 
     fireEvent.click(button);
     expect(button).toHaveAttribute('aria-pressed', 'true');
-    // The legend explains the colours, with the API's counts.
-    const legend = screen.getByRole('list', { name: FACT_LEGEND });
-    expect(legend).toHaveTextContent('Supported 1');
-    expect(legend).toHaveTextContent('Unsupported 1');
-    expect(legend).toHaveTextContent('Cannot assess 0');
+    expect(screen.queryByRole('list', { name: FACT_LEGEND })).toBeNull();
     // The section changed since the check carries the note instead of marks.
     expect(await screen.findByText(SECTION_NOTE)).toBeInTheDocument();
     await waitFor(() => expect(document.querySelector('.brief-fact-mark.brief-fact-mark-unsupported')).not.toBeNull());

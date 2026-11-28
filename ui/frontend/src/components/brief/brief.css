@@ -533,14 +533,14 @@
 .brief-doc-header-top > .brief-eyebrow {
   white-space: nowrap;
 }
-.brief-ask-ai {
+.brief-action-menu {
   position: relative;
   flex: none;
 }
-.brief-ask-ai > button {
+.brief-action-menu > button {
   white-space: nowrap;
 }
-.brief-ask-ai > button[aria-expanded="true"] {
+.brief-action-menu > button[aria-expanded="true"] {
   background: var(--brand-bg);
   border-color: var(--brand-primary);
   color: var(--brand-primary);
@@ -4048,9 +4048,20 @@
 .brief-claim-dialog .testing-section-reference { font-size: 1rem; }
 .brief-claim-dialog .testing-section-reference summary { line-height: 1.45; padding-block: .4rem; }
 .brief-claim-close { float: right; margin-inline-start: .5rem; min-width: 2rem; min-height: 2rem; }
-.brief-fact-excerpt { white-space: pre-wrap; overflow-wrap: anywhere; }
-.brief-claim-source + .brief-claim-source { margin-top: 1rem; }
-.brief-claim-source-heading { margin-bottom: .5rem; }
+.brief-fact-excerpt { padding: .8rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.brief-claim-source { border: 1px solid var(--brand-border-light); border-radius: .4rem; }
+.brief-claim-source + .brief-claim-source { margin-top: 1.25rem; }
+.brief-claim-source-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: .65rem .8rem;
+  border-bottom: 1px solid var(--brand-border-light);
+  border-radius: .4rem .4rem 0 0;
+  background: var(--brand-surface);
+  font-weight: 600;
+}
+.brief-claim-source > p { margin-inline: .8rem; }
 .brief-claim-source-heading a { overflow-wrap: anywhere; color: var(--brand-accent); }
 .claim-scroll-area {
   max-height: 63dvh;
@@ -4073,3 +4084,72 @@
   font: 600 .85rem var(--font-body);
   cursor: pointer;
 }
+
+/* Primary actions are visible together; secondary actions live in a menu. */
+.brief-doc-header-actions {
+  margin: -24px -64px 24px;
+  max-width: none;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--brand-border-light);
+  background: color-mix(in srgb, var(--brand-primary) 5%, var(--brand-surface));
+}
+.brief-action-menu > .brief-ai-primary {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: white;
+  min-height: 44px;
+  border-radius: .35rem;
+}
+.brief-action-menu > .brief-ai-primary:is(:hover, [aria-expanded="true"]):not(:disabled) {
+  background: var(--brand-primary-dark);
+  border-color: var(--brand-primary-dark);
+  color: white;
+}
+.brief-doc-header-actions > button, .brief-more-actions { min-height: 44px; border-radius: .35rem; }
+.brief-doc-header-actions > .brief-action-menu:last-child { margin-left: 0; }
+.brief-doc-header-actions > .brief-action-menu:last-child .brief-ai-options,
+.brief-doc-section-tools > .brief-action-menu:last-child .brief-ai-options { left: auto; right: 0; }
+.brief-doc-section-tools { align-items: center; }
+.brief-doc-section-tools > button, .brief-section-more { min-height: 40px; border-radius: .35rem; }
+.brief-doc-section-tools > .brief-action-menu:last-child { margin-left: 0; }
+.brief-ai-option:disabled { opacity: .5; cursor: default; }
+@media (max-width: 600px) {
+  .brief-doc-header-actions { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+  .brief-doc-header-actions > .brief-action-menu > button,
+  .brief-doc-header-actions > button { width: 100%; justify-content: center; }
+  .brief-doc-header-actions > .brief-action-menu:last-child { grid-column: 1 / -1; margin-left: 0; }
+  .brief-doc-header-actions > .brief-action-menu:last-child > button { width: auto; }
+  .brief-doc-header-actions > .brief-action-menu:last-child .brief-ai-options { left: 0; right: auto; }
+  .brief-doc-section-tools { gap: .5rem; }
+}
+
+
+.brief-doc-header-actions > button,
+.brief-doc-header-actions > .brief-action-menu > button,
+.brief-doc-section-tools > button,
+.brief-doc-section-tools > .brief-action-menu > button {
+  min-height: 44px;
+  font: 600 13px var(--font-heading);
+}
+
+.brief-doc-header-actions button svg,
+.brief-doc-section-tools button svg { width: 18px; height: 18px; flex-shrink: 0; }
+.brief-doc-section-tools .brief-action-menu > .brief-ai-primary {
+  background: var(--brand-surface);
+  color: var(--brand-primary-dark);
+  border-color: var(--brand-primary);
+}
+.brief-doc-section-tools > button,
+.brief-doc-section-tools > .brief-action-menu > button { padding-inline: 8px; }
+@media (max-width: 768px) {
+  .brief-doc-header-actions { margin: -20px -18px 20px; padding: 12px 18px; }
+}
+
+.brief-expanded-actions { flex: 1; display: flex; flex-wrap: wrap; gap: 8px; }
+.brief-expanded-actions button { min-height: 44px; border-radius: .35rem; font: 600 13px var(--font-heading); }
+.brief-doc-header-actions > button,
+.brief-doc-header-actions > .brief-action-menu > button,
+.brief-expanded-actions button { height: 44px; box-sizing: border-box; }
+
+.brief-secondary-start, .brief-secondary-end { display: flex; flex-wrap: wrap; gap: 8px; }
+.brief-secondary-end { margin-left: auto; }

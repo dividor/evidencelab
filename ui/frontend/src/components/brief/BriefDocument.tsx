@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { SearchResult, SourceReference } from '../../types/api';
 import { CitedMarkdown, CitedReferences, RequestCitationHighlight } from '../citations/CitedContent';
 import { IconClock, IconCopy, IconDownload, IconEdit, IconFactCheck, IconRefresh, IconShare, IconSparkle } from './BriefIcons';
+import { BriefActionMenu, BriefAction } from './BriefActionMenu';
+import { BriefDocumentActions } from './BriefDocumentActions';
 import { BriefAskAi } from './BriefAskAi';
 import { BriefSectionFrame } from './BriefSectionFrame';
 import { BriefClaimDialog } from './BriefClaimDialog';
@@ -273,18 +275,18 @@ const SectionTools: React.FC<{
       buttonClass="brief-regen-btn"
       actions={[
         {
-          label: regenerationFailed ? 'Research settings' : 'Regenerate',
+          label: regenerationFailed ? 'AI Research Settings' : 'AI Regenerate',
           icon: IconRefresh,
           onSelect: onRegenerate,
         },
         {
-          label: 'Edit',
+          label: 'AI Edit',
           icon: IconEdit,
           onSelect: onAiEdit,
           title: 'Revise this section with an AI instruction, keeping the current content',
         },
         {
-          label: 'Get Updates',
+          label: 'AI Get Updates',
           icon: IconClock,
           onSelect: onAiUpdate,
           title: 'Search for sources published since this section was last run and fold them in',
@@ -292,12 +294,11 @@ const SectionTools: React.FC<{
       ]}
     />
     <button className="brief-regen-btn" onClick={onToggleEdit}>
-      <IconEdit /> {editing ? 'Done' : 'Manually Edit'}
+      <IconEdit /> {editing ? 'Done' : 'Edit'}
     </button>
     {showLog && (
-      <button className="brief-section-log-link" onClick={onOpenLog}>
-        Section History{auditCount ? ` (${auditCount})` : ''}
-      </button>
+      <BriefActionMenu label={`More actions for ${title}`} buttonText="More Actions" buttonClass="brief-regen-btn brief-section-more"
+        actions={[{ label: 'Section History' + (auditCount ? ' (' + auditCount + ')' : ''), icon: IconClock, onSelect: onOpenLog }]} />
     )}
   </div>
 );
@@ -810,23 +811,6 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   );
 };
 
-// "Export to Word": one button. The document mirrors the on-screen
-// references, so its layout follows the "Group by document" toggles.
-const ExportButton: React.FC<{
-  disabled: boolean;
-  busy: boolean;
-  onExportWord: () => void;
-}> = ({ disabled, busy, onExportWord }) => (
-  <button
-    className="brief-export-word"
-    onClick={onExportWord}
-    disabled={disabled || busy}
-    title="Export this brief to Word, with citations linked to the source documents"
-  >
-    {busy ? 'Exporting…' : <><IconDownload /> Export to Word</>}
-  </button>
-);
-
 // "Fact Checker": shown only while a completed citation check still covers
 // part of the brief as it is now. Pressed, it highlights every passage the
 // check judged in the colour of its verdict; the tooltip says which version
@@ -837,20 +821,6 @@ const factCheckTitle = (factCheck: UseBriefFactCheckReturn): string => {
     "select a claim to read its assessment and sources.";
   return factCheck.note ? `${what} ${factCheck.note}` : what;
 };
-
-// The colours explained, with how many passages carry each verdict; shown
-// under the header while the highlights are on.
-const FactCheckLegend: React.FC<{ factCheck: UseBriefFactCheckReturn }> = ({ factCheck }) => (
-  <div className="brief-fact-legend" role="list" aria-label="Fact Checker legend">
-    {factCheck.legend.map((item) => (
-      <span key={item.verdict} className="brief-fact-legend-item" role="listitem">
-        <span className={`brief-fact-swatch brief-fact-mark-${item.verdict}`} aria-hidden="true" />
-        {item.label} <b>{item.count}</b>
-      </span>
-    ))}
-    <span className="brief-fact-legend-hint">Select a claim to see its assessment and sources.</span>
-  </div>
-);
 
 const FactCheckButton: React.FC<{ factCheck: UseBriefFactCheckReturn }> = ({ factCheck }) => (
   <button
@@ -875,6 +845,7 @@ const HeaderActions: React.FC<{
   onExportWord?: () => void;
   exportBusy?: boolean;
   factCheck?: UseBriefFactCheckReturn;
+  onHistory: () => void;
 }> = ({
   brief,
   readOnly,
@@ -885,25 +856,31 @@ const HeaderActions: React.FC<{
   onExportWord,
   exportBusy,
   factCheck,
+  onHistory,
 }) => {
   const { sections } = brief;
   const hasSections = sections.length > 0;
   const aiActions = [{
-    label: 'Regenerate All',
+    label: 'AI Regenerate All Sections',
     icon: IconRefresh,
     onSelect: onRegenerateAll || (() => void brief.startResearch()),
     title: 'Re-research every section from scratch',
   }];
   if (sections.some((section) => section.status === 'done')) {
     aiActions.push({
-      label: 'Get Updates for All Sections',
+      label: 'AI Get Updates for All Sections',
       icon: IconClock,
       onSelect: brief.updateAll,
       title: 'Fold sources published since each section was last run into every researched section',
     });
   }
+  const moreActions: BriefAction[] = [];
+  if (!readOnly && onOpenShare) moreActions.push({ label: 'Share', icon: IconShare, onSelect: onOpenShare });
+  if (!readOnly && onSaveTemplate && hasSections) moreActions.push({ label: 'Save as Template', icon: IconCopy, onSelect: onSaveTemplate, align: 'end' });
+  if (onExportWord) moreActions.push({ label: exportBusy ? 'Exporting…' : 'Export to Word', icon: IconDownload, onSelect: onExportWord, align: 'end', disabled: !hasSections || exportBusy });
+  if (brief.remote && hasSections) moreActions.push({ label: 'Document History' + (brief.versionCount ? ' (' + brief.versionCount + ')' : ''), icon: IconClock, onSelect: onHistory, align: 'end' });
   return (
-    <div className="brief-doc-header-actions">
+    <div className="brief-doc-header-actions" aria-label="Whole document actions">
       {!readOnly && hasSections && (
         <BriefAskAi
           label="Ask AI for the whole brief"
@@ -912,32 +889,8 @@ const HeaderActions: React.FC<{
           disabled={!canEditStructure}
         />
       )}
-      {!readOnly && onOpenShare && (
-        <button
-          className="brief-regen-all"
-          onClick={onOpenShare}
-          title="Share this brief (viewer-only) with people or groups"
-        >
-          <IconShare /> Share
-        </button>
-      )}
-      {!readOnly && onSaveTemplate && hasSections && (
-        <button
-          className="brief-regen-all"
-          onClick={onSaveTemplate}
-          title="Save this brief's headings as a reusable template"
-        >
-          <IconCopy /> Save as Template
-        </button>
-      )}
-      {onExportWord && (
-        <ExportButton
-          disabled={!hasSections}
-          busy={!!exportBusy}
-          onExportWord={onExportWord}
-        />
-      )}
       {factCheck?.available && <FactCheckButton factCheck={factCheck} />}
+      <BriefDocumentActions actions={moreActions} />
     </div>
   );
 };
@@ -1003,12 +956,6 @@ const ResearchStatusBar: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => {
       </button>
     </div>
   );
-};
-
-const autoSizeTitle = (el: HTMLTextAreaElement | null) => {
-  if (!el) return;
-  el.style.height = 'auto';
-  el.style.height = `${el.scrollHeight}px`;
 };
 
 // The selection the reader just made inside a section, or null. The section
@@ -1170,10 +1117,8 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   const { sections, numbers } = brief;
   const [logOpen, setLogOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
-  const titleRef = useRef<HTMLTextAreaElement>(null);
   const hasOutlineLog = brief.generatingActivity.length > 0;
 
-  useEffect(() => autoSizeTitle(titleRef.current), [brief.briefTitle]);
 
   // Viewer-only: a brief shared with (not owned by) this user renders read-only.
   const readOnly = !brief.canEdit;
@@ -1223,8 +1168,6 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   return (
     <div className="brief-doc" onMouseUp={handleMouseUp}>
       <div className="brief-doc-header">
-        <div className="brief-doc-header-top">
-          <div className="brief-eyebrow">EVIDENCE BRIEF</div>
           <HeaderActions
             brief={brief}
             readOnly={readOnly}
@@ -1235,33 +1178,27 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
             onExportWord={onExportWord}
             exportBusy={exportBusy}
             factCheck={factCheck}
+            onHistory={() => setVersionsOpen(true)}
           />
+        <div className="brief-doc-header-top">
+          <div className="brief-eyebrow">EVIDENCE BRIEF</div>
+
         </div>
-        {factCheck?.active && <FactCheckLegend factCheck={factCheck} />}
         <div className="brief-title-row">
-          <textarea
-            ref={titleRef}
+          <AutoGrowTextarea
             className="brief-doc-title-input"
             value={brief.briefTitle}
             onChange={(e) => {
               brief.setBriefTitle(e.target.value);
-              autoSizeTitle(e.target);
             }}
             onBlur={brief.commitEdits}
             rows={1}
             aria-label="Brief title"
             readOnly={readOnly}
           />
-          {brief.remote && sections.length > 0 && (
-            <button
-              className="brief-section-log-link brief-title-log-link"
-              onClick={() => setVersionsOpen(true)}
-              title="Every version of this brief, with what changed in each"
-            >
-              Document History{brief.versionCount ? ` (${brief.versionCount})` : ''}
-            </button>
-          )}
+
         </div>
+
         {versionsOpen && (
           <BriefVersionsModal
             briefId={brief.getServerBriefId()}

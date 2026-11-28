@@ -10,3 +10,6 @@
   overflow-wrap: anywhere;
 }
 .claim-verbatim q { quotes: "“" "”" "‘" "’"; }
+
+.testing-claim-reason h4 { margin: .8rem 0 .25rem; font: 600 .95rem var(--font-heading); }
+.testing-claim-reason p { margin: 0 0 .65rem; }

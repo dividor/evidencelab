@@ -59,7 +59,7 @@ export function BriefClaimDialog({ mark, evidence, onClose, onOpenSource }: {
           <span>Judged against [{mark.citations}]</span>
         </div>
         <blockquote className="claim-verbatim"><q>{mark.passage}</q></blockquote>
-        <p><strong>Judge assessment</strong> {mark.explanation}</p>
+        <section className="testing-claim-reason"><h4>Judge assessment</h4><p>{mark.explanation}</p></section>
         <EvidenceGaps verdict={mark.verdict} unmet={mark.problems} />
       </>}
       {mark.quote_not_in_source && <p>A quote the judge gave could not be found in the source.</p>}

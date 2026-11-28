@@ -33,7 +33,7 @@ export function ClaimAssessment({ number, text, grade, threshold, showPass = tru
       {grade && <ClaimScore grade={grade} threshold={threshold} showPass={showPass} />}
     </div>
     <blockquote className="claim-verbatim"><q>{text}</q></blockquote>
-    {grade && <p className="testing-claim-reason"><strong>Judge assessment</strong> {grade.reason}</p>}
+    {grade && <section className="testing-claim-reason"><h4>Judge assessment</h4><p>{grade.reason}</p></section>}
     {grade && <EvidenceGaps verdict={grade.verdict} unmet={grade.unmet} />}
   </>;
 }
