@@ -21,6 +21,7 @@ from ui.backend.routes.groups import (
     create_group,
     delete_group,
     get_group,
+    get_summary_defaults,
     list_datasource_keys,
     list_group_members,
     list_groups,
@@ -28,6 +29,15 @@ from ui.backend.routes.groups import (
     set_group_datasources,
     update_group,
 )
+from ui.backend.services.llm_service import render_prompt
+
+
+def test_summary_defaults_match_the_prompt_used_for_search():
+    default_prompt = get_summary_defaults()["systemPrompt"]
+
+    assert default_prompt.strip()
+    assert default_prompt in render_prompt(query="school feeding", results=[])
+
 
 # ---------------------------------------------------------------------------
 # Helpers

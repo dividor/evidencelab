@@ -84,6 +84,10 @@ _brief_revise_system_template = jinja_env.get_template("brief_revise_system.j2")
 _brief_revise_user_template = jinja_env.get_template("brief_revise_user.j2")
 
 
+def default_summary_prompt() -> str:
+    return _system_template.render()
+
+
 def render_prompt(
     query: str,
     results: List[Dict[str, Any]],
@@ -106,7 +110,7 @@ def render_prompt(
     top_results = results[:max_results]
 
     # Render prompts from templates (use override if provided)
-    system_prompt = system_prompt_override or _system_template.render()
+    system_prompt = system_prompt_override or default_summary_prompt()
     user_prompt = _user_template.render(query=query, results=top_results)
 
     # Combine into full prompt
@@ -143,7 +147,7 @@ async def stream_ai_summary(
         top_results = results[:max_results]
 
         # Render prompts from templates (use override if provided)
-        system_prompt = system_prompt_override or _system_template.render()
+        system_prompt = system_prompt_override or default_summary_prompt()
         user_prompt = _user_template.render(query=query, results=top_results)
 
         logger.info(
@@ -257,7 +261,7 @@ async def generate_ai_summary_with_usage(
         top_results = results[:max_results]
 
         # Render prompts from templates (use override if provided)
-        system_prompt = system_prompt_override or _system_template.render()
+        system_prompt = system_prompt_override or default_summary_prompt()
         user_prompt = _user_template.render(query=query, results=top_results)
 
         logger.info(

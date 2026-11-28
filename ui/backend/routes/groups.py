@@ -38,6 +38,7 @@ from ui.backend.services.group_settings import (
     PERSONAL_IMPACT_SETTING,
 )
 from ui.backend.services.llm_choice import validate_group_model_choices
+from ui.backend.services.llm_service import default_summary_prompt
 
 router = APIRouter()
 
@@ -125,6 +126,13 @@ def get_brief_defaults() -> dict[str, str | bool]:
         "sectionPrompt": brief_section_prompt_default(),
         "citationCheck": CITATION_CHECK_DEFAULT,
     }
+
+
+@router.get(
+    "/summary-defaults", dependencies=[Depends(current_superuser)], tags=["groups"]
+)
+def get_summary_defaults() -> dict[str, str]:
+    return {"systemPrompt": default_summary_prompt()}
 
 
 @router.get("/datasource-keys", tags=["groups"])

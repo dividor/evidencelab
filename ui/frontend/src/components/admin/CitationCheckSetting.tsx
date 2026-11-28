@@ -10,7 +10,7 @@ interface Props {
 export const CitationCheckSetting: React.FC<Props> = ({ id, value, defaultEnabled, onChange }) => (
   <div className="search-settings-group">
     <label className="search-settings-label" htmlFor={id}>Automatic citation check</label>
-    <select id={id} value={value === undefined ? '' : String(value)} onChange={event => {
+    <select id={id} className="filter-select" value={value === undefined ? '' : String(value)} onChange={event => {
       const selected = event.currentTarget.value;
       onChange(selected ? selected === 'true' : undefined);
     }}>

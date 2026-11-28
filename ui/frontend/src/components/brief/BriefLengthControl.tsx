@@ -18,7 +18,8 @@ export const BriefLengthControl: React.FC<{
   // shown with this label (e.g. "Use brief target — Standard (~350 words)").
   inheritLabel?: string;
   ariaLabel?: string;
-}> = ({ value, onChange, id, inheritLabel, ariaLabel }) => {
+  selectClassName?: string;
+}> = ({ value, onChange, id, inheritLabel, ariaLabel, selectClassName = 'bc-select' }) => {
   const target = value ?? null;
   const isPreset = target != null && BRIEF_LENGTH.presets.some((p) => p.words === target);
   const [customMode, setCustomMode] = useState(target != null && !isPreset);
@@ -49,7 +50,7 @@ export const BriefLengthControl: React.FC<{
     <div className="brief-length-control">
       <select
         id={id}
-        className="bc-select"
+        className={selectClassName}
         value={selected}
         onChange={(e) => handleSelect(e.target.value)}
         aria-label={ariaLabel}

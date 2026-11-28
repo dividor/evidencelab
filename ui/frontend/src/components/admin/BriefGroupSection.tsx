@@ -38,7 +38,8 @@ export const BriefGroupSection: React.FC<Props> = ({
           ⓘ
         </span>
       </label>
-      <BriefLengthControl id="group-brief-target-words" value={targetWords} onChange={onTargetWordsChange} />
+      <BriefLengthControl id="group-brief-target-words" selectClassName="filter-select"
+        value={targetWords} onChange={onTargetWordsChange} />
       <CitationCheckSetting id="group-brief-citation-check" value={citationCheck}
         defaultEnabled={defaults.citationCheck} onChange={onCitationCheckChange} />
       {loadError && <p role="alert">Could not load the Brief defaults.</p>}
