@@ -3,6 +3,7 @@
 import logging
 from typing import TypeVar
 
+from botocore.exceptions import ClientError
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import TypeAdapter, ValidationError
 
@@ -14,6 +15,15 @@ from ui.backend.services.assistant_grounding import (
 logger = logging.getLogger(__name__)
 _Result = TypeVar("_Result")
 _RESULT_TOOL = "submit_result"
+
+
+def _bedrock_rejected_tool_result(error: ClientError) -> bool:
+    details = error.response.get("Error", {})
+    return (
+        error.operation_name == "Converse"
+        and details.get("Code") == "ModelErrorException"
+        and "invalid sequence as part of ToolUse" in details.get("Message", "")
+    )
 
 
 def _result_parameters(schema: dict) -> dict:
@@ -85,17 +95,26 @@ async def request_structured_response(
     messages = [SystemMessage(content=f"{system}\n\n{tool_instruction}"), *history]
     request = prompt
     for _ in range(2):
-        response = await structured_model.ainvoke(
-            [*messages, HumanMessage(content=request)], config=config
-        )
-        stop_reason = _stop_reason(response)
-        result, errors = _result_errors(response, schema, wrapped)
-        if not errors:
-            return result
+        try:
+            response = await structured_model.ainvoke(
+                [*messages, HumanMessage(content=request)], config=config
+            )
+        except ClientError as error:
+            if not _bedrock_rejected_tool_result(error):
+                raise
+            stop_reason = "malformed_tool_use"
+            output_tokens = None
+            errors = [((), "malformed_tool_use")]
+        else:
+            stop_reason = _stop_reason(response)
+            output_tokens = (response.usage_metadata or {}).get("output_tokens")
+            result, errors = _result_errors(response, schema, wrapped)
+            if not errors:
+                return result
         logger.warning(
             "Invalid structured Assistant response (stop=%s, output_tokens=%s): %s",
             stop_reason,
-            (response.usage_metadata or {}).get("output_tokens"),
+            output_tokens,
             errors,
         )
         request = (
