@@ -38,7 +38,9 @@ from ui.backend.services.group_settings import CITATION_CHECK_DEFAULT, user_grou
 from ui.backend.services.llm_choice import (
     BRIEF,
     CITATION_CHECK,
+    combo_default,
     config_defaults,
+    run_combo,
     user_group_choice,
 )
 from ui.backend.services.usage_recorder import (
@@ -165,11 +167,13 @@ async def _research_preferences(
     return prompt, citation_check
 
 
-async def _citation_model(check_citations: bool, user, session) -> str | None:
+async def _citation_model(
+    check_citations: bool, user, session, model_combo=None
+) -> str | None:
     if not check_citations:
         return None
     selected = await user_group_choice(session, user, CITATION_CHECK)
-    model = selected or config_defaults()[CITATION_CHECK]
+    model = selected or combo_default(CITATION_CHECK, run_combo(model_combo))
     check_requested_llm(model, None)
     return model
 
@@ -371,7 +375,9 @@ async def stream_assistant_chat(
     brief_section_prompt, check_citations = await _research_preferences(
         body, user, session, settings
     )
-    citation_model_key = await _citation_model(check_citations, user, session)
+    citation_model_key = await _citation_model(
+        check_citations, user, session, body.model_combo
+    )
 
     async def event_generator():
         thread_id = body.thread_id

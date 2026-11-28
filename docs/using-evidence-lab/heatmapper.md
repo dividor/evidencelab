@@ -42,3 +42,28 @@ Click any cell in the heatmap to drill down into the underlying data. You can:
 - Start with broad attribute combinations to get an overview, then add search queries to focus on specific topics.
 - Use Heatmapper alongside [Search](search.md) — if you spot an interesting pattern in the heatmap, run a search to explore the underlying evidence.
 - Export data for inclusion in presentations or reports.
+
+### Heatmapper in Claude
+
+Connect your Evidence Lab server to Claude on the web or desktop, then ask
+for a count by two dimensions:
+
+> Use the Evidence Lab Heatmapper on UNEG. Show UNDP and UNICEF as rows
+> and publication years 2022, 2023, and 2024 as columns. Count documents.
+
+You can choose new row and column dimensions, click a cell to see matching
+documents, and use **Ask Claude about this cell** to discuss the result.
+**Open in Evidence Lab** opens the web Heatmapper with the grid settings the
+web page accepts. The web version may show different results when its search
+settings differ or a shared link cannot carry a filter value containing commas.
+
+A grid can show up to four rows and six columns. Without a query, a cell
+counts indexed documents that match its filters. With a query, it shows
+Documents or Paragraphs from the top search matches that pass one score cutoff
+for the grid. The app calculates the cutoff after all cells return. These
+query counts describe the retrieved matches. An asterisk indicates that a
+cell reached its retrieval limit.
+
+Use the web Heatmapper for Wide Search, an adjustable sensitivity slider,
+Excel export, and report-title rows. See [Connecting to AI Platforms](../overview/mcp.md#connecting-claude)
+to add the connector.

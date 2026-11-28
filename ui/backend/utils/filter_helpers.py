@@ -74,6 +74,22 @@ def parse_filter_values(value: Any) -> List[Any]:
     return [part for part in parts if part]
 
 
+def escape_filter_value(value: str) -> str:
+    """Write one value so it can sit in a comma-separated filter string.
+
+    A backslash becomes ``\\\\`` and a comma ``\\,``.
+    """
+    return value.replace(FILTER_VALUE_ESCAPE, FILTER_VALUE_ESCAPE * 2).replace(
+        FILTER_VALUE_SEPARATOR, FILTER_VALUE_ESCAPE + FILTER_VALUE_SEPARATOR
+    )
+
+
+def join_filter_values(values: List[str]) -> str:
+    """Write several values as one filter string, the form the web app reads
+    from a link. :func:`parse_filter_values` reads it back unchanged."""
+    return FILTER_VALUE_SEPARATOR.join(escape_filter_value(value) for value in values)
+
+
 def filter_match(value: Any) -> Union[models.MatchAny, models.MatchValue]:
     """Qdrant match for a filter: ``MatchValue`` for one value, ``MatchAny``
     for several (values OR within a field).
@@ -417,7 +433,9 @@ _MULTIVALUE_EXPANSION_SKIP = frozenset(
 
 def _is_expandable_filter(core_field: str, value: Any) -> bool:
     """True for keyword payload filters whose stored values may be "; "-joined."""
-    if not isinstance(value, str) or not value.strip():
+    if not value or not isinstance(value, (str, list)):
+        return False
+    if isinstance(value, str) and not value.strip():
         return False
     if core_field in _MULTIVALUE_EXPANSION_SKIP:
         return False

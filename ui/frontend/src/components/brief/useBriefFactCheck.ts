@@ -1,7 +1,7 @@
 // The Fact Checker of an open brief: whether a completed citation check
 // applies to the brief as it is now, the passages it judged (per section,
 // every verdict), whether the reader has switched the highlights on, which
-// highlighted passage the pointer is resting on, and the evidence behind it.
+// claim the reader has selected, and the evidence behind it.
 //
 // The API decides everything about the check: which one applies, which of
 // the brief's sections it still covers (a check judges one version of the
@@ -12,15 +12,15 @@
 // first time its card opens.
 
 import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import axios from 'axios';
+import { useBriefCheckRun } from './useBriefCheckRun';
 import type {
   BriefFactCheckEvidence,
   BriefFactCheckLegendItem,
   BriefFactCheckMark,
-  BriefFactCheckRead,
+  BriefCheckRun,
   BriefFactCheckSection,
 } from '../../types/testing';
-import { getBriefFactCheck, getBriefFactCheckEvidence } from './briefFactCheckApi';
+import { getBriefFactCheckEvidence } from './briefFactCheckApi';
 import {
   allPainted,
   clearFactMarks,
@@ -29,14 +29,6 @@ import {
   paintFactMarks,
 } from './briefFactCheckMarks';
 
-export interface FactMarkHover {
-  mark: BriefFactCheckMark;
-  // Where the passage sits on screen, so the card can be placed by it.
-  rect: { top: number; bottom: number; left: number; width: number };
-}
-
-// The evidence of one passage as the card shows it: still loading, loaded,
-// or failed to load (reported in the card, since the rest still applies).
 export type FactEvidenceState =
   | { status: 'loading' }
   | { status: 'ready'; blocks: BriefFactCheckEvidence[] }
@@ -48,6 +40,12 @@ export interface UseBriefFactCheckReturn {
   // The reader switched the highlights on.
   active: boolean;
   toggle: () => void;
+  run: BriefCheckRun | null;
+  busy: boolean;
+  notice: string;
+  disabledReason?: string | null;
+  start: () => void;
+  stop: () => void;
   // The judged passages to paint, keyed by section id; empty while inactive.
   marks: Map<string, BriefFactCheckMark[]>;
   // Sections the check no longer covers (changed since it judged the brief),
@@ -57,21 +55,11 @@ export interface UseBriefFactCheckReturn {
   legend: BriefFactCheckLegendItem[];
   // How the brief relates to the version the check judged, for the tooltip.
   note: string;
-  hover: FactMarkHover | null;
-  // The evidence of the hovered passage, once asked for.
   evidence: FactEvidenceState | null;
-  // The pointer moved over the prose: `target` is what it is over now.
-  onPointerOver: (target: EventTarget | null) => void;
-  onPointerLeave: () => void;
-  // The pointer entered or left the card, which keeps it open while it is
-  // being read (its excerpts scroll and its sources open).
-  onCardEnter: () => void;
-  onCardLeave: () => void;
+  selectClaim: (target: EventTarget | null) => void;
+  selectedClaim: BriefFactCheckMark | null;
+  closeClaim: () => void;
 }
-
-// How long the card stays after the pointer leaves the passage, so it can
-// be reached across the prose between the two.
-const CLOSE_DELAY_MS = 250;
 
 const marksBySection = (marks: BriefFactCheckMark[]): Map<string, BriefFactCheckMark[]> => {
   const map = new Map<string, BriefFactCheckMark[]>();
@@ -97,53 +85,18 @@ const NO_LEGEND: BriefFactCheckLegendItem[] = [];
 export const useBriefFactCheck = (
   briefId: string | null,
   revision: number,
+  modelCombo?: string | null,
 ): UseBriefFactCheckReturn => {
-  const [result, setResult] = useState<BriefFactCheckRead | null>(null);
-  const [active, setActive] = useState(false);
-  const [hover, setHover] = useState<FactMarkHover | null>(null);
+  const { result, active, setActive, ...controls } = useBriefCheckRun(briefId, revision, modelCombo);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   // Evidence by passage id, for the check that applies; dropped with it.
-  const [evidence, setEvidence] = useState<Map<number, FactEvidenceState>>(new Map());
-  const closeTimer = useRef<number | null>(null);
+  const [evidence, setEvidence] = useState<Map<string, FactEvidenceState>>(new Map());
 
-  useEffect(() => {
-    if (!briefId) {
-      setResult(null);
-      return;
-    }
-    let cancelled = false;
-    getBriefFactCheck(briefId)
-      .then((read) => {
-        if (!cancelled) setResult(read);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setResult(null);
-        // A brief the server does not know yet (saved under a local id until
-        // its first save completes) has no check; anything else is reported.
-        if (!(axios.isAxiosError(err) && err.response?.status === 404)) {
-          console.error('Could not load the brief fact check', err);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [briefId, revision]);
-
-  // Switching briefs, or the check going stale, drops the highlights.
-  useEffect(() => {
-    setActive(false);
-    setHover(null);
-  }, [briefId]);
-  const available = !!result?.check;
-  useEffect(() => {
-    if (!available) {
-      setActive(false);
-      setHover(null);
-    }
-  }, [available]);
+  const available = Boolean(result?.marks.length);
   // Another check (or none) means other evidence.
   const checkId = result?.check?.id ?? null;
   useEffect(() => {
+    setSelectedId(null);
     setEvidence(new Map());
   }, [checkId]);
 
@@ -164,73 +117,45 @@ export const useBriefFactCheck = (
     [active, result],
   );
 
-  const cancelClose = useCallback(() => {
-    if (closeTimer.current !== null) {
-      window.clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  }, []);
-  const closeSoon = useCallback(() => {
-    cancelClose();
-    closeTimer.current = window.setTimeout(() => {
-      closeTimer.current = null;
-      setHover(null);
-    }, CLOSE_DELAY_MS);
-  }, [cancelClose]);
-  useEffect(() => cancelClose, [cancelClose]);
-
-  // The evidence of the hovered passage, fetched once per check.
-  const hoveredId = hover?.mark.passage_id ?? null;
+  const selectedClaim = active && selectedId ? byId.get(selectedId) ?? null : null;
+  const passageId = selectedClaim?.passage_id ?? null;
+  const evidenceKey = checkId && passageId != null ? `${checkId}/${passageId}` : null;
   useEffect(() => {
-    if (!briefId || !checkId || hoveredId === null || evidence.has(hoveredId)) return;
-    setEvidence((prev) => new Map(prev).set(hoveredId, { status: 'loading' }));
-    getBriefFactCheckEvidence(briefId, checkId, hoveredId)
+    if (!briefId || !checkId || passageId === null || !evidenceKey || evidence.has(evidenceKey)) return;
+    setEvidence((prev) => new Map(prev).set(evidenceKey, { status: 'loading' }));
+    getBriefFactCheckEvidence(briefId, checkId, passageId)
       .then((read) => {
         setEvidence((prev) =>
-          new Map(prev).set(hoveredId, { status: 'ready', blocks: read.evidence }),
+          new Map(prev).set(evidenceKey, { status: 'ready', blocks: read.evidence }),
         );
       })
       .catch((err) => {
         console.error('Could not load the evidence of a fact-checked passage', err);
-        setEvidence((prev) => new Map(prev).set(hoveredId, { status: 'failed' }));
+        setEvidence((prev) => new Map(prev).set(evidenceKey, { status: 'failed' }));
       });
-  }, [briefId, checkId, hoveredId, evidence]);
-
-  const onPointerOver = useCallback(
-    (target: EventTarget | null) => {
-      const el = factMarkAt(target);
-      const mark = el ? byId.get(el.getAttribute(FACT_ID_ATTR) || '') : undefined;
-      if (!el || !mark) {
-        // Over plain prose: the card stays a moment, in case the pointer is
-        // on its way to it.
-        closeSoon();
-        return;
-      }
-      cancelClose();
-      const r = el.getBoundingClientRect();
-      setHover((prev) =>
-        prev && prev.mark === mark
-          ? prev
-          : { mark, rect: { top: r.top, bottom: r.bottom, left: r.left, width: r.width } },
-      );
-    },
-    [byId, cancelClose, closeSoon],
-  );
+  }, [briefId, checkId, passageId, evidenceKey, evidence]);
 
   return {
+    ...controls,
     available,
     active,
-    toggle: useCallback(() => setActive((v) => !v), []),
+    toggle: useCallback(() => {
+      setSelectedId(null);
+      setActive((v) => !v);
+    }, [setActive]),
     marks,
     changedSections,
     legend: result?.legend || NO_LEGEND,
     note: result?.note || '',
-    hover,
-    evidence: hoveredId === null ? null : (evidence.get(hoveredId) ?? { status: 'loading' }),
-    onPointerOver,
-    onPointerLeave: closeSoon,
-    onCardEnter: cancelClose,
-    onCardLeave: closeSoon,
+    evidence: !evidenceKey ? null : (evidence.get(evidenceKey) ?? { status: 'loading' }),
+    selectClaim: (target) => {
+      const id = factMarkAt(target)?.getAttribute(FACT_ID_ATTR);
+      if (id && byId.has(id)) {
+        setSelectedId(id);
+      }
+    },
+    selectedClaim,
+    closeClaim: () => setSelectedId(null),
   };
 };
 

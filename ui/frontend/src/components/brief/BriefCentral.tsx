@@ -471,9 +471,6 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
         <div>
           <div className="brief-eyebrow">Brief Central</div>
           <h2 className="bc-title">Turn a topic into a structured, evidence-backed brief</h2>
-          <p className="bc-lede">
-            Use AI to help write a brief document based on the document library.
-          </p>
         </div>
         <button
           className="brief-btn brief-btn-primary bc-new-btn"

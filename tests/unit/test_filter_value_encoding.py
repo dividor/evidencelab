@@ -25,8 +25,10 @@ from ui.backend.routes.search import (
 )
 from ui.backend.services.search import _build_query_filter
 from ui.backend.utils.filter_helpers import (
+    escape_filter_value,
     expand_multivalue_filters,
     filter_match,
+    join_filter_values,
     parse_filter_values,
 )
 
@@ -77,6 +79,33 @@ class TestParseFilterValues:
 
     def test_parse_when_number_then_kept_as_number(self):
         assert parse_filter_values(2024) == [2024]
+
+
+class TestJoinFilterValues:
+    def test_escape_when_comma_then_escaped(self):
+        assert escape_filter_value(SDG16) == SDG16_ESCAPED
+
+    def test_escape_when_backslash_then_doubled_before_commas(self):
+        assert escape_filter_value("a\\b,c") == "a\\\\b\\,c"
+
+    def test_join_when_values_then_matches_web_app_form(self):
+        assert join_filter_values([SDG9, SDG16, "SDG1"]) == (
+            f"{SDG9_ESCAPED},{SDG16_ESCAPED},SDG1"
+        )
+
+    def test_join_when_no_values_then_empty_string(self):
+        assert join_filter_values([]) == ""
+
+    @pytest.mark.parametrize(
+        "values",
+        [
+            [SDG16],
+            ["Congo, Dem. Rep.", "Egypt, Arab Rep.", "Kenya"],
+            ["a\\b", "c\\,d", "trailing\\"],
+        ],
+    )
+    def test_join_when_parsed_back_then_values_unchanged(self, values):
+        assert parse_filter_values(join_filter_values(values)) == values
 
 
 class TestFilterMatch:

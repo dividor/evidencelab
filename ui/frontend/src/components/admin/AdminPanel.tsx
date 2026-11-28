@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCloseOnOutsideClick } from '../../hooks/useCloseOnOutsideClick';
 import { openAdminLocation, useAdminLocation } from '../../utils/adminLocation';
 import { USER_MODULE } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
@@ -27,6 +28,8 @@ interface AdminPanelProps {
   onResultClick?: (result: SearchResult) => void;
 }
 
+const SAVED_BRIEFS_PAGE = 'testing-brief';
+
 const adminTabs = [
   ['users', 'Users'],
   ['groups', 'Groups'],
@@ -36,10 +39,62 @@ const adminTabs = [
   ['llm-usage', 'LLM Usage'],
   ['mcp-audit', 'MCP / A2A'],
   ['api-keys', 'API Keys'],
-  ['testing', 'Testing (Experiments)'],
-  ['testing-brief', 'Testing (Saved Briefs)'],
+  ['testing', 'Testing'],
   ['toc-validator', 'TOC Validator'],
 ] as const;
+
+function AdminNavigation({ tab }: { tab: string }) {
+  const header = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(null);
+  const open = anchor !== null;
+  const close = useCallback(() => setAnchor(null), []);
+  useCloseOnOutsideClick(header, open, close);
+
+  const select = (page: string) => {
+    close();
+    openAdminLocation({ page });
+    trigger.current?.focus();
+  };
+  const alignMenu = useCallback(() => {
+    if (!trigger.current || !header.current) return;
+    const button = trigger.current.getBoundingClientRect();
+    const container = header.current.getBoundingClientRect();
+    setAnchor({ left: button.left - container.left, top: button.bottom - container.top });
+  }, []);
+  useLayoutEffect(() => {
+    if (!open || !header.current) return;
+    const observer = new ResizeObserver(alignMenu);
+    observer.observe(header.current);
+    return () => observer.disconnect();
+  }, [open, alignMenu]);
+  const testingActive = tab === 'testing' || tab === SAVED_BRIEFS_PAGE;
+  return <div className="admin-header" ref={header} onKeyDown={event => {
+    if (event.key === 'Escape' && open) trigger.current?.focus();
+  }} onBlur={event => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) close();
+  }}>
+    <h2>Administration</h2>
+    <div className="admin-tabs">
+      {adminTabs.map(([key, label]) => key === 'testing' ? (
+        <button type="button" key={key} ref={trigger}
+          className={`admin-tab nav-tab-dropdown ${testingActive ? 'admin-tab-active' : ''}`}
+          aria-expanded={open} aria-controls="admin-testing-choices"
+          onClick={open ? close : alignMenu}>
+          {label}<span className="dropdown-arrow" aria-hidden="true">▾</span>
+        </button>
+      ) : (
+        <button type="button" key={key} className={`admin-tab ${tab === key ? 'admin-tab-active' : ''}`}
+          onClick={() => { close(); if (key !== tab) openAdminLocation({ page: key }); }}>{label}</button>
+      ))}
+    </div>
+    {anchor && <div className="dropdown-menu admin-testing-choices" id="admin-testing-choices"
+      role="group" aria-label="Testing" style={{ top: anchor.top, left: `clamp(0px, ${anchor.left}px, 100% - 11rem)` }}>
+      <button autoFocus type="button" className="dropdown-item" onClick={() => select('testing')}>Experiments</button>
+      <button type="button" className="dropdown-item" onClick={() => select(SAVED_BRIEFS_PAGE)}>Saved Briefs</button>
+    </div>}
+  </div>;
+}
 
 const AdminPanel: React.FC<AdminPanelProps> = ({
   isActive,
@@ -51,23 +106,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 }) => {
   const { user } = useAuth();
   const { page } = useAdminLocation();
-  const tab = adminTabs.find(([key]) => key === page)?.[0] ?? 'users';
+  const tab = page === SAVED_BRIEFS_PAGE ? page : adminTabs.find(([key]) => key === page)?.[0] ?? 'users';
 
   if (!USER_MODULE || !isActive || !user?.is_superuser) return null;
 
   return (
     <div className="admin-panel">
-      <div className="admin-header">
-        <h2>Administration</h2>
-        <div className="admin-tabs">
-          {adminTabs.map(([key, label]) => (
-            <button key={key} className={`admin-tab ${tab === key ? 'admin-tab-active' : ''}`}
-              onClick={() => { if (key !== tab) openAdminLocation({ page: key }); }}>
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <AdminNavigation tab={tab} />
       <div className="admin-tab-content">
         {tab === 'users' && <UserManager />}
         {tab === 'groups' && <GroupManager />}
@@ -78,7 +123,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         {tab === 'mcp-audit' && <McpAuditLog />}
         {tab === 'api-keys' && <ApiKeyManager />}
         {tab === 'testing' && <TestingManager />}
-        {tab === 'testing-brief' && (
+        {tab === SAVED_BRIEFS_PAGE && (
           <BriefTestingManager
             dataSource={dataSource}
             modelCombo={modelCombo}

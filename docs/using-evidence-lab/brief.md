@@ -87,7 +87,7 @@ After any of these actions, the section shows its changes like tracked changes i
 
 The change waits for you to keep or reject it, even if you reload the page or come back later; doing anything else to the section accepts it. When you come back to it, the section shows just the new text; to keep or reject it then, click its row, marked *awaiting review*, in the Section History. A rejected change stays in the section's Section History, marked *rejected*, so it can still be viewed or restored.
 
-Open **Ask AI** in the brief header for actions that apply to the whole brief. **Regenerate All** runs the research for every section again, with the option to change the instructions, voice or length. **Get Updates for All Sections** updates every researched section. Review these changes in [Document History](#document-history).
+On wide screens the brief toolbar shows the whole-document AI actions as buttons. On small screens, open **Ask AI** to find them. **Regenerate All** runs the research for every section again, with the option to change the instructions, voice or length. **Get Updates for All Sections** updates every researched section. Review these changes in [Document History](#document-history).
 
 Each researched section shows its word count next to its heading, and the line under the brief title shows the total.
 
@@ -153,7 +153,7 @@ Versions are written by the server with every change, so they never depend on th
 
 ### 4. Saved briefs (Brief Central)
 
-Briefs save automatically as you research. Signed in, they are stored against your account (so they follow you between browsers) and listed under **Saved Briefs** in Brief Central. Each card shows the topic, section and source counts, the voice profile in use, and who it is shared with.
+Choose **Brief Central** above the contents to return to your briefs. Briefs save automatically as you research. Signed in, they are stored against your account (so they follow you between browsers) and listed under **Saved Briefs** in Brief Central. Each card shows the topic, section and source counts, the voice profile in use, and who it is shared with.
 
 Each card has **Open Brief** and, for your own briefs, **Share** and **Delete**. Cards for briefs shared with you have **Copy** instead, which puts a private copy, titled "… (copy)", in your own **Saved Briefs** for you to edit. **New brief** opens the New brief dialog (see [Start a brief](#1-start-a-brief)). The other tabs list briefs **Shared with me**, your **Templates** and your **Voice & tone** profiles, including those others have shared with you.
 
@@ -283,10 +283,10 @@ Because a comment is anchored to the **text** you highlighted rather than to a p
 
 ### 11. Fact Checker
 
-When an administrator has run a [citation check](../admin/evaluation.md#brief-citation-check) on a saved brief, a **Fact Checker** button appears beside **Export to Word**. A check judges one version of the brief (the version its **Document History** shows; that version's row in the history names the check). The brief can go on changing afterwards: the Fact Checker compares each section with the version the check judged, keeps the highlights in every section whose cited passages still read exactly as the judge saw them, and marks a section that was edited, re-researched or updated since as *Changed since the citation check; not covered by the Fact Checker* instead of highlighting anything in it. Hover the button to see which version was checked, which version the brief is at now and which sections are no longer covered. The button disappears only when no section the check judged is left unchanged; checking the brief again covers it fully.
+Open **Fact Checker** in the brief toolbar. Choose **Run Fact Checker** to check the saved version using the selected model combination and your group’s judge settings. You can start a check once the brief has a written section and you have edit access. During the check, writing and editing controls are disabled for this brief. You can open another page and return to see progress. If this version already has results, **Run Fact Checker** is greyed out until the brief changes.
 
-![Fact Checker highlights in a brief, each cited passage in the colour of its verdict, with the legend under the title](../images/brief/brief-fact-checker.png)
+The floating bar shows which section is being checked and how many have finished. **Stop** ends the run. A section already being graded may finish its model calls. You can start it again from the menu. Refreshing the page reconnects to a running check.
 
-Click **Fact Checker** to highlight, in place, every cited passage the check judged, each in the colour of its verdict: green for **Supported**, amber for **Partially supported**, red for **Unsupported** and grey for **Cannot assess**. A legend under the brief's title explains the colours and counts the passages carrying each verdict; click the button again to hide the highlights. The highlights are a reading aid: nothing in the brief changes.
+When the check finishes, its results appear in the text. Choose **Hide results** beside the colour legend to return to reading. Use **Fact Checker → Show Fact Checks** to show them again. Readers with shared access can display completed results. When a section changes, its old highlights disappear. **Show Fact Checks** is greyed out if there are no results that still apply.
 
-Hover a highlighted passage for its card: the verdict as a badge with the judge's confidence and the citation numbers it judged the passage against, the judge's reason, and then the evidence: each cited excerpt as the judge read it, with the parts the judge quoted highlighted. The card stays while the pointer is on it, so a long excerpt can be scrolled and **Open source** opens the excerpt in the document preview. The judge reads only the stored excerpts, not the whole document, so treat a highlight as a prompt to re-read the source, not as a final verdict.
+Click a claim badge or its highlighted sentence to open the assessment. The dialog shows the sentence, verdict, score and judge’s explanation. Under **Sources**, expand a reference to read the cited excerpt with the supporting words highlighted. Choose **See more** for a long excerpt or **Open source** to view it in the document. Click outside the dialog or press Escape to return to the brief. Older checks show the details recorded at the time.

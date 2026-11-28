@@ -119,7 +119,7 @@ async def test_generation_uses_real_request_contract_without_grading_material(
             yield event
 
     monkeypatch.setattr(brief, "stream_research_response", stream)
-    cfg = runner.run_config_snapshot({"rerank": False})
+    cfg = runner.run_config_snapshot({"capability": "brief", "rerank": False})
     brief.configure_brief(
         cfg, {"assistant_model": {"model": "writer", "temperature": 0.2}}
     )
@@ -286,6 +286,10 @@ async def test_writing_and_grounding_with_same_rubric_get_independent_inputs(
     monkeypatch,
 ):
     output = draft()
+    output["assignment"]["outline_headings"] = [
+        "Timeliness",
+        "Unrelated sibling heading",
+    ]
     output["sources"][0].update(
         title="Operations review",
         page=12,
@@ -308,6 +312,7 @@ async def test_writing_and_grounding_with_same_rubric_get_independent_inputs(
     results = [evaluate_assertion(a, output, cb) for a in criteria]
     assert [r["score"] for r in results] == [0.4, 1]
     assert [r["label"] for r in results] == ["Evidence", "Audience"]
+    assert "Unrelated sibling heading" not in results[1]["judge_prompt"]
     prompt = results[0]["judge_prompt"]
     assert all(
         text in prompt
@@ -487,7 +492,7 @@ async def test_case_distinguishes_an_editorial_rejection_from_a_service_error(
         yield {"type": "done", "section_written": False, "usage": {"prompt_tokens": 19}}
 
     monkeypatch.setattr(brief, "stream_research_response", stream)
-    cfg = runner.run_config_snapshot({"rerank": False})
+    cfg = runner.run_config_snapshot({"capability": "brief", "rerank": False})
     brief.configure_brief(cfg, {"assistant_model": {"model": "writer"}})
 
     async def generate(case):
@@ -658,7 +663,7 @@ async def test_parent_case_passes_child_outline_to_writer_and_grader(monkeypatch
         yield {"type": "done", "section_written": True}
 
     monkeypatch.setattr(brief, "stream_research_response", stream)
-    config = runner.run_config_snapshot({})
+    config = runner.run_config_snapshot({"capability": "brief"})
     brief.configure_brief(config, {})
     output = await brief.run_brief_case(
         {"query": "Repairs", "heading": "Overview", "children": children},
@@ -672,6 +677,7 @@ async def test_parent_case_passes_child_outline_to_writer_and_grader(monkeypatch
         )
     )
     monkeypatch.setattr(runner, "_judge_call", call)
+    assert output["assignment"]["outline_headings"] == ["Overview", "Duration", "Cost"]
     overlap = {"type": "brief_intro_scope"}
     callback = await brief.judge_brief(output, [overlap], "grader")
     assert not evaluate_assertion(overlap, output, callback)["passed"]
@@ -742,3 +748,65 @@ def test_revision_notes_require_every_cited_source_and_preserve_paragraphs():
     assert _revision_notes(draft, {2, 4}) == (
         "Both detectors recorded the change.\n\nThe later reading was stable."
     )
+
+
+@pytest.mark.asyncio
+async def test_relevance_requires_an_explained_deduction_and_keeps_positives(
+    monkeypatch,
+):
+    output = draft()
+    assertion = {
+        "type": "llm_judge",
+        "label": "Relevance to the template and section",
+        "rubric": "Compare the two workshops.",
+    }
+    call = AsyncMock(
+        side_effect=[
+            ('{"negatives":[],"positives":["Addresses maintenance."],"score":0.9}', {}),
+            (
+                '{"negatives":["The second workshop is missing."],'
+                '"positives":["Addresses maintenance."],"score":0.6}',
+                {},
+            ),
+        ]
+    )
+    monkeypatch.setattr(runner, "_judge_call", call)
+    grade = await brief.judge_brief(output, [assertion], "grader")
+    result = evaluate_assertion(assertion, output, grade)
+    assert not result["passed"] and result["score"] == 0.6
+    assert result["relevance"] == {
+        "negatives": ["The second workshop is missing."],
+        "positives": ["Addresses maintenance."],
+    }
+    assert call.await_count == 2
+    assert "target_words" not in result["judge_prompt"]
+    assert "words after excluding citation markers" not in result["judge_prompt"]
+    assert "on-topic qualitative answer" in result["judge_prompt"]
+    assert "Compare the two workshops." in result["judge_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_relevance_can_give_full_credit_to_an_on_topic_qualitative_answer(
+    monkeypatch,
+):
+    from ui.backend.services.brief_template_evaluation import DEFAULT_BRIEF_EXPECTATIONS
+
+    assertion = next(
+        a
+        for a in DEFAULT_BRIEF_EXPECTATIONS
+        if a.get("label") == "Relevance to the template and section"
+    )
+    output = draft("Technicians described faster repairs [7].")
+    output["assignment"]["outline_headings"] = ["Repair time", "Operating costs"]
+    call = AsyncMock(
+        return_value=(
+            '{"negatives":[],"positives":["Reports the requested experience."],"score":1}',
+            {},
+        )
+    )
+    monkeypatch.setattr(runner, "_judge_call", call)
+    grade = await brief.judge_brief(output, [assertion], "grader")
+    result = evaluate_assertion(assertion, output, grade)
+    assert result["passed"] and result["relevance"]["negatives"] == []
+    assert '"outline": ["Repair time", "Operating costs"]' in result["judge_prompt"]
+    call.assert_awaited_once()

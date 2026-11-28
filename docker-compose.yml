@@ -240,6 +240,7 @@ services:
     ports:
       - "8001:8001"
     volumes:
+      - ${CUSTOMIZE_ASSETS:-./customize}:/app/mcp-branding:ro
       - .:/app
       - ${DATA_MOUNT_PATH:-./data}:/app/data
       - ./.cache/huggingface:/root/.cache/huggingface
@@ -248,6 +249,7 @@ services:
     env_file:
       - .env
     environment:
+      - MCP_BRANDING_DIR=/app/mcp-branding
       - QDRANT_HOST=${QDRANT_HOST:-http://qdrant:6333}
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
       - POSTGRES_HOST=${POSTGRES_HOST:-postgres}

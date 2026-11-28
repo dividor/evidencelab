@@ -99,12 +99,19 @@ class TestExpandMultivalueFilters:
         assert db.indexed_payload_keys.call_count == 1
         assert db.facet_documents.call_count == 2
 
-    def test_list_value_when_already_expanded_then_left_untouched(self):
-        db = MagicMock()
+    def test_list_value_with_commas_keeps_a_literal_country_and_expands_joined_payloads(
+        self,
+    ):
+        db = _db_with_values(["Congo, Dem. Rep.", "Congo, Dem. Rep.; Kenya", "Congo"])
+        core = {"country": ["Congo, Dem. Rep."]}
+        expand_multivalue_filters(db, core, "wfp")
+        assert core["country"] == ["Congo, Dem. Rep.", "Congo, Dem. Rep.; Kenya"]
+
+    def test_list_value_when_already_expanded_then_results_are_unchanged(self):
+        db = _db_with_values(["Kenya", "Kenya; Ethiopia"])
         core = {"country": ["Kenya", "Kenya; Ethiopia"]}
         expand_multivalue_filters(db, core, "wfp")
         assert core["country"] == ["Kenya", "Kenya; Ethiopia"]
-        db.facet_documents.assert_not_called()
 
 
 class TestIsExpandableFilter:
@@ -122,7 +129,7 @@ class TestIsExpandableFilter:
             ("num_citations_max", "5", False),
             ("country", "", False),
             ("country", "   ", False),
-            ("country", ["Kenya"], False),
+            ("country", ["Kenya"], True),
             ("country", None, False),
         ],
     )

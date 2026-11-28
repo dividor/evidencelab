@@ -105,6 +105,21 @@ async def read_selected_templates(session, matrix):
     return [templates[k] for k in ids]
 
 
+def introduction_word_target():
+    return (
+        get_application_config()
+        .get("brief", {})
+        .get("introductions", {})
+        .get("target_words", 120)
+    )
+
+
+def section_word_target(override, brief_target, children, intro_target):
+    if override or not children:
+        return override or brief_target
+    return min(brief_target or intro_target, intro_target)
+
+
 @dataclass
 class TemplateSection:
     template: BriefTemplate
@@ -125,18 +140,15 @@ class TemplateSection:
             else list(takewhile(lambda s: s.level == 2, self.outline[i + 1 :]))
         )
         brief_words = self.template.target_words or self.default_words
-        default = (
-            min(brief_words or self.intro_words, self.intro_words)
-            if children
-            else brief_words
-        )
         voice_id = heading.voice_profile_id or self.template.voice_profile_id
         profile = self.voices[voice_id] if voice_id else None
         case = BriefCase(
             query=self.template.name,
             heading=heading.title,
             guidance=heading.prompt or "",
-            target_words=heading.target_words or default,
+            target_words=section_word_target(
+                heading.target_words, brief_words, children, self.intro_words
+            ),
             voice_profile=profile,
             children=children,
             siblings=[*self.outline[:i], *self.outline[i + 1 + len(children) :]],
@@ -249,12 +261,7 @@ async def template_plan(session, config, matrix):
         raise TemplateSelectionError(
             "A selected voice profile was deleted. Edit the template to choose a profile."
         )
-    intro_words = (
-        get_application_config()
-        .get("brief", {})
-        .get("introductions", {})
-        .get("target_words", 120)
-    )
+    intro_words = introduction_word_target()
     plan = []
     for template, group in zip(templates, headings):
         outline = [

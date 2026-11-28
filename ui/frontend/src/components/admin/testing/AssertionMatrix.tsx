@@ -37,7 +37,7 @@ const normalizedRow = (prev: CaseRowState | undefined, ncols: number, defaultAct
 });
 
 const isLlmJudge = (assertion: Assertion): boolean =>
-  assertion.type === 'llm_judge' || assertion.type === 'brief_writing' || assertion.type === 'brief_factual';
+  assertion.type === 'llm_judge' || assertion.type === 'brief_writing' || assertion.type === 'brief_factual' || assertion.type === 'brief_relevance';
 
 const AssertionMatrix: React.FC<AssertionMatrixProps> = ({
   capability,

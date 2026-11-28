@@ -79,3 +79,26 @@ def test_only_claims_quoted_in_this_assessment_are_linked():
     results = link_assessment_claims(assessments, view)
     assert [r["quoted_claims"] for r in results] == [[1], []]
     assert all("quoted_claims" not in a for a in assessments)
+
+
+def test_previous_claim_scores_get_their_verdict_without_changing_the_saved_grade():
+    evidence = brief_claim_evidence(
+        {
+            "capability": "brief",
+            "summary": "Output rose [1]. Losses doubled [9].",
+            "sources": [{"index": 1, "text": "Output rose."}],
+        }
+    )
+    original = {
+        "type": "brief_factual",
+        "claim_grades": [
+            {"claim": 1, "score": 0.6, "passed": False},
+            {"claim": 2, "score": 0, "passed": False},
+        ],
+    }
+    [enriched] = link_assessment_claims([original], evidence)
+    assert [g["verdict"] for g in enriched["claim_grades"]] == [
+        "partially_supported",
+        "cannot_assess",
+    ]
+    assert all("verdict" not in g for g in original["claim_grades"])

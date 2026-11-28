@@ -2,9 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { SearchResult, SourceReference } from '../../types/api';
 import { CitedMarkdown, CitedReferences, RequestCitationHighlight } from '../citations/CitedContent';
 import { IconClock, IconCopy, IconDownload, IconEdit, IconFactCheck, IconRefresh, IconShare, IconSparkle } from './BriefIcons';
+import { BriefActionMenu, BriefAction } from './BriefActionMenu';
+import { BriefDocumentActions, DocumentAiActions } from './BriefDocumentActions';
 import { BriefAskAi } from './BriefAskAi';
 import { BriefSectionFrame } from './BriefSectionFrame';
-import { BriefFactCheckTooltip } from './BriefFactCheckTooltip';
+import { BriefClaimDialog } from './BriefClaimDialog';
 import { useFactMarkPainter, UseBriefFactCheckReturn } from './useBriefFactCheck';
 import type { BriefFactCheckEvidence, BriefFactCheckMark } from '../../types/testing';
 import { BriefLengthControl } from './BriefLengthControl';
@@ -82,6 +84,7 @@ interface SectionViewProps {
   onSourceClick: (source: SourceReference) => void;
   // Viewer-only (shared brief): no editing or AI actions.
   readOnly?: boolean;
+  checkingFacts?: boolean;
   // Hover on an un-enriched citation asks for that source to be highlighted.
   onRequestHighlight?: RequestCitationHighlight;
   // Commented passages in this section, and the thread currently open.
@@ -93,8 +96,7 @@ interface SectionViewProps {
   // moving over the marks (the document shows the judge's explanation).
   factMarks?: BriefFactCheckMark[];
   factNote?: string;
-  onFactPointerOver?: (target: EventTarget | null) => void;
-  onFactPointerLeave?: () => void;
+  onSelectClaim?: (target: EventTarget | null) => void;
 }
 
 // Tooltip for a section's word count: which target (if any) it was written to.
@@ -252,6 +254,7 @@ const SectionTools: React.FC<{
   showLog: boolean;
   onToggleEdit: () => void;
   onRegenerate: () => void;
+  checkingFacts: boolean;
   regenerationFailed: boolean;
   onAiEdit: () => void;
   onAiUpdate: () => void;
@@ -263,6 +266,7 @@ const SectionTools: React.FC<{
   showLog,
   onToggleEdit,
   onRegenerate,
+  checkingFacts,
   regenerationFailed,
   onAiEdit,
   onAiUpdate,
@@ -270,35 +274,34 @@ const SectionTools: React.FC<{
 }) => (
   <div className="brief-doc-section-tools">
     <BriefAskAi
-      label={`Ask AI for ${title}`}
+      label={`Ask AI for ${title}`} disabled={checkingFacts}
       buttonClass="brief-regen-btn"
       actions={[
         {
-          label: regenerationFailed ? 'Research settings' : 'Regenerate',
+          label: regenerationFailed ? 'AI Research Settings' : 'AI Regenerate',
           icon: IconRefresh,
           onSelect: onRegenerate,
         },
         {
-          label: 'Edit',
+          label: 'AI Edit',
           icon: IconEdit,
           onSelect: onAiEdit,
           title: 'Revise this section with an AI instruction, keeping the current content',
         },
         {
-          label: 'Get Updates',
+          label: 'AI Get Updates',
           icon: IconClock,
           onSelect: onAiUpdate,
           title: 'Search for sources published since this section was last run and fold them in',
         },
       ]}
     />
-    <button className="brief-regen-btn" onClick={onToggleEdit}>
-      <IconEdit /> {editing ? 'Done' : 'Manually Edit'}
+    <button className="brief-regen-btn" onClick={onToggleEdit} disabled={checkingFacts}>
+      <IconEdit /> {editing ? 'Done' : 'Edit'}
     </button>
     {showLog && (
-      <button className="brief-section-log-link" onClick={onOpenLog}>
-        Section History{auditCount ? ` (${auditCount})` : ''}
-      </button>
+      <BriefActionMenu label={`More actions for ${title}`} buttonText="More Actions" buttonClass="brief-regen-btn brief-section-more"
+        actions={[{ label: 'Section History' + (auditCount ? ' (' + auditCount + ')' : ''), icon: IconClock, onSelect: onOpenLog }]} />
     )}
   </div>
 );
@@ -397,8 +400,7 @@ const SectionDoneBody: React.FC<{
   activeThreadId?: string | null;
   factMarks?: BriefFactCheckMark[];
   factNote?: string;
-  onFactPointerOver?: (target: EventTarget | null) => void;
-  onFactPointerLeave?: () => void;
+  onSelectClaim?: (target: EventTarget | null) => void;
 }> = ({
   section,
   brief,
@@ -416,8 +418,7 @@ const SectionDoneBody: React.FC<{
   activeThreadId,
   factMarks,
   factNote,
-  onFactPointerOver,
-  onFactPointerLeave,
+  onSelectClaim,
 }) => {
   // Rendered exactly as the API returned them: the renumbered text and the
   // display sources behind its numbers.
@@ -516,12 +517,11 @@ const SectionDoneBody: React.FC<{
             className="brief-doc-content"
             ref={proseRef}
             onClick={(e) => {
+              onSelectClaim?.(e.target);
               const bubble = (e.target as HTMLElement).closest(`.${BUBBLE_CLASS}`);
               const threadId = bubble?.getAttribute('data-thread-id');
               if (threadId && onOpenThread) onOpenThread(threadId);
             }}
-            onMouseOver={onFactPointerOver ? (e) => onFactPointerOver(e.target) : undefined}
-            onMouseLeave={onFactPointerLeave}
           >
             <CitedMarkdown
               content={content}
@@ -626,20 +626,59 @@ const SectionResearchFailure: React.FC<{
   );
 };
 
+function SectionResearchControls({ section, brief, panelOpen, busy, locked, onSourceClick }:
+  Pick<SectionViewProps, 'section' | 'brief' | 'onSourceClick'> & { panelOpen: boolean; busy: boolean; locked: boolean }) {
+  const pendingMode = pendingResearchMode(section, panelOpen, busy, locked);
+  return <>
+    {(panelOpen || pendingMode === 'inline') && (
+        <GuidancePanel section={section} brief={brief} hideCancel={pendingMode === 'inline'} />
+      )}
+
+      {pendingMode === 'button' && (
+        <SectionPending sample onResearch={() => brief.openRegen(section.id)} />
+      )}
+
+      {section.status === 'researching' && (
+        <SectionResearching section={section} onSourceClick={onSourceClick} />
+      )}
+  </>;
+}
+
+function SectionHeading({ section, num, brief, readOnly }: Pick<SectionViewProps, 'section' | 'num' | 'brief' | 'readOnly'>) {
+  return (
+      <div className="brief-doc-section-head">
+        {num && <span className="brief-doc-section-num">{num}</span>}
+        <input
+          className="brief-doc-section-title"
+          aria-label="Heading"
+          value={section.title}
+          onChange={(e) => brief.editTitle(section.id, e.target.value)}
+          onBlur={brief.commitEdits}
+          readOnly={readOnly}
+        />
+        {section.status === 'done' && (
+          <span className="brief-doc-section-words" title={sectionWordsTitle(section, brief.targetWords)}>
+            {countWords(section.content).toLocaleString()} words
+          </span>
+        )}
+      </div>
+  );
+}
+
 const BriefSectionView: React.FC<SectionViewProps> = ({
   section,
   num,
   brief,
   onSourceClick,
   readOnly = false,
+  checkingFacts = false,
   onRequestHighlight,
   marks,
   onOpenThread,
   activeThreadId,
   factMarks,
   factNote,
-  onFactPointerOver,
-  onFactPointerLeave,
+  onSelectClaim,
 }) => {
   const [editing, setEditing] = useState(false);
   // The stored original being viewed from the Log, and its load state.
@@ -649,11 +688,11 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   const [aiPanel, setAiPanel] = useState<null | 'edit' | 'update'>(null);
   const [aiText, setAiText] = useState('');
   const [logOpen, setLogOpen] = useState(false);
-  const changes = useSectionChanges(section, !!readOnly);
-  const panelOpen = brief.regenFor === section.id;
+  const locked = readOnly || checkingFacts;
+  const changes = useSectionChanges(section, locked);
+  const panelOpen = !checkingFacts && brief.regenFor === section.id;
   const isDone = section.status === 'done';
-  const anyResearching = brief.researching;
-  const pendingMode = pendingResearchMode(section, panelOpen, anyResearching, !!readOnly);
+  const anyResearching = brief.researching || checkingFacts;
   const audit = section.audit ?? [];
   const auditCount = audit.length;
   // Signed-in users who can open the brief see the Log; a brief kept only in
@@ -675,22 +714,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
       data-brief-section-id={section.id}
       className={`brief-doc-section${section.level === 2 ? ' brief-doc-section-sub' : ''}`}
     >
-      <div className="brief-doc-section-head">
-        {num && <span className="brief-doc-section-num">{num}</span>}
-        <input
-          className="brief-doc-section-title"
-          aria-label="Heading"
-          value={section.title}
-          onChange={(e) => brief.editTitle(section.id, e.target.value)}
-          onBlur={brief.commitEdits}
-          readOnly={readOnly}
-        />
-        {isDone && (
-          <span className="brief-doc-section-words" title={sectionWordsTitle(section, brief.targetWords)}>
-            {countWords(section.content).toLocaleString()} words
-          </span>
-        )}
-      </div>
+      <SectionHeading section={section} num={num} brief={brief} readOnly={locked} />
 
       <SectionResearchFailure
         section={section}
@@ -706,7 +730,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
         <ViewerLogButton show={showLog} auditCount={auditCount} onOpen={() => setLogOpen(true)} />
       )}
       {isDone && !readOnly && (
-        <SectionTools
+        <SectionTools checkingFacts={checkingFacts}
           title={section.title}
           editing={editing}
           auditCount={auditCount}
@@ -735,7 +759,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
         />
       )}
 
-      {aiPanel && (
+      {aiPanel && !checkingFacts && (
         <AiInstructionPanel
           mode={aiPanel}
           title={section.title}
@@ -778,24 +802,15 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
         />
       )}
 
-      {(panelOpen || pendingMode === 'inline') && (
-        <GuidancePanel section={section} brief={brief} hideCancel={pendingMode === 'inline'} />
-      )}
-
-      {pendingMode === 'button' && (
-        <SectionPending sample onResearch={() => brief.openRegen(section.id)} />
-      )}
-
-      {section.status === 'researching' && (
-        <SectionResearching section={section} onSourceClick={onSourceClick} />
-      )}
+      <SectionResearchControls section={section} brief={brief} panelOpen={panelOpen}
+        busy={anyResearching} locked={locked} onSourceClick={onSourceClick} />
 
       {isDone && (
         <SectionDoneBody
           section={section}
           brief={brief}
-          editing={editing}
-          readOnly={readOnly}
+          editing={editing && !checkingFacts}
+          readOnly={locked}
           versionEntry={changes.versionEntry}
           onCloseVersion={changes.closeVersion}
           reviewOpen={changes.reviewOpen}
@@ -808,65 +823,33 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
           activeThreadId={activeThreadId}
           factMarks={factMarks}
           factNote={factNote}
-          onFactPointerOver={onFactPointerOver}
-          onFactPointerLeave={onFactPointerLeave}
+          onSelectClaim={onSelectClaim}
         />
       )}
     </BriefSectionFrame>
   );
 };
 
-// "Export to Word": one button. The document mirrors the on-screen
-// references, so its layout follows the "Group by document" toggles.
-const ExportButton: React.FC<{
-  disabled: boolean;
-  busy: boolean;
-  onExportWord: () => void;
-}> = ({ disabled, busy, onExportWord }) => (
-  <button
-    className="brief-export-word"
-    onClick={onExportWord}
-    disabled={disabled || busy}
-    title="Export this brief to Word, with citations linked to the source documents"
-  >
-    {busy ? 'Exporting…' : <><IconDownload /> Export to Word</>}
-  </button>
-);
+function FactCheckLegend({ factCheck }: { factCheck?: UseBriefFactCheckReturn }) {
+  return <>{factCheck?.active && <div className="brief-fact-legend" role="group" aria-label="Fact check results">
+          <strong>Showing fact check results</strong>
+          {factCheck.legend.filter(item => item.count > 0).map(item => <span key={item.verdict} className="brief-fact-legend-item">
+            <span className={`brief-fact-swatch brief-fact-mark-${item.verdict}`} />{item.label} {item.count}
+          </span>)}
+          <button type="button" className="brief-fact-hide" onClick={factCheck.toggle}>Hide results</button>
+        </div>}
+        {factCheck?.notice && <p role="status">{factCheck.notice}</p>}</>;
+}
 
-// "Fact Checker": shown only while a completed citation check still covers
-// part of the brief as it is now. Pressed, it highlights every passage the
-// check judged in the colour of its verdict; the tooltip says which version
-// was checked.
-const factCheckTitle = (factCheck: UseBriefFactCheckReturn): string => {
-  const what =
-    "Highlight every cited passage in the colour of the citation check's verdict; " +
-    "hover one for the verdict, the judge's reason and the evidence.";
-  return factCheck.note ? `${what} ${factCheck.note}` : what;
-};
-
-// The colours explained, with how many passages carry each verdict; shown
-// under the header while the highlights are on.
-const FactCheckLegend: React.FC<{ factCheck: UseBriefFactCheckReturn }> = ({ factCheck }) => (
-  <div className="brief-fact-legend" role="list" aria-label="Fact Checker legend">
-    {factCheck.legend.map((item) => (
-      <span key={item.verdict} className="brief-fact-legend-item" role="listitem">
-        <span className={`brief-fact-swatch brief-fact-mark-${item.verdict}`} aria-hidden="true" />
-        {item.label} <b>{item.count}</b>
-      </span>
-    ))}
-    <span className="brief-fact-legend-hint">Hover a highlight for the verdict and its evidence.</span>
-  </div>
-);
-
-const FactCheckButton: React.FC<{ factCheck: UseBriefFactCheckReturn }> = ({ factCheck }) => (
-  <button
-    className="brief-export-word brief-fact-check"
-    onClick={factCheck.toggle}
-    aria-pressed={factCheck.active}
-    title={factCheckTitle(factCheck)}
-  >
-    <IconFactCheck /> Fact Checker
-  </button>
+const FactCheckButton = ({ factCheck }: { factCheck: UseBriefFactCheckReturn }) => (
+  <BriefActionMenu label="Fact Checker" buttonText="Fact Checker" icon={IconFactCheck}
+    buttonClass="brief-export-word brief-fact-check" actions={[
+      { label: 'Run Fact Checker', icon: IconFactCheck, onSelect: factCheck.start,
+        disabled: !!factCheck.disabledReason || !!factCheck.run || factCheck.busy,
+        title: factCheck.disabledReason || undefined },
+      { label: factCheck.active ? 'Hide results' : 'Show Fact Checks', icon: IconFactCheck,
+        onSelect: factCheck.toggle, disabled: !factCheck.available, title: factCheck.note },
+    ]} />
 );
 
 // The document-level action row: regenerate/update all, share, save-as-template
@@ -881,6 +864,7 @@ const HeaderActions: React.FC<{
   onExportWord?: () => void;
   exportBusy?: boolean;
   factCheck?: UseBriefFactCheckReturn;
+  onHistory: () => void;
 }> = ({
   brief,
   readOnly,
@@ -891,59 +875,36 @@ const HeaderActions: React.FC<{
   onExportWord,
   exportBusy,
   factCheck,
+  onHistory,
 }) => {
   const { sections } = brief;
   const hasSections = sections.length > 0;
   const aiActions = [{
-    label: 'Regenerate All',
+    label: 'AI Regenerate All Sections',
     icon: IconRefresh,
     onSelect: onRegenerateAll || (() => void brief.startResearch()),
     title: 'Re-research every section from scratch',
   }];
   if (sections.some((section) => section.status === 'done')) {
     aiActions.push({
-      label: 'Get Updates for All Sections',
+      label: 'AI Get Updates for All Sections',
       icon: IconClock,
       onSelect: brief.updateAll,
       title: 'Fold sources published since each section was last run into every researched section',
     });
   }
+  const moreActions: BriefAction[] = [];
+  if (!readOnly && onOpenShare) moreActions.push({ label: 'Share', icon: IconShare, onSelect: onOpenShare });
+  if (!readOnly && onSaveTemplate && hasSections) moreActions.push({ label: 'Save as Template', icon: IconCopy, onSelect: onSaveTemplate, align: 'end' });
+  if (onExportWord) moreActions.push({ label: exportBusy ? 'Exporting…' : 'Export to Word', icon: IconDownload, onSelect: onExportWord, align: 'end', disabled: !hasSections || exportBusy });
+  if (brief.remote && hasSections) moreActions.push({ label: 'Document History' + (brief.versionCount ? ' (' + brief.versionCount + ')' : ''), icon: IconClock, onSelect: onHistory, align: 'end' });
   return (
-    <div className="brief-doc-header-actions">
+    <div className="brief-doc-header-actions" aria-label="Whole document actions">
       {!readOnly && hasSections && (
-        <BriefAskAi
-          label="Ask AI for the whole brief"
-          buttonClass="brief-regen-all"
-          actions={aiActions}
-          disabled={!canEditStructure}
-        />
+        <DocumentAiActions actions={aiActions} disabled={!canEditStructure} />
       )}
-      {!readOnly && onOpenShare && (
-        <button
-          className="brief-regen-all"
-          onClick={onOpenShare}
-          title="Share this brief (viewer-only) with people or groups"
-        >
-          <IconShare /> Share
-        </button>
-      )}
-      {!readOnly && onSaveTemplate && hasSections && (
-        <button
-          className="brief-regen-all"
-          onClick={onSaveTemplate}
-          title="Save this brief's headings as a reusable template"
-        >
-          <IconCopy /> Save as Template
-        </button>
-      )}
-      {onExportWord && (
-        <ExportButton
-          disabled={!hasSections}
-          busy={!!exportBusy}
-          onExportWord={onExportWord}
-        />
-      )}
-      {factCheck?.available && <FactCheckButton factCheck={factCheck} />}
+      {factCheck && <FactCheckButton factCheck={factCheck} />}
+      <BriefDocumentActions actions={moreActions} />
     </div>
   );
 };
@@ -984,38 +945,43 @@ const ResearchStatusBar: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => {
   const current = brief.sections.find((s) => s.status === 'researching');
   if (!current) return null;
   const total = brief.regeneration?.total ?? brief.sections.length;
-  return (
+  return <ProgressBar label={`${current.revising ? 'Revising' : 'Researching'} “${current.title}”`}
+    count={brief.regenerating ? `${brief.updatedCount} of ${total} updated` : `${brief.doneCount}/${total} sections`}
+    percent={brief.totalProgress} stop={brief.stopResearch} stopLabel="Stop all research" />;
+};
+
+function FactCheckProgress({ check }: { check: UseBriefFactCheckReturn }) {
+  if (!check.run) return null;
+  const progress = check.run.progress;
+  const heading = progress?.remaining_sections?.[0]?.heading;
+  return <ProgressBar label={heading ? `Checking “${heading}”` : 'Checking facts…'}
+    count={progress ? `${progress.completed} of ${progress.total} sections checked` : 'Starting…'}
+    percent={progress?.total ? 100 * progress.completed / progress.total : 0}
+    stop={check.stop} stopLabel="Stop fact check" stopping={check.busy || check.run.stopped} />;
+}
+
+const ProgressBar = ({ label, count, percent, stop, stopLabel, stopping }: {
+  label: string; count: string; percent: number; stop: () => void; stopLabel: string; stopping?: boolean;
+}) => (
     <div className="brief-status-bar" role="status">
       <span className="brief-spinner brief-status-bar-spinner" />
       <div className="brief-status-bar-main">
         <div className="brief-status-bar-label">
-          {current.revising ? 'Revising' : 'Researching'} “{current.title}”
-          <span className="brief-status-bar-count">
-            {brief.regenerating
-              ? `${brief.updatedCount} of ${total} updated`
-              : `${brief.doneCount}/${total} sections`}
-          </span>
+          {label}<span className="brief-status-bar-count">{count}</span>
         </div>
         <div className="brief-status-bar-track">
-          <div className="brief-status-bar-fill" style={{ width: `${brief.totalProgress}%` }} />
+          <div className="brief-status-bar-fill" style={{ width: `${percent}%` }} />
         </div>
       </div>
       <button
         className="brief-status-bar-stop"
-        onClick={brief.stopResearch}
-        title="Stop all research"
+        onClick={stop} disabled={stopping}
+        aria-label={stopLabel} title={stopLabel}
       >
-        ■ Stop
+        {stopping ? 'Stopping…' : 'Stop'}
       </button>
     </div>
   );
-};
-
-const autoSizeTitle = (el: HTMLTextAreaElement | null) => {
-  if (!el) return;
-  el.style.height = 'auto';
-  el.style.height = `${el.scrollHeight}px`;
-};
 
 // The selection the reader just made inside a section, or null. The section
 // is resolved from the DOM so nested markup (links, citations) still traces
@@ -1095,9 +1061,7 @@ const ResearchProgress: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => (
     <div className="brief-doc-progress-row">
       <span>Researching…</span>
       <span className="brief-doc-progress-right">
-        {brief.regenerating
-          ? `${brief.updatedCount} of ${brief.regeneration?.total} updated`
-          : `${brief.doneCount}/${brief.sections.length}`}
+        {brief.doneCount}/{brief.sections.length}
         <button className="brief-stop-btn" onClick={brief.stopResearch} title="Stop all research">
           ■ Stop
         </button>
@@ -1178,15 +1142,15 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   const { sections, numbers } = brief;
   const [logOpen, setLogOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
-  const titleRef = useRef<HTMLTextAreaElement>(null);
   const hasOutlineLog = brief.generatingActivity.length > 0;
 
-  useEffect(() => autoSizeTitle(titleRef.current), [brief.briefTitle]);
 
   // Viewer-only: a brief shared with (not owned by) this user renders read-only.
+  const checkingFacts = !!(factCheck?.run || factCheck?.busy);
   const readOnly = !brief.canEdit;
   // Structural edits (reorder/add/remove via the TOC) lock while research runs.
-  const canEditStructure = !readOnly && !brief.researching;
+  const editingLocked = readOnly || checkingFacts;
+  const canEditStructure = !editingLocked && !brief.researching;
 
   // A cited excerpt from the Fact Checker's card, opened the same way.
   const handleEvidenceClick = (source: BriefFactCheckEvidence) => {
@@ -1231,8 +1195,6 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   return (
     <div className="brief-doc" onMouseUp={handleMouseUp}>
       <div className="brief-doc-header">
-        <div className="brief-doc-header-top">
-          <div className="brief-eyebrow">EVIDENCE BRIEF</div>
           <HeaderActions
             brief={brief}
             readOnly={readOnly}
@@ -1243,36 +1205,32 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
             onExportWord={onExportWord}
             exportBusy={exportBusy}
             factCheck={factCheck}
+            onHistory={() => setVersionsOpen(true)}
           />
+        <FactCheckLegend factCheck={factCheck} />
+        <div className="brief-doc-header-top">
+          <div className="brief-eyebrow">EVIDENCE BRIEF</div>
+
         </div>
-        {factCheck?.active && <FactCheckLegend factCheck={factCheck} />}
         <div className="brief-title-row">
-          <textarea
-            ref={titleRef}
+          <AutoGrowTextarea
             className="brief-doc-title-input"
             value={brief.briefTitle}
             onChange={(e) => {
               brief.setBriefTitle(e.target.value);
-              autoSizeTitle(e.target);
             }}
             onBlur={brief.commitEdits}
             rows={1}
             aria-label="Brief title"
-            readOnly={readOnly}
+            readOnly={editingLocked}
           />
-          {brief.remote && sections.length > 0 && (
-            <button
-              className="brief-section-log-link brief-title-log-link"
-              onClick={() => setVersionsOpen(true)}
-              title="Every version of this brief, with what changed in each"
-            >
-              Document History{brief.versionCount ? ` (${brief.versionCount})` : ''}
-            </button>
-          )}
+
         </div>
+
         {versionsOpen && (
           <BriefVersionsModal
             briefId={brief.getServerBriefId()}
+            readOnly={editingLocked}
             onRestore={brief.restoreBriefVersion}
             onClose={() => setVersionsOpen(false)}
           />
@@ -1286,7 +1244,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           showComments={showComments}
           onToggleComments={onToggleComments}
         />
-        {brief.stage === 'research' && brief.researching && <ResearchProgress brief={brief} />}
+        {brief.stage === 'research' && brief.researching && !brief.regenerating && <ResearchProgress brief={brief} />}
         <RegenerationResult brief={brief} />
         {logOpen && hasOutlineLog && <OutlineLog brief={brief} onClose={() => setLogOpen(false)} />}
       </div>
@@ -1307,10 +1265,10 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           marks={showComments === false ? undefined : commentMarks?.get(s.id)}
           onOpenThread={onOpenThread}
           activeThreadId={activeThreadId}
+          checkingFacts={checkingFacts}
           factMarks={factCheck?.marks.get(s.id)}
           factNote={factCheck?.changedSections.get(s.id)?.note}
-          onFactPointerOver={factCheck?.onPointerOver}
-          onFactPointerLeave={factCheck?.onPointerLeave}
+          onSelectClaim={factCheck?.selectClaim}
         />
       ))}
 
@@ -1319,7 +1277,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           <button
             className="brief-btn brief-btn-primary"
             onClick={onRegenerateAll || (() => void brief.startResearch())}
-            disabled={!sections.length}
+            disabled={!sections.length || checkingFacts}
           >
             Start deep research →
           </button>
@@ -1329,6 +1287,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
       <BriefReferences
         references={brief.references}
         groups={brief.referenceGroups}
+        locked={checkingFacts}
         grouping={brief.referenceGrouping}
         onGroupingChange={brief.setReferenceGrouping}
         onSourceClick={handleSourceClick}
@@ -1336,14 +1295,16 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
         onWordLinkTargetChange={brief.setWordLinkTarget}
       />
 
-      <ResearchStatusBar brief={brief} />
-      <BriefFactCheckTooltip
-        hover={factCheck?.hover ?? null}
-        evidence={factCheck?.evidence ?? null}
-        onEnter={factCheck?.onCardEnter}
-        onLeave={factCheck?.onCardLeave}
+      <div className="brief-progress-stack">
+        <ResearchStatusBar brief={brief} />
+        {factCheck && <FactCheckProgress check={factCheck} />}
+      </div>
+      {factCheck?.selectedClaim && <BriefClaimDialog
+        mark={factCheck.selectedClaim}
+        onClose={factCheck.closeClaim}
+        evidence={factCheck.evidence}
         onOpenSource={onResultClick ? handleEvidenceClick : undefined}
-      />
+      />}
     </div>
   );
 };

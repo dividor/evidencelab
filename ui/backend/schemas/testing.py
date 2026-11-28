@@ -24,9 +24,11 @@ from ui.backend.auth.schemas import (
 from ui.backend.services.brief_experiment_claims import (
     brief_claim_evidence,
     link_assessment_claims,
+    with_claim_verdicts,
 )
 from ui.backend.services.brief_experiment_overlap import link_saved_repetitions
 from ui.backend.services.brief_grading_errors import brief_grading_error
+from ui.backend.services.brief_score_metrics import factual_claim_metrics
 
 # ---------------------------------------------------------------------------
 # Datasets
@@ -161,6 +163,8 @@ class TestResultRead(BaseModel):
     test_case_id: uuid.UUID | None
     status: str
     score: Optional[float] = None
+    factual_claim_mean_score: Optional[float] = None
+    factual_claim_pass_rate: Optional[float] = None
     actual_output: Optional[Dict[str, Any]] = None
     brief_evidence: Optional[Dict[str, Any]] = None
     assertion_results: Optional[List[Dict[str, Any]]] = None
@@ -184,6 +188,11 @@ class TestResultRead(BaseModel):
             and self.actual_output.get("capability") == "brief"
             and self.assertion_results
         ):
+            metrics = factual_claim_metrics(
+                [{"assertion_results": self.assertion_results}]
+            )
+            self.factual_claim_mean_score = metrics["factual_claim_mean_score"]
+            self.factual_claim_pass_rate = metrics["factual_claim_pass_rate"]
             if (
                 self.status == "error"
                 and self.error_message == "An expectation could not be graded."
@@ -284,6 +293,7 @@ class BriefCitationCheckRead(BaseModel):
     # (None when no version was recorded). The routes set ``brief_changed``.
     brief_version_number: Optional[int] = None
     brief_changed: Optional[bool] = None
+    check_kind: str = "citation"
     status: str
     summary_stats: Optional[Dict[str, Any]] = None
     started_at: Optional[datetime] = None
@@ -295,6 +305,11 @@ class BriefCitationCheckPassageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    claim_number: Optional[int] = None
+    section_id: Optional[str] = None
+    outcome: Optional[str] = None
+    score: Optional[float] = None
+    passed: Optional[bool] = None
     passage_id: int
     brief_section: str
     passage: str
@@ -316,7 +331,23 @@ class BriefCitationCheckPassageRead(BaseModel):
 
 
 class BriefCitationCheckDetail(BriefCitationCheckRead):
+    section_results: Optional[List[Dict[str, Any]]] = None
     passages: List[BriefCitationCheckPassageRead] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def attach_claim_verdicts(self):
+        if self.section_results:
+            self.section_results = [
+                {
+                    **section,
+                    "assertion_results": [
+                        with_claim_verdicts(a, section.get("brief_evidence"))
+                        for a in section["assertion_results"]
+                    ],
+                }
+                for section in self.section_results
+            ]
+        return self
 
 
 class BriefFactCheckMark(BaseModel):
@@ -326,6 +357,9 @@ class BriefFactCheckMark(BaseModel):
     the rendered section."""
 
     passage_id: int
+    claim_id: Optional[uuid.UUID] = None
+    claim_text: Optional[str] = None
+    grade: Optional[Dict[str, Any]] = None
     section_id: Optional[str] = None
     section_title: str
     passage: str
@@ -391,14 +425,22 @@ class BriefFactCheckSection(BaseModel):
     note: str
 
 
-class BriefFactCheckRead(BaseModel):
-    """What the Fact Checker button needs: the completed check that still
-    covers at least one section of the brief (``None`` when there is none,
-    so the button stays hidden), the version it judged and the brief's
-    current version, a note on how they relate, the sections the check no
-    longer covers, the legend of verdict colours with their counts, and the
-    marks (every judged passage of a covered section)."""
+class BriefCheckStart(BaseModel):
+    model_combo: Optional[str] = Field(default=None, max_length=255)
 
+
+class BriefCheckRun(BaseModel):
+    id: uuid.UUID
+    status: str
+    stopped: bool
+    progress: Optional[Dict[str, Any]] = None
+
+
+class BriefFactCheckRead(BaseModel):
+    """Available check actions, active progress and completed results for the open brief."""
+
+    start_disabled_reason: Optional[str] = None
+    active_run: Optional[BriefCheckRun] = None
     check: Optional[BriefCitationCheckRead] = None
     brief_version: Optional[int] = None
     current_version: Optional[int] = None

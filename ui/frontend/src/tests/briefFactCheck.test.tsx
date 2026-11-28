@@ -1,5 +1,8 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+
+import { BriefTab } from '../components/brief/BriefTab';
+import type { BriefFactCheckEvidenceRead, BriefFactCheckRead } from '../types/testing';
 
 // USER_MODULE on + an authenticated user => Brief Central, server briefs.
 jest.mock('../config', () => ({
@@ -13,12 +16,21 @@ jest.mock('../components/brief/briefCitationsApi', () =>
 );
 jest.mock('../hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
 
+const CREATED_AT = '2026-11-01T00:00:00Z';
+const DOC_ONE_LABEL = '[1] Doc One · p. 3';
+const OPEN_BRIEF = 'Open this brief';
+const MORE_ACTIONS = 'More actions';
+const FACT_MARK_SELECTOR = '.brief-fact-mark';
+const MISSING_PERIOD = 'The comparison period is missing.';
+const FACT_LEGEND = 'Fact check results';
+
 const mockGet = jest.fn();
+const mockPost = jest.fn();
 jest.mock('axios', () => ({
   __esModule: true,
   default: {
     get: (...args: unknown[]) => mockGet(...args),
-    post: jest.fn().mockResolvedValue({ data: {} }),
+    post: (...args: unknown[]) => mockPost(...args),
     put: jest.fn().mockResolvedValue({ data: {} }),
     delete: jest.fn().mockResolvedValue({ data: {} }),
     isAxiosError: () => false,
@@ -30,9 +42,6 @@ jest.mock('../utils/briefStream', () => ({
   researchBriefSection: jest.fn(),
   runDeepResearch: jest.fn(),
 }));
-
-import { BriefTab } from '../components/brief/BriefTab';
-import type { BriefFactCheckEvidenceRead, BriefFactCheckRead } from '../types/testing';
 
 const TITLE = 'School feeding';
 const PASSAGE = 'School meals raised attendance.';
@@ -48,13 +57,13 @@ const source = { index: 1, chunkId: 'c1', docId: 'd1', title: 'Doc One', text: '
 const listItem = {
   id: 'b1', title: TITLE, query: 'nutrition', data_source: 'wfp', voice_profile_id: null,
   section_count: 1, source_count: 1, owner_name: null, share_count: 0,
-  created_at: '2026-11-01T00:00:00Z', updated_at: '2026-11-01T00:00:00Z',
+  created_at: CREATED_AT, updated_at: CREATED_AT,
 };
 
 const remoteBrief = {
   id: 'b1', user_id: 'u1', title: TITLE, query: 'nutrition', data_source: 'wfp', voice_profile_id: null,
   owner_name: null, can_edit: true, shared_with: [],
-  created_at: '2026-11-01T00:00:00Z', updated_at: '2026-11-01T00:00:00Z',
+  created_at: CREATED_AT, updated_at: CREATED_AT,
   content: {
     id: 'b1', title: TITLE, query: 'nutrition', date: 1, sectionCount: 1, sourceCount: 1,
     citationsVersion: 2, referenceGrouping: 'passage', references: [], referenceGroups: [],
@@ -110,7 +119,7 @@ const evidence: BriefFactCheckEvidenceRead = {
   verdict_label: 'Unsupported',
   evidence: [
     {
-      citation: 1, label: '[1] Doc One, p. 3', title: 'Doc One', page: 3, section: 'Findings > Schools',
+      citation: 1, label: DOC_ONE_LABEL, title: 'Doc One', page: 3, section: 'Findings > Schools',
       doc_id: 'd1', chunk_id: 'c1', pdf_url: null, quoted: true,
       segments: [
         { text: 'In the sample schools ', highlighted: false },
@@ -133,16 +142,49 @@ const answer = (factCheck: BriefFactCheckRead) => (url: string) => {
 
 const openBrief = async () => {
   render(<BriefTab dataSource="wfp" />);
-  fireEvent.click(await screen.findByTitle('Open this brief'));
+  fireEvent.click(await screen.findByTitle(OPEN_BRIEF));
   await waitFor(() => expect(mockGet).toHaveBeenCalledWith(BRIEF_URL));
-  await screen.findByText('Export to Word');
+  await screen.findByRole('button', { name: MORE_ACTIONS, exact: true });
 };
 
 describe('Fact Checker on an open brief', () => {
+  beforeAll(() => {
+    Object.defineProperties(HTMLDialogElement.prototype, {
+      showModal: { configurable: true, value(this: HTMLDialogElement) { this.open = true; } },
+      close: { configurable: true, value(this: HTMLDialogElement) { this.open = false; } },
+    });
+  });
   beforeEach(() => {
     jest.clearAllMocks();
     localStorage.clear();
     window.history.replaceState(null, '', '/brief');
+  });
+
+  test('comments start hidden and remember an explicit choice to show them', async () => {
+    mockGet.mockImplementation(answer(noCheck));
+    await openBrief();
+    const toggle = screen.getByRole('checkbox', { name: 'Show comments' });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    expect(toggle).toBeChecked();
+    expect(localStorage.getItem('evidencelab_brief_show_comments')).toBe('true');
+  });
+
+  test('the source title opens the source panel and closes the claim dialog', async () => {
+    mockGet.mockImplementation(answer(withCheck));
+    const onResultClick = jest.fn();
+    render(<BriefTab dataSource="wfp" onResultClick={onResultClick} />);
+    fireEvent.click(await screen.findByTitle(OPEN_BRIEF));
+    fireEvent.click(await screen.findByRole('button', { name: FACT_CHECKER }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Show Fact Checks' }));
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: `Unsupported: ${WHY}` }));
+    });
+    const dialog = within(await screen.findByRole('dialog', { name: 'Citation check verdict' }));
+    expect(dialog.queryByRole('button', { name: 'See Text' })).toBeNull();
+    fireEvent.click(await dialog.findByRole('link', { name: DOC_ONE_LABEL }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(onResultClick).toHaveBeenCalledWith(expect.objectContaining({ doc_id: 'd1', chunk_id: 'c1', page_num: 3 }));
   });
 
   test('opening a saved brief shows the loading animation until its sections arrive', async () => {
@@ -150,19 +192,19 @@ describe('Fact Checker on an open brief', () => {
     const pending = new Promise((resolve) => { finish = resolve; });
     mockGet.mockImplementation((url) => url === BRIEF_URL ? pending : answer(noCheck)(url));
     render(<BriefTab dataSource="wfp" />);
-    fireEvent.click(await screen.findByTitle('Open this brief'));
+    fireEvent.click(await screen.findByTitle(OPEN_BRIEF));
     expect(screen.getByRole('status', { name: 'Loading' })).toHaveClass('search-loading-wandering');
-    expect(screen.queryByTitle('Open this brief')).toBeNull();
+    expect(screen.queryByTitle(OPEN_BRIEF)).toBeNull();
     await act(async () => finish({ data: remoteBrief }));
-    expect(await screen.findByText('Export to Word')).toBeVisible();
+    expect(await screen.findByRole('button', { name: MORE_ACTIONS, exact: true })).toBeVisible();
     expect(screen.queryByRole('status', { name: 'Loading' })).toBeNull();
   });
 
   test('an open Brief preserves the Admin URL and restores its link when the user returns', async () => {
     mockGet.mockImplementation(answer(noCheck));
     const { rerender } = render(<BriefTab dataSource="wfp" />);
-    fireEvent.click(await screen.findByTitle('Open this brief'));
-    await screen.findByText('Export to Word');
+    fireEvent.click(await screen.findByTitle(OPEN_BRIEF));
+    await screen.findByRole('button', { name: MORE_ACTIONS, exact: true });
     const admin = '/admin?admin_page=testing&admin_testing=experiments';
     window.history.pushState(null, '', admin);
     rerender(<BriefTab dataSource="wfp" isActive={false} />);
@@ -173,25 +215,56 @@ describe('Fact Checker on an open brief', () => {
     expect(window.location.pathname + window.location.search).toBe('/brief/b1?tab=brief');
   });
 
-  test('a completed check for the current brief shows the button; pressing it highlights every judged passage in its verdict\'s colour, with the verdict, reason and evidence on hover', async () => {
+  test('a partially supported sentence stays amber and opens the gap and quoted evidence', async () => {
+    const partial = { ...withCheck.marks[0], verdict: 'partially_supported' as const,
+      claim_text: 'School meals raised attendance [1].',
+      grade: { claim: 1, score: 0.5, passed: false, verdict: 'partially_supported' as const, reason: WHY, unmet: [MISSING_PERIOD] },
+      verdict_label: 'Partially supported', problems: [MISSING_PERIOD] };
+    mockGet.mockImplementation(answer({ ...withCheck, marks: [partial] }));
+    await openBrief();
+    fireEvent.click(await screen.findByRole('button', { name: FACT_CHECKER }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Show Fact Checks' }));
+    const mark = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>('.brief-fact-mark.brief-fact-mark-partially_supported');
+      if (!found) throw Error('Waiting for the sentence highlight');
+      return found;
+    });
+    fireEvent.mouseOver(mark);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Claim 1' }));
+    const card = await screen.findByRole('dialog', { name: 'Claim 1' });
+    expect(card).toHaveTextContent('Score 0.50');
+    expect(card).not.toHaveTextContent(/Fail|Required/);
+    expect(card).toHaveTextContent('School meals raised attendance [1].');
+    expect(screen.getByRole('heading', { name: 'Judge assessment' }).nextElementSibling).toHaveTextContent(WHY);
+    expect(card).toHaveTextContent('What the evidence does not establish');
+    expect(card).toHaveTextContent(MISSING_PERIOD);
+    expect(await screen.findByRole('link', { name: DOC_ONE_LABEL })).toHaveAttribute('href', '#');
+    expect(card.querySelector('blockquote q')).toHaveTextContent(partial.claim_text);
+    expect(card.querySelector('.brief-fact-quote')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'See more' })).toBeNull();
+    expect(card).toBeVisible();
+    fireEvent.click(card, { clientX: -2, clientY: -2 });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  test('a completed check for the current brief shows the button; pressing it highlights every judged passage in its verdict\'s colour, with the verdict, reason and evidence on click', async () => {
     mockGet.mockImplementation(answer(withCheck));
     await openBrief();
     const button = await screen.findByRole('button', { name: FACT_CHECKER });
     expect(mockGet).toHaveBeenCalledWith(FACT_CHECK_URL);
-    expect(button).toHaveAttribute('aria-pressed', 'false');
+    expect(button).toHaveAttribute('aria-expanded', 'false');
     // The tooltip says which version was checked and how the brief moved on.
-    expect(button).toHaveAttribute('title', expect.stringContaining(NOTE));
-    expect(document.querySelector('.brief-fact-mark')).toBeNull();
+
+    expect(document.querySelector(FACT_MARK_SELECTOR)).toBeNull();
     expect(screen.queryByText(SECTION_NOTE)).toBeNull();
-    expect(screen.queryByRole('list', { name: 'Fact Checker legend' })).toBeNull();
+    expect(screen.queryByRole('group', { name: FACT_LEGEND })).toBeNull();
 
     fireEvent.click(button);
-    expect(button).toHaveAttribute('aria-pressed', 'true');
-    // The legend explains the colours, with the API's counts.
-    const legend = screen.getByRole('list', { name: 'Fact Checker legend' });
-    expect(legend).toHaveTextContent('Supported 1');
-    expect(legend).toHaveTextContent('Unsupported 1');
-    expect(legend).toHaveTextContent('Cannot assess 0');
+    const display = screen.getByRole('button', { name: 'Show Fact Checks' });
+    expect(display).toHaveAttribute('title', expect.stringContaining(NOTE));
+    fireEvent.click(display);
+    expect(screen.getByRole('group', { name: FACT_LEGEND })).toHaveTextContent('Showing fact check results');
     // The section changed since the check carries the note instead of marks.
     expect(await screen.findByText(SECTION_NOTE)).toBeInTheDocument();
     await waitFor(() => expect(document.querySelector('.brief-fact-mark.brief-fact-mark-unsupported')).not.toBeNull());
@@ -205,14 +278,8 @@ describe('Fact Checker on an open brief', () => {
     expect(document.querySelector('[data-fact-id="2"]')).toHaveClass('brief-fact-mark-supported');
     expect(document.querySelectorAll('.brief-fact-mark:not([data-fact-id="1"]):not([data-fact-id="2"])').length).toBe(0);
 
-    // Source enrichment re-renders the sections meanwhile and the painter
-    // puts the marks back, so hover the mark as it is in the DOM right now
-    // (the legend's swatch carries the verdict class too, hence the prose
-    // mark class as well).
-    const card = await waitFor(() => {
-      fireEvent.mouseOver(document.querySelector('.brief-fact-mark.brief-fact-mark-unsupported') as HTMLElement);
-      return screen.getByRole('note', { name: 'Citation check verdict' });
-    });
+    fireEvent.click(document.querySelector('.brief-fact-mark.brief-fact-mark-unsupported') as HTMLElement);
+    const card = await screen.findByRole('dialog', { name: 'Citation check verdict' });
     expect(card).toHaveTextContent('Unsupported');
     expect(card).toHaveTextContent('90% confidence');
     expect(card).toHaveTextContent('Judged against [1]');
@@ -220,30 +287,56 @@ describe('Fact Checker on an open brief', () => {
     // The evidence is fetched for this passage once its card opens: the cited
     // excerpt, with what the judge quoted highlighted.
     await waitFor(() => expect(mockGet).toHaveBeenCalledWith(EVIDENCE_URL));
-    await waitFor(() => expect(card).toHaveTextContent('[1] Doc One, p. 3'));
-    expect(card).toHaveTextContent('Evidence in source');
+    await waitFor(() => expect(card).toHaveTextContent(DOC_ONE_LABEL));
+    expect(card).toHaveTextContent('Sources');
     expect(card).toHaveTextContent('In the sample schools attendance did not change over the two years.');
     expect(card.querySelector('.brief-fact-quote')).toHaveTextContent(QUOTED);
 
-    // The card stays while the pointer is on it, and goes once it leaves.
-    fireEvent.mouseLeave(document.querySelector('.brief-doc-content') as HTMLElement);
-    fireEvent.mouseEnter(card);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(screen.getByRole('note', { name: 'Citation check verdict' })).toBe(card);
     fireEvent.mouseLeave(card);
-    await waitFor(() => expect(screen.queryByRole('note', { name: 'Citation check verdict' })).toBeNull());
+    expect(card).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Close claim' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
 
-    // Pressing again hides the highlights, the legend and the note.
-    fireEvent.click(button);
-    await waitFor(() => expect(document.querySelector('.brief-fact-mark')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Hide results' }));
+    await waitFor(() => expect(document.querySelector(FACT_MARK_SELECTOR)).toBeNull());
     expect(screen.queryByText(SECTION_NOTE)).toBeNull();
-    expect(screen.queryByRole('list', { name: 'Fact Checker legend' })).toBeNull();
+    expect(screen.queryByRole('group', { name: FACT_LEGEND })).toBeNull();
   });
 
-  test('without a check that matches the brief as it is now, there is no button', async () => {
+  test('starting a check uses the selected models, shows progress and displays the completed results', async () => {
+    const pending = { id: 'chk1', status: 'pending', stopped: false };
+    let finish!: (value: unknown) => void;
+    let checked = false;
+    mockPost.mockResolvedValue({ data: pending });
+    mockGet.mockImplementation((url: string) => {
+      if (url.endsWith('/runs/chk1')) return new Promise(resolve => { finish = resolve; });
+      return answer(checked ? { ...withCheck, start_disabled_reason: 'This version has already been checked.' } : noCheck)(url);
+    });
+    render(<BriefTab dataSource="wfp" modelCombo="Selected models" />);
+    fireEvent.click(await screen.findByTitle(OPEN_BRIEF));
+    fireEvent.click(await screen.findByRole('button', { name: FACT_CHECKER }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Run Fact Checker' }));
+    expect(mockPost).toHaveBeenCalledWith(FACT_CHECK_URL + '/runs', { model_combo: 'Selected models' });
+    expect(await screen.findByRole('button', { name: 'Stop fact check' })).toHaveTextContent(/^Stop$/);
+    expect(screen.getByRole('button', { name: 'Ask AI for the whole brief' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Ask AI for Findings' })).toBeDisabled();
+    screen.getAllByRole('button', { name: 'Edit', exact: true }).forEach(button => expect(button).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Brief Central' })).toBeEnabled();
+    checked = true;
+    await act(async () => finish({ data: { ...pending, status: 'completed' } }));
+    expect(await screen.findByText('Showing fact check results')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Hide results' }));
+    fireEvent.click(screen.getByRole('button', { name: FACT_CHECKER }));
+    expect(screen.getByRole('button', { name: 'Run Fact Checker' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Show Fact Checks' })).toBeEnabled();
+  });
+
+  test('a written brief without a completed check can start its first check', async () => {
     mockGet.mockImplementation(answer(noCheck));
     await openBrief();
     await waitFor(() => expect(mockGet).toHaveBeenCalledWith(FACT_CHECK_URL));
-    expect(screen.queryByRole('button', { name: FACT_CHECKER })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: FACT_CHECKER }));
+    expect(screen.getByRole('button', { name: 'Show Fact Checks' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Run Fact Checker' })).toBeEnabled();
   });
 });

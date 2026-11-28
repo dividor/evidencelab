@@ -88,6 +88,7 @@ interface AssistantStreamOptions {
   query: string;
   dataSource?: string;
   threadId?: string | null;
+  modelCombo?: string | null;
   assistantModelConfig?: SummaryModelConfig | null;
   rerankerModel?: string | null;
   searchSettings?: AssistantSearchSettings | null;
@@ -317,6 +318,7 @@ const buildRequestBody = ({
   query,
   dataSource,
   threadId,
+  modelCombo,
   assistantModelConfig,
   rerankerModel,
   searchSettings,
@@ -340,6 +342,7 @@ const buildRequestBody = ({
     query,
     thread_id: threadId || undefined,
     data_source: dataSource || undefined,
+    model_combo: modelCombo || undefined,
     assistant_model_config: assistantModelConfig || undefined,
     reranker_model: rerankerModel || undefined,
     search_settings: searchSettingsBody,

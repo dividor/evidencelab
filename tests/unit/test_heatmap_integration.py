@@ -85,12 +85,15 @@ def create_fake_chunk(chunk_id, doc_id, text, score=0.8):
 
 
 @pytest.fixture
-def mock_pg():
+def mock_pg(monkeypatch):
     """Create a mock Postgres client."""
     mock = MagicMock()
     # By default, return all document IDs as indexed
     mock.fetch_indexed_doc_ids.return_value = ["1", "2", "3"]
     mock.fetch_docs.return_value = {}
+    monkeypatch.setattr(
+        "ui.backend.routes.search.get_pg_for_source", lambda source: mock
+    )
     return mock
 
 

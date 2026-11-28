@@ -63,9 +63,11 @@ from ui.backend.schemas.testing import (
     TestExperimentRead,
     TestExperimentUpdate,
 )
+from ui.backend.services import brief_check_runs
 from ui.backend.services import brief_version_store as versions
 from ui.backend.services.ai_daily_limit import require_ai_allowance
 from ui.backend.services.brief_citation_model import BriefCitationError
+from ui.backend.services.brief_claim_records import check_rows, uses_claim_records
 from ui.backend.services.brief_fact_check import brief_changed
 from ui.backend.services.brief_outline_numbers import number_saved_sections
 from ui.backend.services.brief_sharing import user_group_ids
@@ -78,11 +80,8 @@ from ui.backend.services.brief_template_evaluation import (
 from ui.backend.services.citation_check_runner import (
     build_review_workbook,
     count_cited_passages,
-    resolve_judge_model,
-    run_check,
 )
 from ui.backend.services.citation_fidelity import researched_sections
-from ui.backend.services.llm_choice import JUDGE, user_group_choice
 from ui.backend.services.test_runner import run_experiment
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 
@@ -681,12 +680,11 @@ async def list_checkable_briefs(
 
 
 def _check_read(
-    check: BriefCitationCheck, current_version: Optional[int], detail: bool = False
+    check: BriefCitationCheck, current_version: Optional[int]
 ) -> BriefCitationCheckRead:
     """A check as the API returns it, saying whether the brief has moved on
     to a newer version than the one the check judged."""
-    model = BriefCitationCheckDetail if detail else BriefCitationCheckRead
-    return model.model_validate(check).model_copy(
+    return BriefCitationCheckRead.model_validate(check).model_copy(
         update={"brief_changed": brief_changed(check, current_version)}
     )
 
@@ -724,44 +722,12 @@ async def create_brief_check(
 ) -> BriefCitationCheck:
     """Start a citation check of a brief in the background; the UI polls."""
     brief = await _accessible_brief(session, body.brief_id, admin)
-    combo = (body.model_combo or "").strip() or None
-    if combo is not None and combo not in _model_combo_names():
-        raise HTTPException(status_code=400, detail="Invalid model_combo")
-    # The judge the admin's groups choose (Group Settings > LLMs), else config.json's.
-    judge_model = await user_group_choice(session, admin, JUDGE) or resolve_judge_model(
-        combo
-    )
-    if not judge_model:
-        raise HTTPException(status_code=503, detail="No judge model is configured")
-    # The check judges the brief's current version and pins it: a brief with
-    # no version yet gets its baseline version in the same transaction.
     try:
-        version = await versions.ensure_version(session, brief)
+        return await brief_check_runs.start(
+            session, brief, admin, body.model_combo, background_tasks
+        )
     except BriefCitationError as exc:
         raise citation_http_error(exc)
-    check = BriefCitationCheck(
-        brief_id=brief.id,
-        brief_title=brief.title,
-        data_source=brief.data_source,
-        created_by_user_id=admin.id,
-        judge_model=judge_model,
-        model_combo=combo,
-        brief_version_id=version.id,
-        brief_version_number=version.number,
-        status=EXPERIMENT_PENDING,
-        summary_stats=None,
-    )
-    session.add(check)
-    await session.commit()
-    await session.refresh(check)
-    background_tasks.add_task(run_check, check.id)
-    return check
-
-
-def _model_combo_names() -> List[str]:
-    from pipeline.db.config import UI_MODEL_COMBOS
-
-    return list(UI_MODEL_COMBOS)
 
 
 @router.get(
@@ -798,9 +764,39 @@ async def get_brief_check(
     session: AsyncSession = Depends(get_async_session),
 ) -> BriefCitationCheckRead:
     check = await _get_check(session, check_id, admin)
-    await session.refresh(check, attribute_names=["passages"])
+    # Read progress and completed sections from the same committed snapshot.
+    await session.refresh(
+        check,
+        attribute_names=[
+            "passages",
+            "section_results",
+            "summary_stats",
+            "status",
+            "started_at",
+            "finished_at",
+        ],
+    )
     current = await _current_version(session, check.brief_id)
-    return _check_read(check, current, detail=True)
+    return await run_in_threadpool(_detail_read, check, current)
+
+
+def _detail_read(check, current):
+    detail = BriefCitationCheckDetail.model_validate(check)
+    from ui.backend.services.brief_score_metrics import factual_claim_metrics
+    from ui.backend.services.saved_brief_evaluation import section_metrics
+
+    detail.brief_changed = brief_changed(check, current)
+    if detail.section_results:
+        detail.section_results = [
+            {**s, **section_metrics(s), **factual_claim_metrics([s])}
+            for s in detail.section_results
+        ]
+    if uses_claim_records(check):
+        detail.passages = [
+            BriefCitationCheckPassageRead.model_validate(row)
+            for row in check_rows(check)
+        ]
+    return detail
 
 
 @router.post(
@@ -817,13 +813,7 @@ async def cancel_brief_check(
 ) -> BriefCitationCheck:
     """Mark an in-flight check failed; the runner stops at its next passage."""
     check = await _get_check(session, check_id, admin)
-    if check.status in (EXPERIMENT_RUNNING, EXPERIMENT_PENDING):
-        check.status = EXPERIMENT_FAILED
-        check.finished_at = func.now()
-        check.summary_stats = {"error": "Cancelled by user"}
-        await session.commit()
-        await session.refresh(check)
-    return check
+    return await brief_check_runs.stop(session, check)
 
 
 @router.delete("/brief-checks/{check_id}", status_code=204, tags=["testing"])
@@ -851,14 +841,14 @@ async def export_brief_check(
     """The review workbook (Flagged / All judgements / Summary), as the
     notebook writes it."""
     check = await _get_check(session, check_id, admin)
-    await session.refresh(check, attribute_names=["passages"])
-    passages = [
-        BriefCitationCheckPassageRead.model_validate(p).model_dump()
-        for p in check.passages
-    ]
+    await session.refresh(check, attribute_names=["passages", "section_results"])
+    passages = await run_in_threadpool(check_rows, check)
     stats = check.summary_stats or {}
     payload = await run_in_threadpool(
-        build_review_workbook, passages, stats.get("by_section") or []
+        build_review_workbook,
+        passages,
+        stats.get("by_section") or [],
+        check.section_results,
     )
     filename = f"citation_check_{check.brief_id}.xlsx"
     return Response(
