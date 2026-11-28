@@ -104,7 +104,7 @@ Draft for revision: {{ draft | tojson }}
 Issues: {{ correction | tojson }}
 {% endif -%}
 {%- elif stage == 'retry_plan' -%}
-The previous reply did not match the required format. Return only JSON that matches the required schema below.
+The previous reply did not match the required format. Call submit_result using the required schema below.
 Required JSON schema: {{ reply_schema | tojson }}
 Correct these validation errors (field path and error type): {{ validation_errors | tojson }}.
 {%- elif stage == 'distinct_search' -%}
@@ -123,6 +123,7 @@ These citation labels or ranges are invalid: {{ invalid | join(', ') }}. Rewrite
 {%- elif stage == 'verify' -%}
 Question: {{ question | tojson }}
 Search focus: {{ search_focus | tojson }}
+Return exactly one check for each sentence ID in {{ sentence_ids | tojson }}. Use these IDs in the checks. Passage citation numbers identify sources.
 Sentences to check: {{ sentences | tojson }}
 
 Cited passages:

@@ -160,9 +160,9 @@ export const LlmChoiceGroupSection: React.FC<LlmChoiceGroupSectionProps> = ({ va
     <div className="group-llm-choices">
       <p className="admin-group-settings-description">
         Choose the model for each AI job for this group&apos;s members. A choice here overrides the
-        model set in config.json, including the model combo a user picks; members can&apos;t change it.
-        &quot;Default from config&quot; uses config.json&apos;s model. A member of several groups gets the
-        choice of the first group by name.
+        model set in config.json, including the model combo a user picks. If several groups
+        choose a model for the same job, the first named group alphabetically wins. The default
+        group supplies a choice when none of the user&apos;s other groups has one.
       </p>
       {loadError && (
         <span role="alert" className="group-llm-choice-alert">

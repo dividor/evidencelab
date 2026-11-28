@@ -8,7 +8,14 @@ from typing import Annotated, Any, Literal, Protocol, TypeVar
 
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.runnables import RunnableConfig
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, TypeAdapter
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+)
 
 from ui.backend.services.agent_passages import (
     passage_for_agent,
@@ -60,7 +67,6 @@ class BriefProseCheck(BaseModel):
     removable_sentences: list[int] = Field(default_factory=list)
 
 
-CITATION_CHECK: TypeAdapter[CitationCheck] = TypeAdapter(CitationCheck)
 BRIEF_PROSE_CHECK: TypeAdapter[BriefProseCheck] = TypeAdapter(BriefProseCheck)
 Passage = dict[str, Any]
 _Check = TypeVar("_Check")
@@ -292,6 +298,7 @@ async def check_answer_citations(
     concurrency = asyncio.Semaphore(MAX_CONCURRENT_REVIEW_REQUESTS)
 
     async def check_group(group: list[dict]) -> tuple[list[str], set[int]]:
+        sentence_ids = [row["id"] for row in group]
         labels = dict.fromkeys(index for row in group for index in row["citations"])
         cited = {index: evidence[index] for index in labels}
         request = template.render(
@@ -299,12 +306,13 @@ async def check_answer_citations(
             question=question,
             search_focus=search_focus,
             sentences=group,
+            sentence_ids=sentence_ids,
             evidence=render_evidence(list(cited.values())),
         )
         async with concurrency:
             try:
                 verdict: CitationCheck = await request_json(
-                    system, request, [], config, CITATION_CHECK
+                    system, request, [], config, _citation_check_schema(sentence_ids)
                 )
             except InvalidAssistantResponse:
                 if not prepared_quotes:
@@ -332,6 +340,19 @@ async def check_answer_citations(
     return CitationReview(
         issues, retain_supported_sentences(answer, sentences, supported)
     )
+
+
+def _citation_check_schema(sentence_ids: list[int]) -> TypeAdapter[CitationCheck]:
+    expected = sorted(sentence_ids)
+
+    def check_ids(verdict: CitationCheck) -> CitationCheck:
+        if sorted(check.id for check in verdict.sentences) != expected:
+            raise ValueError(
+                "Return exactly one check for every requested sentence ID."
+            )
+        return verdict
+
+    return TypeAdapter(Annotated[CitationCheck, AfterValidator(check_ids)])
 
 
 def citation_check_batches(sentences: list[dict]) -> Iterable[list[dict]]:
