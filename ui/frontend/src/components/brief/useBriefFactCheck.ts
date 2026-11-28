@@ -12,15 +12,15 @@
 // first time its card opens.
 
 import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import axios from 'axios';
+import { useBriefCheckRun } from './useBriefCheckRun';
 import type {
   BriefFactCheckEvidence,
   BriefFactCheckLegendItem,
   BriefFactCheckMark,
-  BriefFactCheckRead,
+  BriefCheckRun,
   BriefFactCheckSection,
 } from '../../types/testing';
-import { getBriefFactCheck, getBriefFactCheckEvidence } from './briefFactCheckApi';
+import { getBriefFactCheckEvidence } from './briefFactCheckApi';
 import {
   allPainted,
   clearFactMarks,
@@ -40,6 +40,12 @@ export interface UseBriefFactCheckReturn {
   // The reader switched the highlights on.
   active: boolean;
   toggle: () => void;
+  run: BriefCheckRun | null;
+  busy: boolean;
+  notice: string;
+  disabledReason?: string | null;
+  start: () => void;
+  stop: () => void;
   // The judged passages to paint, keyed by section id; empty while inactive.
   marks: Map<string, BriefFactCheckMark[]>;
   // Sections the check no longer covers (changed since it judged the brief),
@@ -79,47 +85,14 @@ const NO_LEGEND: BriefFactCheckLegendItem[] = [];
 export const useBriefFactCheck = (
   briefId: string | null,
   revision: number,
+  modelCombo?: string | null,
 ): UseBriefFactCheckReturn => {
-  const [result, setResult] = useState<BriefFactCheckRead | null>(null);
-  const [active, setActive] = useState(false);
+  const { result, active, setActive, ...controls } = useBriefCheckRun(briefId, revision, modelCombo);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Evidence by passage id, for the check that applies; dropped with it.
   const [evidence, setEvidence] = useState<Map<string, FactEvidenceState>>(new Map());
 
-  useEffect(() => {
-    if (!briefId) {
-      setResult(null);
-      return;
-    }
-    let cancelled = false;
-    getBriefFactCheck(briefId)
-      .then((read) => {
-        if (!cancelled) setResult(read);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setResult(null);
-        // A brief the server does not know yet (saved under a local id until
-        // its first save completes) has no check; anything else is reported.
-        if (!(axios.isAxiosError(err) && err.response?.status === 404)) {
-          console.error('Could not load the brief fact check', err);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [briefId, revision]);
-
-  // Switching briefs, or the check going stale, drops the highlights.
-  useEffect(() => {
-    setActive(false);
-  }, [briefId]);
-  const available = !!result?.check;
-  useEffect(() => {
-    if (!available) {
-      setActive(false);
-    }
-  }, [available]);
+  const available = Boolean(result?.marks.length);
   // Another check (or none) means other evidence.
   const checkId = result?.check?.id ?? null;
   useEffect(() => {
@@ -163,12 +136,13 @@ export const useBriefFactCheck = (
   }, [briefId, checkId, passageId, evidenceKey, evidence]);
 
   return {
+    ...controls,
     available,
     active,
     toggle: useCallback(() => {
       setSelectedId(null);
       setActive((v) => !v);
-    }, []),
+    }, [setActive]),
     marks,
     changedSections,
     legend: result?.legend || NO_LEGEND,

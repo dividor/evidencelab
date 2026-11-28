@@ -116,7 +116,11 @@ class FakeSession:
         elif "FROM briefs" in text:
             rows = self.others if "!=" in text else self.own
         elif "FROM brief_citation_checks" in text:
-            rows = sorted(self.checks, key=lambda c: c.created_at, reverse=True)
+            checks = self.checks
+            statuses = statement.compile().params.get("status_1")
+            if isinstance(statuses, list):
+                checks = [c for c in checks if c.status in statuses]
+            rows = sorted(checks, key=lambda c: c.created_at, reverse=True)
         elif "FROM brief_versions" in text:
             rows = self._version_rows(text)
         elif "FROM users" in text or "FROM user_group_members" in text:
@@ -152,7 +156,7 @@ class FakeSession:
     async def commit(self):
         self.commits += 1
 
-    async def refresh(self, row, attribute_names=None):
+    async def refresh(self, row, attribute_names=None, with_for_update=False):
         if (
             attribute_names
             and "passages" in attribute_names
@@ -262,7 +266,9 @@ class TestCreateCheck:
     async def test_create_when_combo_unknown_then_400(self, monkeypatch):
         me = _user()
         brief = _brief(me.id)
-        monkeypatch.setattr(routes, "_model_combo_names", lambda: ["Azure Foundry"])
+        monkeypatch.setattr(
+            routes.brief_check_runs, "model_combo_names", lambda: ["Azure Foundry"]
+        )
         body = routes.BriefCitationCheckCreate(brief_id=brief.id, model_combo="Nope")
         with pytest.raises(HTTPException) as exc:
             await routes.create_brief_check(
@@ -278,7 +284,9 @@ class TestCreateCheck:
     async def test_create_when_no_judge_model_then_503(self, monkeypatch):
         me = _user()
         brief = _brief(me.id)
-        monkeypatch.setattr(routes, "resolve_judge_model", lambda combo: None)
+        monkeypatch.setattr(
+            routes.brief_check_runs, "resolve_judge_model", lambda combo: None
+        )
         body = routes.BriefCitationCheckCreate(brief_id=brief.id)
         with pytest.raises(HTTPException) as exc:
             await routes.create_brief_check(
@@ -296,9 +304,13 @@ class TestCreateCheck:
     ):
         me, other = _user(), _user()
         brief = _brief(other.id)
-        monkeypatch.setattr(routes, "_model_combo_names", lambda: ["Azure Foundry"])
         monkeypatch.setattr(
-            routes, "resolve_judge_model", lambda combo: f"judge-for-{combo}"
+            routes.brief_check_runs, "model_combo_names", lambda: ["Azure Foundry"]
+        )
+        monkeypatch.setattr(
+            routes.brief_check_runs,
+            "resolve_judge_model",
+            lambda combo: f"judge-for-{combo}",
         )
         session = FakeSession([], [brief])
         tasks = BackgroundTasks()
@@ -330,7 +342,9 @@ class TestCreateCheck:
     ):
         me = _user()
         brief = _brief(me.id)
-        monkeypatch.setattr(routes, "resolve_judge_model", lambda combo: "judge")
+        monkeypatch.setattr(
+            routes.brief_check_runs, "resolve_judge_model", lambda combo: "judge"
+        )
         session = FakeSession([brief], [], versions=[(brief.id, 1), (brief.id, 2)])
         check = await routes.create_brief_check(
             _request(),
@@ -413,3 +427,75 @@ class TestCheckAccess:
             == f'attachment; filename="citation_check_{brief.id}.xlsx"'
         )
         assert "spreadsheetml" in resp.media_type
+
+
+@pytest.mark.asyncio
+async def test_check_start_joins_an_active_version_before_scheduling_work():
+    owner = _user()
+    brief = _brief(owner.id)
+    run = SimpleNamespace(id=uuid.uuid4(), created_at=NOW, status="running")
+    session = FakeSession([brief], [], checks=[run])
+    tasks = BackgroundTasks()
+    assert (
+        await routes.brief_check_runs.start(
+            session, brief, owner, None, tasks, from_document=True
+        )
+        is run
+    )
+    assert tasks.tasks == [] and session.added == []
+
+
+def test_document_check_states_follow_access_content_and_completed_version():
+    brief = _brief(_user().id)
+    state = {"marks": [], "current_version": 2, "brief_version": None}
+    reason = routes.brief_check_runs.start_disabled_reason
+    assert reason(brief, True, state) is None
+    assert "read-only" in reason(brief, False, state)
+    state.update(marks=[{}], brief_version=2)
+    assert "already been checked" in reason(brief, True, state)
+    state.update(current_version=3)
+    assert reason(brief, True, state) is None
+    brief.content = {"sections": []}
+    assert "Write a section" in reason(brief, True, state)
+
+
+@pytest.mark.asyncio
+async def test_unchanged_document_cannot_start_another_run(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from ui.backend.services import brief_fact_check
+
+    user = _user()
+    brief = _brief(user.id)
+    check = {"marks": [{}], "current_version": 4, "brief_version": 4}
+    monkeypatch.setattr(brief_fact_check, "fact_check", AsyncMock(return_value=check))
+    tasks = BackgroundTasks()
+    with pytest.raises(HTTPException) as exc:
+        await routes.brief_check_runs.start(
+            FakeSession([brief], []), brief, user, None, tasks, from_document=True
+        )
+    assert exc.value.status_code == 409 and not tasks.tasks
+
+
+@pytest.mark.asyncio
+async def test_shared_reader_cannot_start_or_stop_a_document_check():
+    from ui.backend.routes import brief_central
+
+    viewer = _user(superuser=False)
+    brief = _brief(uuid.uuid4())
+    session = FakeSession([], [brief])
+    with pytest.raises(HTTPException) as exc:
+        await brief_central.start_fact_check(
+            brief.id,
+            brief_central.BriefCheckStart(),
+            _request(),
+            BackgroundTasks(),
+            user=viewer,
+            session=session,
+        )
+    assert exc.value.status_code == 404 and not session.added
+    with pytest.raises(HTTPException) as exc:
+        await brief_central.stop_fact_check(
+            brief.id, uuid.uuid4(), _request(), user=viewer, session=session
+        )
+    assert exc.value.status_code == 404 and session.commits == 0

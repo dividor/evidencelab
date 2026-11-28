@@ -48,9 +48,9 @@ export interface UseBriefAnnotationsReturn {
 
 const readShowComments = (): boolean => {
   try {
-    return localStorage.getItem(SHOW_COMMENTS_KEY) !== 'false';
+    return localStorage.getItem(SHOW_COMMENTS_KEY) === 'true';
   } catch {
-    return true;
+    return false;
   }
 };
 

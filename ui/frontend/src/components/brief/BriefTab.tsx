@@ -36,7 +36,6 @@ import { useBriefComments, UseBriefCommentsReturn } from './useBriefComments';
 import { BriefHistoryModal } from './BriefHistoryModal';
 import { BriefHistoryRail } from './BriefHistoryRail';
 import { BriefToc } from './BriefToc';
-import { IconArrowLeft } from './BriefIcons';
 import { BriefGeneratingPanel, BriefSeed } from './BriefSeed';
 import { DEFAULT_BRIEF_TITLE } from './briefTypes';
 import { useBrief, UseBriefReturn } from './useBrief';
@@ -162,7 +161,7 @@ const BriefWorkspace: React.FC<{
   // panel — history lives on the landing page. Anonymous layout keeps the
   // saved-briefs history rail and the inline Contents panel.
   const canEditStructure =
-    brief.canEdit && !brief.sections.some((s) => s.status === 'researching');
+    brief.canEdit && !factCheck?.run && !factCheck?.busy && !brief.sections.some((s) => s.status === 'researching');
   // Offset the sticky rail below the app's sticky top bar so the first
   // headings never slide underneath it.
   const [railTop, setRailTop] = useState(88);
@@ -178,20 +177,13 @@ const BriefWorkspace: React.FC<{
   return (
     <>
       {brief.error && <div className="brief-error brief-error-banner">{brief.error}</div>}
-      {loggedIn && (
-        <div className="brief-back-row">
-          <button className="brief-back-btn" onClick={onBack}>
-            <IconArrowLeft /> Brief Central
-          </button>
-        </div>
-      )}
       <div className="brief-builder">
         {loggedIn ? (
           <aside
             className="brief-toc-rail"
             style={{ top: railTop, maxHeight: `calc(100vh - ${railTop + 16}px)` }}
           >
-            <BriefToc brief={brief} canEdit={canEditStructure} />
+            <BriefToc brief={brief} canEdit={canEditStructure} onBack={onBack} />
           </aside>
         ) : (
           <BriefHistoryRail brief={brief} />
@@ -421,6 +413,7 @@ export const BriefTab: React.FC<BriefTabProps> = ({
   const factCheck = useBriefFactCheck(
     checkableBriefId(loggedIn, brief.currentBriefId),
     brief.contentRevision,
+    modelCombo,
   );
   const {
     showComments,

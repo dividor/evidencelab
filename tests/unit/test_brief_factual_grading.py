@@ -434,3 +434,22 @@ async def test_quote_found_in_another_reference_cannot_automatically_award_credi
     )
     assert '"found_in": {"4": "verbatim"}' in judge.await_args.args[0]
     assert result["claim_grades"][0]["verdict"] == "unsupported"
+
+
+async def test_malformed_repair_retains_the_previous_assessed_evidence_failure(
+    monkeypatch,
+):
+    first, usage = reply([(1, 1, "Confirmed."), (2, 0.4, "Different units.")])
+    first = json.loads(first)
+    first["claims"][1]["supporting_quotes"][0]["quote"] = "A nonexistent quotation."
+    call = AsyncMock(side_effect=[(json.dumps(first), usage), reply([])])
+    monkeypatch.setattr(test_runner, "_judge_call", call)
+    o = output()
+    check = {"type": "brief_factual", "rubric": RUBRIC}
+    result = evaluate_assertion(check, o, await judge_brief(o, [check], "model"))
+    assert not result.get("error") and not result["passed"]
+    assert result["claim_grades"][0]["passed"]
+    failed = result["claim_grades"][1]
+    assert failed["outcome"] == "unverified_evidence" and failed["score"] == 0
+    assert "nonexistent quotation" in failed["reason"]
+    assert '"claim":2' in call.await_args.args[2]

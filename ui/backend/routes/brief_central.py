@@ -16,7 +16,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,8 +35,11 @@ from ui.backend.auth.schemas import (
     BriefShareCreate,
     BriefUpdate,
 )
+from ui.backend.auth.testing_models import BriefCitationCheck
 from ui.backend.auth.users import current_active_user, current_superuser
 from ui.backend.schemas.testing import (
+    BriefCheckRun,
+    BriefCheckStart,
     BriefCitationCheckRead,
     BriefFactCheckEvidence,
     BriefFactCheckEvidenceRead,
@@ -45,7 +48,9 @@ from ui.backend.schemas.testing import (
     BriefFactCheckRead,
     BriefFactCheckSection,
 )
+from ui.backend.services import brief_check_runs
 from ui.backend.services import brief_citations as bc
+from ui.backend.services.ai_daily_limit import require_ai_allowance
 from ui.backend.services.brief_activity import upsert_brief_activity
 from ui.backend.services.brief_citations_convert import convert_legacy, is_legacy
 from ui.backend.services.brief_fact_check import (
@@ -528,7 +533,12 @@ async def get_brief_fact_check(
         check_read = BriefCitationCheckRead.model_validate(check).model_copy(
             update={"brief_changed": brief_changed(check, answer["current_version"])}
         )
+    active = await brief_check_runs.active_run(session, brief.id) if _can_edit else None
     return BriefFactCheckRead(
+        active_run=brief_check_runs.progress(active) if active else None,
+        start_disabled_reason=brief_check_runs.start_disabled_reason(
+            brief, _can_edit, answer
+        ),
         check=check_read,
         brief_version=answer["brief_version"],
         current_version=answer["current_version"],
@@ -539,6 +549,82 @@ async def get_brief_fact_check(
         legend=[BriefFactCheckLegendItem(**item) for item in answer["legend"]],
         marks=[BriefFactCheckMark(**mark) for mark in answer["marks"]],
     )
+
+
+@router.post(
+    "/briefs/{brief_id}/fact-check/runs",
+    response_model=BriefCheckRun,
+    dependencies=[Depends(require_ai_allowance)],
+    tags=["briefs"],
+)
+@limiter.limit(_RL_AI)
+async def start_fact_check(
+    brief_id: uuid.UUID,
+    body: BriefCheckStart,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    brief = await _get_owned_brief(session, brief_id, user)
+    try:
+        check = await brief_check_runs.start(
+            session, brief, user, body.model_combo, background_tasks, from_document=True
+        )
+    except bc.BriefCitationError as exc:
+        raise citation_http_error(exc)
+    return brief_check_runs.progress(check)
+
+
+async def _owned_run(session, brief_id, check_id, user):
+    result = await session.execute(
+        select(BriefCitationCheck)
+        .join(Brief)
+        .where(
+            BriefCitationCheck.id == check_id,
+            Brief.id == brief_id,
+            Brief.user_id == user.id,
+        )
+    )
+    check = result.scalars().first()
+    if not check:
+        raise HTTPException(404, "Fact check not found")
+    return check
+
+
+@router.get(
+    "/briefs/{brief_id}/fact-check/runs/{check_id}",
+    response_model=BriefCheckRun,
+    tags=["briefs"],
+)
+@limiter.limit(_RL_DEFAULT)
+async def get_fact_check_progress(
+    brief_id: uuid.UUID,
+    check_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    return brief_check_runs.progress(
+        await _owned_run(session, brief_id, check_id, user)
+    )
+
+
+@router.post(
+    "/briefs/{brief_id}/fact-check/runs/{check_id}/stop",
+    response_model=BriefCheckRun,
+    tags=["briefs"],
+)
+@limiter.limit(_RL_DEFAULT)
+async def stop_fact_check(
+    brief_id: uuid.UUID,
+    check_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    check = await _owned_run(session, brief_id, check_id, user)
+    return brief_check_runs.progress(await brief_check_runs.stop(session, check))
 
 
 @router.get(
