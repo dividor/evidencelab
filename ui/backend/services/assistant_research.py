@@ -58,6 +58,7 @@ from ui.backend.services.brief_section_prompt import (
     BriefSectionScope,
     apply_brief_section_scope,
     brief_child_headings,
+    brief_introduction_headings,
     brief_section_research_focus,
     brief_section_scope_request,
     build_section_prompt,
@@ -180,6 +181,9 @@ class ResearchWorkflow:
         self.child_headings = (
             brief_child_headings(brief_section) if brief_section else []
         )
+        self.introduction_headings = (
+            brief_introduction_headings(brief_section) if brief_section else []
+        )
         self.check_citations = check_citations
         self.citation_request: ReviewRequest = partial(
             self._request_json, llm=citation_llm
@@ -292,6 +296,7 @@ class ResearchWorkflow:
             evidence=render_evidence(initial),
             brief_section=self.brief_section,
             child_headings=self.child_headings,
+            introduces=bool(self.introduction_headings),
             brief_focus=brief_focus,
             target_words=target_words,
             require_deep_plan=require_deep_plan,
@@ -418,6 +423,7 @@ class ResearchWorkflow:
             topic=task["topic"],
             brief_section=self.brief_section,
             child_headings=self.child_headings,
+            introduces=bool(self.introduction_headings),
             geographic_scope=task["geographic_scope"],
             remaining=remaining,
             searches=history,
@@ -536,7 +542,7 @@ class ResearchWorkflow:
                 "author_guidance": brief_section_research_focus(section),
                 "writing_guidance": self.writer,
                 "voice": section.voice_instructions,
-                "introduces": brief_child_headings(section),
+                "introduces": brief_introduction_headings(section),
             },
             config=config,
             request=self._request_json,

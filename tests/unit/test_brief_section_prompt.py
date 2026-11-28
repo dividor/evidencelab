@@ -162,8 +162,7 @@ def _prompt(current=0, outline=None, **parts) -> str:
 
 def _context(current: int, outline=None) -> str:
     return outline_context(
-        BriefSectionPrompt(outline=outline or OUTLINE, current=current).outline,
-        current,
+        BriefSectionPrompt(outline=outline or OUTLINE, current=current)
     )
 
 
@@ -256,6 +255,17 @@ class TestBuildSectionPrompt:
         assert (
             "leave their evidence, examples, and detailed questions to them" in prompt
         )
+
+    def test_assigned_parent_answers_its_own_question_with_children_in_outline(self):
+        prompt = _prompt(2, focus="Compare the share of each intervention category.")
+
+        assert (
+            "Focus for this section: Compare the share of each intervention category."
+            in prompt
+        )
+        assert "Report a share only when the evidence supplies a denominator" in prompt
+        assert "  - Cost efficiency" in prompt
+        assert "short introduction" not in prompt
 
     def test_prompt_when_voice_then_includes_voice_before_the_assignment(self):
         prompt = _prompt(0, voice_instructions="Plain, short sentences.")

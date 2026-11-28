@@ -1185,7 +1185,8 @@ async def test_brief_researches_separate_outcomes_within_one_section():
     ]
     assert len(planning) == 3
     for request in planning:
-        assert 'Subheadings introduced here: ["Continuity", "Recovery"]' in request
+        assert 'Related child headings: ["Continuity", "Recovery"]' in request
+        assert "Research the question assigned to this heading" in request
         assert 'Brief topic: "Equipment after a firmware upgrade"' in request
         assert f'Assigned heading: "{heading}"' in request
     assert search.call_count == 3

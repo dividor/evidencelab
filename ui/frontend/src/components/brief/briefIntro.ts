@@ -3,8 +3,8 @@ import configJson from '../../config.json';
 /**
  * Introduction sections.
  *
- * A top-level heading followed by sub-headings is written as a short
- * introduction: it frames the theme and names what the sub-sections examine,
+ * A top-level heading with sub-headings and no section-specific guidance is
+ * written as a short introduction. It frames what the sub-sections examine,
  * but has no headings of its own and none of their detail. The research
  * request carries the sub-headings so the backend prompt applies those rules,
  * the introduction gets its own shorter length, and one that still comes back
@@ -67,6 +67,7 @@ export interface OutlineEntry {
   id: string;
   title: string;
   level: number; // 1 = section, 2 = sub-section
+  guidance?: string | null;
 }
 
 /** Titles of the sub-sections under a top-level section; [] when it has none
@@ -80,6 +81,12 @@ export const subSectionTitles = (sections: OutlineEntry[], id: string): string[]
     if (sections[i].title.trim()) subs.push(sections[i].title);
   }
   return subs;
+};
+
+/** A parent with its own assignment writes to that assignment. */
+export const introChildTitles = (sections: OutlineEntry[], id: string, focus?: string | null): string[] => {
+  const section = sections.find((entry) => entry.id === id);
+  return focus?.trim() || section?.guidance?.trim() ? [] : subSectionTitles(sections, id);
 };
 
 /**
