@@ -146,6 +146,22 @@ describe('the All Briefs (Admin) tab', () => {
   });
 });
 
+describe('Saved Briefs search', () => {
+  test('filters personal titles, handles no matches, and clears without losing cards', () => {
+    const central = fakeCentral('mine', { myBriefs: ALL, isAdmin: false, voiceById: () => undefined });
+    render(<BriefCentral central={central} onOpenBrief={jest.fn()} onCreateBrief={jest.fn()} />);
+    const search = screen.getByRole('searchbox', { name: 'Search saved briefs' });
+    fireEvent.change(search, { target: { value: 'KENYA feeding' } });
+    expect(screen.getByText(KENYA)).toBeInTheDocument();
+    expect(screen.queryByText(CASH)).toBeNull();
+    fireEvent.change(search, { target: { value: PRIYA } });
+    expect(screen.getByText('No briefs match your search.')).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: '' } });
+    expect(screen.getByText('3 of 3 briefs')).toBeInTheDocument();
+    expect(screen.getByText(CASH)).toBeInTheDocument();
+  });
+});
+
 describe('Shared with me', () => {
   const SHARED = [item('s1', KENYA, PRIYA, PRIYA_EMAIL)];
   const SHARED_TAB = 'Shared with me (1)';
