@@ -88,6 +88,8 @@ describe('BriefTestingManager', () => {
   test('lists briefs and opens a check without a combo picker', async () => {
     render(<BriefTestingManager dataSource="wfp" modelCombo="Google Vertex" onResultClick={jest.fn()} />);
     await waitFor(() => expect(screen.getByText(BRIEF_TITLE)).toBeInTheDocument());
+    expect(screen.getByRole('heading', { name: 'Saved Briefs' })).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Saved briefs table' })).toContainElement(screen.getByRole('table'));
     expect(screen.queryByLabelText('Judge model combo')).toBeNull();
     expect(screen.queryByText(/summarisation model/)).toBeNull();
     fireEvent.click(screen.getByText(BRIEF_TITLE));
@@ -101,8 +103,10 @@ describe('BriefCheckList', () => {
     const onOpenCheck = jest.fn();
     render(<BriefCheckList modelCombo="Google Vertex" onOpenCheck={onOpenCheck} />);
     await waitFor(() => expect(screen.getByText(CASH)).toBeInTheDocument());
+    expect(screen.getByRole('table', {name: 'Saved briefs'})).toBeVisible();
+    expect(screen.getByRole('columnheader', {name: 'Status'})).toBeVisible();
     expect(screen.getByText(NUTRITION)).toBeInTheDocument();
-    expect(screen.getByText('2 of 3 flagged (67%)')).toBeInTheDocument();
+    expect(screen.getByText('Citation check · 2 of 3 flagged (67%)')).toBeInTheDocument();
     expect(screen.getAllByText('shared')).toHaveLength(1);
     // The last check names the version it judged; the brief has moved on since.
     expect(screen.getByTitle('The brief version this check judged')).toHaveTextContent('v4');
@@ -120,7 +124,7 @@ describe('BriefCheckList', () => {
     fireEvent.click(screen.getByRole('button', { name: 'All' }));
 
     const runButtons = screen.getAllByRole('button', { name: 'Run check' });
-    expect(runButtons[1]).toBeDisabled(); // no cited passages
+    expect(runButtons[1]).toBeEnabled(); // written text with no citations still needs review
     fireEvent.click(runButtons[0]);
     await waitFor(() => expect(onOpenCheck).toHaveBeenCalledWith(expect.objectContaining({ id: 'chk2' })));
     expect(mockedAxios.post).toHaveBeenCalledWith('/api/testing/brief-checks', {
@@ -196,4 +200,61 @@ test('a saved-check URL opens the check directly and fetches its saved passages'
   render(<BriefTestingManager dataSource="wfp" modelCombo="Google Vertex" />);
   expect(await screen.findByText('Showing 3 of 3 passages.', {exact:false})).toBeVisible();
   expect(mockedAxios.get).toHaveBeenCalledWith('/api/testing/brief-checks/chk1');
+});
+
+test('a full check opens its section grades and the evidence behind an uncited claim', async () => {
+  mockedAxios.get.mockResolvedValue({data:{...check,check_kind:'full',passages,
+    section_results:[{section_id:'s1',number:'1',heading:'Costs',status:'fail',
+      actual_output:{capability:'brief',written:true,summary:'Costs doubled.',sources:[],words:2},
+      brief_evidence:{paragraphs:[[{parts:[{text:'Costs doubled.'}],references:[]}]],references:[]},
+      assertion_results:[{type:'brief_factual',passed:false,score:0,message:'',
+        claim_grades:[{claim:1,score:0,passed:false,reason:'No supporting citation.'}]}]}]}});
+  render(<BriefCheckDetail checkId="chk1" dataSource="uneg" onBack={jest.fn()} />);
+  fireEvent.click(await screen.findByRole('button', {name:'Expand Costs'}));
+  fireEvent.click(screen.getByText('Factual support from citations'));
+  expect(await screen.findByText('No supporting citation.')).toBeVisible();
+  expect(screen.getByText('No citation on this sentence.')).toBeVisible();
+});
+
+test('shows every section before the optional passage report for a completed full check', async () => {
+  const sections = ['Background', 'Costs'].map((heading, index) => ({
+    section_id: String(index), number: String(index + 1), heading, status: index ? 'fail' : 'pass',
+    actual_output: { capability: 'brief' }, assertion_results: [],
+  }));
+  mockedAxios.get.mockResolvedValue({ data: { ...check, check_kind: 'full', passages,
+    summary_stats: { ...check.summary_stats, section_counts: { pass: 1, fail: 1, error: 0 } },
+    section_results: sections } });
+  render(<BriefCheckDetail checkId={check.id} dataSource="uneg" onBack={jest.fn()} />);
+  expect(await screen.findByRole('button', {name:'Expand Background'})).toBeVisible();
+  expect(screen.getByRole('table', {name:'Section and brief'})).toBeVisible();
+  expect(screen.getByRole('button', {name:'Expand Costs'})).toBeVisible();
+  expect(screen.getByText(/1 passed · 1 failed · 0 with errors/)).toBeVisible();
+  const report = screen.getByText('Passage evidence and run statistics');
+  expect(report.closest('details')).not.toHaveAttribute('open');
+  fireEvent.click(screen.getByRole('button', { name: 'Show sections needing attention' }));
+  expect(screen.queryByRole('button', {name:'Expand Background'})).toBeNull();
+  expect(screen.getByRole('button', {name:'Expand Costs'})).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Show all sections' }));
+  expect(screen.getByRole('button', {name:'Expand Background'})).toBeVisible();
+  fireEvent.click(report);
+  expect(screen.getByText('Showing 3 of 3 passages.', {exact:false})).toBeVisible();
+});
+
+test('a running check displays graded and queued sections in the same table', async () => {
+  mockedAxios.get.mockResolvedValue({data: {...check, check_kind:'full', status:'running', passages:[],
+    summary_stats:{progress:{completed:1,total:3,remaining_sections:[
+      {template:BRIEF_TITLE,heading:'Methods',number:'2'}, {template:BRIEF_TITLE,heading:'Limits',number:'3'},
+    ]}},
+    section_results:[{section_id:'s1',number:'1',heading:'Costs',status:'fail',score:0,
+      factual_claim_mean_score:0.75,factual_claim_pass_rate:0.5,assertion_results:[]}]
+  }});
+  render(<BriefCheckDetail checkId="chk1" dataSource="uneg" onBack={jest.fn()} />);
+  const table = await screen.findByRole('table', {name:'Section and brief'});
+  expect(table).toHaveTextContent('Factual Claim Mean Score');
+  expect(table).toHaveTextContent('Factual Claim Pass Rate');
+  const completed = screen.getByRole('button',{name:'Expand Costs'}).closest('tr');
+  expect(completed).toHaveTextContent('0.75');
+  expect(completed).toHaveTextContent('50%');
+  expect(table).toHaveTextContent('Running');
+  expect(table).toHaveTextContent('Queued');
 });

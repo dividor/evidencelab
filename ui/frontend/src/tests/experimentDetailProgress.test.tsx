@@ -113,7 +113,7 @@ describe('ExperimentDetail run progress', () => {
       id: 'res', status: 'pass', actual_output: {
         capability: 'brief', summary: text, written: true, words: 10,
         assignment: { topic: 'Equipment maintenance', heading: 'Inspection', target_words: 12 },
-        sources: [{ index: 8, title: 'Service log', page: 37, text: 'Second inspection.' },
+        sources: [{ index: 8, title: 'Service log', page: 37, headings: ['Operational records', 'Results'], text: 'Second inspection.' },
           { index: 4, title: 'First inspection', page: 2, text: 'Pressure reading.' }],
       },
       brief_evidence: {
@@ -125,7 +125,7 @@ describe('ExperimentDetail run progress', () => {
       },
       assertion_results: [
         { type: 'brief_factual', passed: false, score: 0.25, message: '', judge_prompt: 'Exact factual prompt',
-          claim_grades: [{ claim: 1, passed: false, score: 0.25, reason: 'The reading lacks a baseline.' },
+          threshold: 1, claim_grades: [{ claim: 1, passed: false, score: 0.25, verdict: 'partially_supported', unmet: ['Original pressure is missing.'], supporting_quotes: [{citation: 4, quote: 'Pressure reading.'}], reason: 'The reading lacks a baseline.' },
             { claim: 2, passed: true, score: 1, reason: 'The log confirms the replacement held.' }],
           rubric: 'Check factual grounding against the cited excerpts. Check the numbers.' },
         { type: 'llm_judge', passed: true, factual_support: true, label: 'Historical factual grade', message: 'Original reasoning.', rubric: 'Check factual grounding against the cited excerpts.' },
@@ -151,6 +151,7 @@ describe('ExperimentDetail run progress', () => {
     const passages = within(panel).getByRole('group', { name: 'Cited passages for this claim' });
     expect(within(passages).getByText('Pressure reading.')).toBeVisible();
     expect(within(passages).getByText('Second inspection.')).toBeVisible();
+    expect(within(passages).getByText('Operational records › Results')).toBeVisible();
     fireEvent.click(firstClaim);
     expect(passages).not.toBeInTheDocument();
     fireEvent.click(within(panel).getByRole('button', { name: 'Show cited passages [8]' }));
@@ -176,6 +177,15 @@ describe('ExperimentDetail run progress', () => {
     const first = assessment.querySelectorAll('.testing-evidence-claim')[0] as HTMLElement;
     expect(within(first).getByText('Fail')).toBeVisible();
     expect(within(first).getByText('Score 0.25')).toBeVisible();
+    expect(within(first).getByText('Partially supported')).toBeVisible();
+    expect(within(first).getByText('Required 1.00')).toBeVisible();
+    expect(within(first).getByText('Original pressure is missing.')).toBeVisible();
+    expect(within(first).queryByText('Supporting evidence')).toBeNull();
+    expect(within(first).getAllByRole('list')).toHaveLength(1);
+    const firstReference = within(first).getByText('[4] First inspection · p. 2');
+    expect(firstReference.closest('details')).not.toHaveAttribute('open');
+    fireEvent.click(firstReference);
+    expect(within(first).getByText('Pressure reading.')).toBeVisible();
     expect(first).toHaveTextContent('The reading lacks a baseline.');
     expect(within(assessment).getByText('Grading criterion').closest('details')).not.toHaveAttribute('open');
     const body = assessment.querySelector('.testing-assertion-body')!;

@@ -7,6 +7,7 @@ from ui.backend.services.test_evaluators import UnverifiedOverlapQuote
 _CHECK_NAMES = {
     "brief_overlap": "Cross-section repetition",
     "brief_intro_scope": "Introduction scope",
+    "brief_relevance": "Relevance to the template and section",
     "brief_factual": "Factual support from citations",
     "brief_writing": "Writing quality",
     "brief_voice": "Selected voice and tone profile",
@@ -17,12 +18,8 @@ _CHECK_NAMES = {
 }
 
 
-class IncompleteClaimGrades(ValueError):
-    """The judge failed to return a valid grade for every claim."""
-
-
 def grading_error_reason(exc):
-    if isinstance(exc, (UnverifiedOverlapQuote, IncompleteClaimGrades)):
+    if isinstance(exc, UnverifiedOverlapQuote):
         return str(exc)
     if isinstance(exc, ValidationError):
         return "The judge returned a response that did not match the required grading format."

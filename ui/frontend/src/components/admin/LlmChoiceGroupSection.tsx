@@ -105,7 +105,9 @@ const JobChoice: React.FC<{
         style={SELECT_STYLE}
         onChange={(e) => onChange({ ...value, [job.key]: e.target.value || undefined })}
       >
-        <option value="">Default from config ({configDefault ?? 'none set'})</option>
+        <option value="">{job.key === 'citationCheckModel'
+          ? `Use evaluation judge (${value.judgeModel || 'selected model combo'})`
+          : `Default from config (${configDefault ?? 'none set'})`}</option>
         {llms.map((llm) => (
           <option key={llm.name} value={llm.name}>
             {optionLabel(llm)}

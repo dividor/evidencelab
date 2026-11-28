@@ -35,8 +35,11 @@ beforeEach(() => {
 describe('TestingManager', () => {
   test('renders the datasets sub-view with fetched datasets', async () => {
     render(<TestingManager />);
+    expect(screen.getByRole('heading', { name: 'Experiments' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Datasets' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Experiments' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Datasets' }));
+    expect(screen.getByRole('heading', {name: 'Experiment datasets'})).toBeVisible();
     await waitFor(() => expect(screen.getByText('Search Smoke')).toBeInTheDocument());
     expect(mockedAxios.get).toHaveBeenCalledWith(
       expect.stringContaining('/testing/datasets'),
@@ -46,6 +49,7 @@ describe('TestingManager', () => {
 
   test('switching to the Experiments sub-view fetches experiments', async () => {
     render(<TestingManager />);
+    fireEvent.click(screen.getByRole('button', {name:'Datasets'}));
     await waitFor(() => screen.getByText('Search Smoke'));
     fireEvent.click(screen.getByRole('button', { name: 'Experiments' }));
     await waitFor(() =>
@@ -58,8 +62,7 @@ describe('TestingManager', () => {
 
   test('opening "New Experiment" shows the draft editor (assertions live here)', async () => {
     render(<TestingManager />);
-    await waitFor(() => screen.getByText('Search Smoke'));
-    fireEvent.click(screen.getByRole('button', { name: 'Experiments' }));
+    expect(screen.getByRole('button', { name: 'Experiments' })).toHaveClass('btn-primary');
     const newBtn = await screen.findByRole('button', { name: /New Experiment/i });
     fireEvent.click(newBtn);
     // The experiment editor (where per-row assertions + config live) renders.
@@ -69,6 +72,7 @@ describe('TestingManager', () => {
 
 test('the CSV example is available with its matching import action', async () => {
   render(<TestingManager />);
+  fireEvent.click(screen.getByRole('button', {name:'Datasets'}));
   await screen.findByText('Search Smoke');
   expect(screen.queryByText(/example CSV/i)).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'New dataset' })).toBeInTheDocument();

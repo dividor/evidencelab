@@ -1786,6 +1786,11 @@ def test_recognised_research_errors_explain_the_failure_without_provider_details
     wrapped = RuntimeError("private response")
     wrapped.__cause__ = original
     assert "content policy" in research_error_message(wrapped)
+    setattr(original, "code", None)
+    setattr(original, "status_code", 429)
+    assert research_error_message(wrapped) == (
+        "The model provider is rate-limiting requests. Please try again later."
+    )
     assert "could not be verified" in research_error_message(
         InvalidAssistantResponse("internal")
     )

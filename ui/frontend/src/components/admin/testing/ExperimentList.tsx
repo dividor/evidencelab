@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../../config';
 import type { TestDataset, TestExperiment } from '../../../types/testing';
-import { formatMs, formatPercent, formatScore, formatTimestamp } from './testingFormat';
+import { ClaimHeaders, ClaimCells } from './BriefScoreStats';
+import { formatElapsed, formatPercent, formatScore, formatTimestamp } from './testingFormat';
 import ConfirmModal from '../ConfirmModal';
 
 interface ExperimentListProps {
@@ -26,7 +27,7 @@ const ExperimentList: React.FC<ExperimentListProps> = ({
   onBack,
 }) => {
   const [experiments, setExperiments] = useState<TestExperiment[]>([]);
-  const [datasetNames, setDatasetNames] = useState<Record<string, string>>({});
+  const [datasets, setDatasets] = useState<Record<string, TestDataset>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -49,11 +50,11 @@ const ExperimentList: React.FC<ExperimentListProps> = ({
   const fetchDatasetNames = useCallback(async () => {
     try {
       const resp = await axios.get<TestDataset[]>(`${API_BASE_URL}/testing/datasets`);
-      const map: Record<string, string> = {};
+      const map: Record<string, TestDataset> = {};
       resp.data.forEach((d) => {
-        map[d.id] = d.name;
+        map[d.id] = d;
       });
-      setDatasetNames(map);
+      setDatasets(map);
     } catch {
       // Non-fatal: fall back to showing dataset ids.
     }
@@ -122,6 +123,7 @@ const ExperimentList: React.FC<ExperimentListProps> = ({
     }
   };
 
+  const showClaims = dataset?.capability === 'brief' || experiments.some(e => datasets[e.dataset_id]?.capability === 'brief');
   if (loading) return <div className="admin-loading">Loading...</div>;
 
   return (
@@ -160,8 +162,9 @@ const ExperimentList: React.FC<ExperimentListProps> = ({
             <th>Dataset</th>
             <th>Status</th>
             <th>Pass rate</th>
-            <th>Mean score</th>
-            <th>Duration (ms)</th>
+            <th>Mean Total Score</th>
+            {showClaims && <ClaimHeaders />}
+            <th>Duration</th>
             <th>Created</th>
             <th></th>
           </tr>
@@ -176,7 +179,7 @@ const ExperimentList: React.FC<ExperimentListProps> = ({
                 onClick={() => onOpen(exp)}
               >
                 <td>{exp.name}</td>
-                <td>{datasetNames[exp.dataset_id] || exp.dataset_id.slice(0, 8)}</td>
+                <td>{datasets[exp.dataset_id]?.name || exp.dataset_id.slice(0, 8)}</td>
                 <td>
                   <span className={`testing-status testing-status-${exp.status}`}>
                     {exp.status}
@@ -184,40 +187,43 @@ const ExperimentList: React.FC<ExperimentListProps> = ({
                 </td>
                 <td>{formatPercent(stats?.pass_rate)}</td>
                 <td>{formatScore(stats?.mean_score)}</td>
-                <td>{formatMs(stats?.duration_ms)}</td>
+                {showClaims && <ClaimCells stats={stats} />}
+                <td>{formatElapsed(stats?.duration_ms)}</td>
                 <td>{formatTimestamp(exp.created_at)}</td>
-                <td onClick={(e) => e.stopPropagation()} className="testing-row-actions">
-                  {isActive(exp) ? (
+                <td onClick={(e) => e.stopPropagation()}>
+                  <div className="testing-row-actions">
+                    {isActive(exp) ? (
+                      <button
+                        className="btn-sm btn-danger"
+                        onClick={() => handleCancel(exp)}
+                        disabled={busyId === exp.id}
+                      >
+                        {busyId === exp.id ? 'Cancelling...' : 'Cancel'}
+                      </button>
+                    ) : (
+                      <button
+                        className="btn-sm btn-primary"
+                        onClick={() => handleRun(exp)}
+                        disabled={busyId === exp.id}
+                      >
+                        {busyId === exp.id ? 'Starting...' : 'Run'}
+                      </button>
+                    )}
+                    <button
+                      className="btn-sm"
+                      onClick={() => onEdit(exp)}
+                      disabled={busyId === exp.id || isActive(exp)}
+                    >
+                      Edit
+                    </button>
                     <button
                       className="btn-sm btn-danger"
-                      onClick={() => handleCancel(exp)}
-                      disabled={busyId === exp.id}
+                      onClick={() => setDeleteTarget(exp)}
+                      disabled={busyId === exp.id || isActive(exp)}
                     >
-                      {busyId === exp.id ? 'Cancelling...' : 'Cancel'}
+                      Delete
                     </button>
-                  ) : (
-                    <button
-                      className="btn-sm btn-primary"
-                      onClick={() => handleRun(exp)}
-                      disabled={busyId === exp.id}
-                    >
-                      {busyId === exp.id ? 'Starting...' : 'Run'}
-                    </button>
-                  )}
-                  <button
-                    className="btn-sm"
-                    onClick={() => onEdit(exp)}
-                    disabled={busyId === exp.id || isActive(exp)}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className="btn-sm btn-danger"
-                    onClick={() => setDeleteTarget(exp)}
-                    disabled={busyId === exp.id || isActive(exp)}
-                  >
-                    Delete
-                  </button>
+                  </div>
                 </td>
               </tr>
             );

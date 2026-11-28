@@ -23,6 +23,12 @@ describe('streamAssistantChat target_words', () => {
     return JSON.parse(fetchMock.mock.calls[0][1].body);
   };
 
+  test('identifies the selected combo independently of the writer model', async () => {
+    const body = await captureBody({modelCombo: 'Combo B', assistantModelConfig: {model: 'writer'}});
+    expect(body.model_combo).toBe('Combo B');
+    expect(body.assistant_model_config.model).toBe('writer');
+  });
+
   test('sends the length target to the backend', async () => {
     const body = await captureBody({ targetWords: 350 });
     expect(body.target_words).toBe(350);

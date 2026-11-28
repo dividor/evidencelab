@@ -38,6 +38,15 @@ def compute_summary_stats(
     non-null case scores (None when no case produced a score). All numbers are
     labelled with units by the UI (``ms``, ``%``, counts).
     """
+    return {
+        **outcome_stats(case_results),
+        "duration_ms": duration_ms,
+        **_sum_token_usage(case_results),
+    }
+
+
+def outcome_stats(case_results):
+    """Count every outcome in the pass rate and only scored outcomes in the mean."""
     total = len(case_results)
     passed = sum(1 for r in case_results if r.get("status") == RESULT_PASS)
     failed = sum(1 for r in case_results if r.get("status") == RESULT_FAIL)
@@ -50,6 +59,17 @@ def compute_summary_stats(
         "errored": errored,
         "pass_rate": round(passed / total, 4) if total else 0.0,
         "mean_score": round(sum(scores) / len(scores), 4) if scores else None,
-        "duration_ms": duration_ms,
-        **_sum_token_usage(case_results),
     }
+
+
+def progress_stats(completed: int, total: int, sections=None) -> Dict[str, Any]:
+    """A lightweight progress marker stored in a run's ``summary_stats`` while it
+    is in flight, so the polling UI can show "completed of total cases".
+
+    It is replaced by the real aggregate stats (``compute_summary_stats``) once
+    the run finishes, so a running run never carries pass/score numbers.
+    """
+    progress = {"completed": completed, "total": total}
+    if sections is not None:
+        progress["remaining_sections"] = sections[completed:]
+    return {"progress": progress}

@@ -1,20 +1,21 @@
 import React, { useId, useState } from 'react';
 import type { AssertionResult, BriefEvalClaim, BriefEvalReference, TestResult } from '../../../types/testing';
 
-import { formatScore } from './testingFormat';
+import { ClaimAssessment, ClaimReference } from '../../brief/ClaimAssessment';
 
-type SavedSource = { title?: string; page?: number | null; text?: string };
+type SavedSource = { title?: string; page?: number | null; text?: string; headings?: string[] };
 type ReferenceProps = { reference: BriefEvalReference; sources: SavedSource[] };
 
 function Reference({ reference, sources, expanded }: ReferenceProps & { expanded?: boolean }) {
   const source = reference.source_position === null ? undefined : sources[reference.source_position];
-  const heading = `[${reference.label}] ${source?.title || (source ? 'Untitled source' : 'Source unavailable')}`;
+  const title = source?.title || (source ? 'Untitled source' : 'Source unavailable');
+  const heading = `[${reference.label}] ${title}`;
   const label = source?.page == null ? heading : `${heading} · p. ${source.page}`;
-  const excerpt = <div className="testing-cited-excerpt">{source?.text || 'No passage text was saved for this citation.'}</div>;
+  const excerpt = <div className="testing-cited-excerpt">{source?.headings?.length ? <p>{source.headings.join(' › ')}</p> : null}{source?.text || 'No passage text was saved for this citation.'}</div>;
   return expanded ? (
     <div className="testing-claim-source"><strong>{label}</strong>{excerpt}</div>
   ) : (
-    <details className="testing-section-reference"><summary>{label}</summary>{excerpt}</details>
+    <ClaimReference number={reference.label} title={title} page={source?.page}>{excerpt}</ClaimReference>
   );
 }
 
@@ -43,7 +44,7 @@ function Claim({ claim, references, sources }: {
   );
 }
 
-export function AssertionEvidence({ assessment, result }: { assessment: AssertionResult; result: TestResult }) {
+export function AssertionEvidence({ assessment, result }: { assessment: AssertionResult; result: Pick<TestResult, "actual_output" | "brief_evidence"> }) {
   const evidence = result.brief_evidence;
   if (!evidence) return null;
   const sources = (result.actual_output?.sources || []) as SavedSource[];
@@ -54,15 +55,8 @@ export function AssertionEvidence({ assessment, result }: { assessment: Assertio
     const grade = grades.get(index + 1);
     return (
       <div className="testing-evidence-claim" key={index}>
-        <div className="testing-claim-heading">
-          <strong>Claim {index + 1}</strong>
-          {grade && <>
-            <span className={`testing-badge testing-badge-${grade.passed ? 'pass' : 'fail'}`}>{grade.passed ? 'Pass' : 'Fail'}</span>
-            <span>Score {formatScore(grade.score)}</span>
-          </>}
-        </div>
-        <div>{claim.parts.map(part => part.text).join('')}</div>
-        {grade && <p className="testing-claim-reason"><strong>Judge assessment</strong> {grade.reason}</p>}
+        <ClaimAssessment number={index + 1} text={claim.parts.map(part => part.text).join('')}
+          grade={grade} threshold={assessment.threshold} />
         {claim.references.length ? claim.references.map(ref => (
           <Reference key={ref} reference={evidence.references[ref]} sources={sources} />
         )) : <small>No citation on this sentence.</small>}
@@ -87,7 +81,7 @@ export function AssertionEvidence({ assessment, result }: { assessment: Assertio
   );
 }
 
-export default function GeneratedSection({ result }: { result: TestResult }) {
+export default function GeneratedSection({ result, label = 'Generated section' }: { result: Pick<TestResult, "actual_output" | "brief_evidence">; label?: string }) {
   const output = result.actual_output;
   if (output?.capability !== 'brief') return null;
   const evidence = result.brief_evidence;
@@ -96,7 +90,7 @@ export default function GeneratedSection({ result }: { result: TestResult }) {
   const sources = (output.sources || []) as SavedSource[];
   return (
     <details className="testing-case-block testing-generated-section">
-      <summary className="testing-case-label">Generated section</summary>
+      <summary className="testing-case-label">{label}</summary>
       {savedText && output.written !== false ? (
         <>
           <p>{String(output.words)} words{assignment?.target_words ? ` of ${assignment.target_words} requested` : ''}</p>

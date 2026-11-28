@@ -110,7 +110,7 @@ const evidence: BriefFactCheckEvidenceRead = {
   verdict_label: 'Unsupported',
   evidence: [
     {
-      citation: 1, label: '[1] Doc One, p. 3', title: 'Doc One', page: 3, section: 'Findings > Schools',
+      citation: 1, label: '[1] Doc One · p. 3', title: 'Doc One', page: 3, section: 'Findings > Schools',
       doc_id: 'd1', chunk_id: 'c1', pdf_url: null, quoted: true,
       segments: [
         { text: 'In the sample schools ', highlighted: false },
@@ -139,6 +139,12 @@ const openBrief = async () => {
 };
 
 describe('Fact Checker on an open brief', () => {
+  beforeAll(() => {
+    Object.defineProperties(HTMLDialogElement.prototype, {
+      showModal: { configurable: true, value(this: HTMLDialogElement) { this.open = true; } },
+      close: { configurable: true, value(this: HTMLDialogElement) { this.open = false; } },
+    });
+  });
   beforeEach(() => {
     jest.clearAllMocks();
     localStorage.clear();
@@ -173,7 +179,41 @@ describe('Fact Checker on an open brief', () => {
     expect(window.location.pathname + window.location.search).toBe('/brief/b1?tab=brief');
   });
 
-  test('a completed check for the current brief shows the button; pressing it highlights every judged passage in its verdict\'s colour, with the verdict, reason and evidence on hover', async () => {
+  test('a partially supported sentence stays amber and opens the gap and quoted evidence', async () => {
+    const partial = { ...withCheck.marks[0], verdict: 'partially_supported' as const,
+      claim_text: 'School meals raised attendance [1].',
+      grade: { claim: 1, score: 0.5, passed: false, verdict: 'partially_supported' as const, reason: WHY, unmet: ['The comparison period is missing.'] },
+      verdict_label: 'Partially supported', problems: ['The comparison period is missing.'] };
+    mockGet.mockImplementation(answer({ ...withCheck, marks: [partial] }));
+    await openBrief();
+    fireEvent.click(await screen.findByRole('button', { name: FACT_CHECKER }));
+    const mark = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>('.brief-fact-mark.brief-fact-mark-partially_supported');
+      if (!found) throw Error('Waiting for the sentence highlight');
+      return found;
+    });
+    fireEvent.mouseOver(mark);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Claim 1' }));
+    const card = await screen.findByRole('dialog', { name: 'Claim 1' });
+    expect(card).toHaveTextContent('Score 0.50');
+    expect(card).not.toHaveTextContent(/Fail|Required/);
+    expect(card).toHaveTextContent('School meals raised attendance [1].');
+    expect(card).toHaveTextContent('Judge assessment');
+    expect(card).toHaveTextContent('What the evidence does not establish');
+    expect(card).toHaveTextContent('The comparison period is missing.');
+    const summary = await screen.findByText('[1] Doc One · p. 3');
+    expect(summary.closest('details')).not.toHaveAttribute('open');
+    fireEvent.click(summary);
+    expect(card.querySelector('.brief-fact-quote')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'See more' })).toBeNull();
+    fireEvent.click(summary);
+    expect(card).toBeVisible();
+    fireEvent.click(card, { clientX: -2, clientY: -2 });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  test('a completed check for the current brief shows the button; pressing it highlights every judged passage in its verdict\'s colour, with the verdict, reason and evidence on click', async () => {
     mockGet.mockImplementation(answer(withCheck));
     await openBrief();
     const button = await screen.findByRole('button', { name: FACT_CHECKER });
@@ -205,14 +245,8 @@ describe('Fact Checker on an open brief', () => {
     expect(document.querySelector('[data-fact-id="2"]')).toHaveClass('brief-fact-mark-supported');
     expect(document.querySelectorAll('.brief-fact-mark:not([data-fact-id="1"]):not([data-fact-id="2"])').length).toBe(0);
 
-    // Source enrichment re-renders the sections meanwhile and the painter
-    // puts the marks back, so hover the mark as it is in the DOM right now
-    // (the legend's swatch carries the verdict class too, hence the prose
-    // mark class as well).
-    const card = await waitFor(() => {
-      fireEvent.mouseOver(document.querySelector('.brief-fact-mark.brief-fact-mark-unsupported') as HTMLElement);
-      return screen.getByRole('note', { name: 'Citation check verdict' });
-    });
+    fireEvent.click(document.querySelector('.brief-fact-mark.brief-fact-mark-unsupported') as HTMLElement);
+    const card = await screen.findByRole('dialog', { name: 'Citation check verdict' });
     expect(card).toHaveTextContent('Unsupported');
     expect(card).toHaveTextContent('90% confidence');
     expect(card).toHaveTextContent('Judged against [1]');
@@ -220,18 +254,15 @@ describe('Fact Checker on an open brief', () => {
     // The evidence is fetched for this passage once its card opens: the cited
     // excerpt, with what the judge quoted highlighted.
     await waitFor(() => expect(mockGet).toHaveBeenCalledWith(EVIDENCE_URL));
-    await waitFor(() => expect(card).toHaveTextContent('[1] Doc One, p. 3'));
-    expect(card).toHaveTextContent('Evidence in source');
+    await waitFor(() => expect(card).toHaveTextContent('[1] Doc One · p. 3'));
+    expect(card).toHaveTextContent('Sources');
     expect(card).toHaveTextContent('In the sample schools attendance did not change over the two years.');
     expect(card.querySelector('.brief-fact-quote')).toHaveTextContent(QUOTED);
 
-    // The card stays while the pointer is on it, and goes once it leaves.
-    fireEvent.mouseLeave(document.querySelector('.brief-doc-content') as HTMLElement);
-    fireEvent.mouseEnter(card);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(screen.getByRole('note', { name: 'Citation check verdict' })).toBe(card);
     fireEvent.mouseLeave(card);
-    await waitFor(() => expect(screen.queryByRole('note', { name: 'Citation check verdict' })).toBeNull());
+    expect(card).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Close claim' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
 
     // Pressing again hides the highlights, the legend and the note.
     fireEvent.click(button);

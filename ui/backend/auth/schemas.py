@@ -1082,6 +1082,7 @@ class AssistantChatRequest(BaseModel):
     query: str = Field(..., max_length=5000)
     thread_id: Optional[str] = None
     data_source: Optional[str] = Field(None, max_length=255)
+    model_combo: Optional[str] = Field(None, min_length=1, max_length=255)
     assistant_model_config: Optional[AssistantModelConfig] = None
     reranker_model: Optional[str] = None
     search_settings: Optional[AssistantSearchSettings] = None

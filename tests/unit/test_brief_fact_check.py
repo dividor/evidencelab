@@ -249,6 +249,8 @@ class FakeSession:
         )
 
     async def get(self, model, key):
+        if model.__name__ == "BriefCitationCheck":
+            return next((c for c in self.checks if c.id == key), None)
         assert model.__name__ == "BriefVersion"
         return next((v for v in self.versions if v.id == key), None)
 
@@ -397,6 +399,9 @@ class TestFactCheckMarks:
         marks = svc.fact_check_marks(cov)
         assert marks[0] == {
             "passage_id": 1,
+            "claim_id": None,
+            "grade": None,
+            "claim_text": None,
             "section_id": "s1",
             "section_title": "Findings",
             "passage": FACT,
@@ -701,3 +706,25 @@ class TestRoute:
                 brief.id, _request(), user=stranger, session=session
             )
         assert exc.value.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "quote,expected",
+    [
+        ("Operational results", "Operational results"),
+        ("results Improved access", "results Improved access"),
+        ("Improved access", "Improved access"),
+        ("Operational results … a fabricated line", ""),
+    ],
+)
+def test_evidence_highlights_only_verified_words_in_heading_and_body(quote, expected):
+    row = SimpleNamespace(
+        supporting_quotes=[dict(citation=4, quote=quote)],
+        sources=[
+            dict(index=4, section="Operational results", excerpt="Improved access.")
+        ],
+    )
+    [block] = svc.passage_evidence(row)
+    marked = "".join(s["text"] for s in block["segments"] if s["highlighted"])
+    assert " ".join(marked.split()).rstrip(".") == expected
+    assert block["quoted"] == bool(expected)

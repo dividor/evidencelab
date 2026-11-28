@@ -155,6 +155,7 @@ export const ASSERTION_SPECS_BY_CAPABILITY: Record<TestCapability, AssertionType
     { ...judgeSpec, type: 'brief_factual', label: 'Factual support from citations',
       fields: judgeSpec.fields.map(field => field.key === 'rubric'
         ? { ...field, default: 'Check factual grounding against the cited excerpts.' } : field) },
+    { ...judgeSpec, type: 'brief_relevance', label: 'Relevance to the template and section' },
     { ...judgeSpec, type: 'brief_writing', label: 'Judge writing against the assignment' },
   ],
 };
