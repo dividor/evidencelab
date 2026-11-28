@@ -40,7 +40,7 @@ from ui.backend.services.brief_excerpt_citations import (
 )
 from ui.backend.services.brief_repetition import remove_repeated_brief_findings
 from ui.backend.services.brief_section_prompt import (
-    brief_child_headings,
+    brief_introduction_headings,
     brief_section_research_focus,
 )
 from ui.backend.services.citation_fidelity import (
@@ -264,7 +264,7 @@ async def _review_finding_scope(
         "guidance": section.focus,
         "instructions": section.instructions,
         "voice": section.voice_instructions,
-        "introduces": brief_child_headings(section),
+        "introduces": brief_introduction_headings(section),
         "other_headings": [
             s.title for i, s in enumerate(section.outline) if i != section.current
         ],
@@ -563,7 +563,7 @@ async def write_grounded_brief(
     if not evidence:
         return earlier_text
     template = assistant_prompt_templates.get_template("brief_evidence_draft.j2")
-    introduces = brief_child_headings(section)
+    introduces = brief_introduction_headings(section)
     system = template.render(
         system=True,
         target_words=target_words,

@@ -59,9 +59,9 @@ import { restoreBriefVersion as restoreBriefVersionRemote } from './briefVersion
 import {
   BRIEF_INTRO,
   extraHeadingLines,
+  introChildTitles,
   researchOrder,
   sectionTargetWords,
-  subSectionTitles,
 } from './briefIntro';
 import { highlightOneSource, highlightSectionSources } from './briefHighlights';
 import {
@@ -185,7 +185,7 @@ export const introHeadingNote = (headings: number, reruns: number): string =>
  *  for a section that is not an introduction or has none. An edit cannot be
  *  re-run like research, so its result is only flagged. */
 const introWarningFor = (sections: BriefSection[], id: string, content: string): number | undefined =>
-  subSectionTitles(sections, id).length ? extraHeadingLines(content).length || undefined : undefined;
+  introChildTitles(sections, id).length ? extraHeadingLines(content).length || undefined : undefined;
 
 const timesText = (n: number): string => (n === 1 ? 'once' : `${n} times`);
 
@@ -220,7 +220,7 @@ const rerunActivityText = (headings: number, attempt: number): string =>
 
 /** The sub-headings a section introduces, for a revise request; null if none. */
 const introSubSectionsOf = (sections: BriefSection[], id: string): string[] | null => {
-  const subs = subSectionTitles(sections, id);
+  const subs = introChildTitles(sections, id);
   return subs.length ? subs : null;
 };
 
@@ -1335,10 +1335,8 @@ export const useBrief = ({
           : { status: 'researching', progress: 4, content: '', sources: [], ...activityReset },
       );
       const briefTopic = queryRef.current.trim() || briefTitleRef.current;
-      // A top-level heading with sub-headings is their introduction: the
-      // backend writes it without headings or their detail, at the shorter
-      // introduction length unless the section has its own (see briefIntro.ts).
-      const subSections = subSectionTitles(list, id);
+      const focus = context?.trim() || section.guidance?.trim() || null;
+      const subSections = introChildTitles(list, id, focus);
       const sectionTarget = sectionTargetWords(section.targetWords, subSections, targetWordsRef.current);
       // Set by onDone when the finished section overshoots its target; the
       // research promise waits for it so a document-wide run stays sequential.
@@ -1362,7 +1360,7 @@ export const useBrief = ({
           content: s.status === 'done' ? s.content : undefined,
         })),
         currentIndex: idx,
-        context,
+        context: focus,
         briefTopic,
         briefInstructions: instructionsRef.current.trim() || null,
         modelCombo,

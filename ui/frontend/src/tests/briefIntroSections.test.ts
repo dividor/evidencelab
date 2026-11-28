@@ -3,6 +3,7 @@ import axios from 'axios';
 import {
   BRIEF_INTRO,
   extraHeadingLines,
+  introChildTitles,
   researchOrder,
   sectionTargetWords,
   subSectionTitles,
@@ -64,6 +65,14 @@ const answersInTurn = (texts: string[]) => {
 };
 
 describe('briefIntro helpers', () => {
+  test('an assigned parent uses the full section length and keeps its children in the outline', () => {
+    const outline = [{ ...OUTLINE[0], guidance: 'Compare the distribution by intervention.' }, ...OUTLINE.slice(1)];
+    expect(subSectionTitles(outline, 'a')).toEqual(SUBS);
+    expect(introChildTitles(OUTLINE, 'a')).toEqual(SUBS);
+    expect(introChildTitles(OUTLINE, 'a', 'Compare categories.')).toEqual([]);
+    expect(sectionTargetWords(null, introChildTitles(outline, 'a'), 700)).toBe(700);
+  });
+
   test('a top-level heading introduces the sub-headings that follow it', () => {
     expect(subSectionTitles(OUTLINE, 'a')).toEqual(SUBS);
     expect(subSectionTitles(OUTLINE, 'a1')).toEqual([]);

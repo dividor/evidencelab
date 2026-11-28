@@ -16,7 +16,10 @@ from ui.backend.services.assistant_settings import (
     assistant_prompt_templates,
     assistant_search_defaults,
 )
-from ui.backend.services.brief_section_prompt import brief_section_prompt_default
+from ui.backend.services.brief_section_prompt import (
+    brief_introduction_headings,
+    brief_section_prompt_default,
+)
 from ui.backend.services.search import map_field_to_storage, search_chunks
 
 logger = logging.getLogger(__name__)
@@ -437,7 +440,11 @@ def build_research_agent(
         writer = assistant_prompt_templates.get_template("assistant_system.j2").render(
             data_source=data_source,
             target_words=target_words,
-            intro_sub_sections=introduces_sub_sections,
+            intro_sub_sections=(
+                brief_introduction_headings(brief_section)
+                if brief_section is not None
+                else introduces_sub_sections
+            ),
             group_instructions=(
                 (settings.answerPrompt or system_prompt_override)
                 if not settings.answerInstructions and brief_section_prompt is None

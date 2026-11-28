@@ -50,6 +50,11 @@ def brief_child_headings(section: BriefSectionPrompt) -> list[str]:
     return [item.title for item in takewhile(lambda item: item.level == 2, following)]
 
 
+def brief_introduction_headings(section: BriefSectionPrompt) -> list[str]:
+    """Find child headings that need an introduction from this section."""
+    return [] if (section.focus or "").strip() else brief_child_headings(section)
+
+
 def _instruction_choices(blocks: list[str]) -> list[str]:
     choices = []
     for block in blocks:
@@ -79,7 +84,7 @@ def brief_section_scope_request(
     request = template.render(
         heading=section.outline[section.current].title,
         headings=[item.title for item in section.outline],
-        introduces=brief_child_headings(section),
+        introduces=brief_introduction_headings(section),
         choices=[
             {"number": index, "text": text} for index, text in enumerate(choices, 1)
         ],
@@ -97,7 +102,7 @@ def apply_brief_section_scope(
     if any(index < 1 or index > len(choices) for index in indices):
         raise ValueError("The Brief planner selected instructions outside the list")
     selected = [text for index, text in enumerate(choices, 1) if index in indices]
-    if brief_child_headings(section):
+    if brief_introduction_headings(section):
         selected = [text.splitlines()[0] for text in selected]
     guidance = "\n\n".join(filter(None, (common, *selected)))
     return section.model_copy(update={"instructions": guidance})
@@ -212,45 +217,32 @@ def brief_search_query(brief: BriefSectionPrompt | BriefSurveyPrompt) -> str:
     )
 
 
-def _sub_section_titles(outline: List[BriefOutlineSection], current: int) -> List[str]:
-    """The sub-headings directly under a top-level heading."""
-    titles: List[str] = []
-    for section in outline[current + 1 :]:
-        if section.level != 2:
-            break
-        titles.append(section.title)
-    return titles
-
-
-def outline_context(outline: List[BriefOutlineSection], current: int) -> str:
+def outline_context(section: BriefSectionPrompt) -> str:
     """The brief's outline, with the section being written marked and a gist
     of each written section, plus scope rules so the section does not repeat
     material that belongs elsewhere. '' for a brief with one section."""
+    outline, current = section.outline, section.current
     if len(outline) <= 1:
         return ""
     lines = []
-    for i, section in enumerate(outline):
-        indent = "  - " if section.level == 2 else "- "
+    for i, entry in enumerate(outline):
+        indent = "  - " if entry.level == 2 else "- "
         marker = " ← the section you are writing" if i == current else ""
         gist = ""
-        if i != current and section.content:
-            gist = f" (already written; covers: {_gist(section.content)})"
-        lines.append(f"{indent}{section.title}{marker}{gist}")
+        if i != current and entry.content:
+            gist = f" (already written; covers: {_gist(entry.content)})"
+        lines.append(f"{indent}{entry.title}{marker}{gist}")
     parts = [
         "For context, the full outline of the brief is:\n" + "\n".join(lines),
         "Keep this section strictly to its own scope: do NOT repeat or pre-empt "
         "material that belongs in the other sections listed above.",
     ]
-    # A top-level heading with sub-headings introduces them; the detail
-    # belongs to the sub-sections that follow it.
-    if outline[current].level != 2:
-        subs = _sub_section_titles(outline, current)
-        if subs:
-            parts.append(
-                f"This section has sub-sections ({'; '.join(subs)}) — write it as "
-                "a short high-level introduction to the theme and leave the "
-                "detail to those sub-sections."
-            )
+    if subs := brief_introduction_headings(section):
+        parts.append(
+            f"This section has sub-sections ({'; '.join(subs)}) — write it as "
+            "a short high-level introduction to the theme and leave the "
+            "detail to those sub-sections."
+        )
     return " ".join(parts)
 
 
@@ -341,7 +333,7 @@ def build_section_prompt(section: BriefSectionPrompt) -> str:
             guidance,
             (section.focus or "").strip(),
         )
-    outline = outline_context(section.outline, section.current)
+    outline = outline_context(section)
     if outline:
         prompt = f"{prompt} {outline}"
     if voice:
@@ -350,7 +342,7 @@ def build_section_prompt(section: BriefSectionPrompt) -> str:
         )
     assignment = assistant_prompt_templates.get_template("brief_section_assignment.j2")
     scope_rules = assignment.render(
-        heading=heading, introduces=brief_child_headings(section)
+        heading=heading, introduces=brief_introduction_headings(section)
     )
     return f"{prompt}\n\n{scope_rules.strip()}"
 
