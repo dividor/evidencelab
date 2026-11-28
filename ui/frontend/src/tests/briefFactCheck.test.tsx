@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { BriefTab } from '../components/brief/BriefTab';
 import type { BriefFactCheckEvidenceRead, BriefFactCheckRead } from '../types/testing';
@@ -177,13 +177,12 @@ describe('Fact Checker on an open brief', () => {
     fireEvent.click(await screen.findByTitle(OPEN_BRIEF));
     fireEvent.click(await screen.findByRole('button', { name: FACT_CHECKER }));
     fireEvent.click(await screen.findByRole('button', { name: 'Show Fact Checks' }));
-    fireEvent.click(await waitFor(() => {
-      const mark = document.querySelector(FACT_MARK_SELECTOR);
-      if (!mark) throw Error('Waiting for highlight');
-      return mark;
-    }));
-    expect(screen.queryByRole('button', { name: 'See Text' })).toBeNull();
-    fireEvent.click(await screen.findByRole('link', { name: DOC_ONE_LABEL }));
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: `Unsupported: ${WHY}` }));
+    });
+    const dialog = within(await screen.findByRole('dialog', { name: 'Citation check verdict' }));
+    expect(dialog.queryByRole('button', { name: 'See Text' })).toBeNull();
+    fireEvent.click(await dialog.findByRole('link', { name: DOC_ONE_LABEL }));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(onResultClick).toHaveBeenCalledWith(expect.objectContaining({ doc_id: 'd1', chunk_id: 'c1', page_num: 3 }));
   });
