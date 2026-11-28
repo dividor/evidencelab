@@ -32,6 +32,7 @@ from ui.backend.utils.app_limits import (
     limiter,
 )
 from ui.backend.utils.app_state import logger
+from ui.backend.utils.errors import server_error
 from ui.backend.utils.llm_request_limits import check_model_config, check_requested_llm
 
 _RATE_LIMIT_SEARCH, _RATE_LIMIT_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
@@ -174,8 +175,7 @@ async def translate(request: Request, body: TranslateRequest):
     except AiDailyLimitReached:
         raise
     except Exception as e:
-        logger.error(f"Translation error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "Translation error", logger) from e
 
 
 def _check_summary_model(body: AISummaryRequest) -> None:
@@ -373,5 +373,4 @@ async def generate_summary(
         )
 
     except Exception as e:
-        logger.error(f"AI summary generation error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise server_error(e, "AI summary generation error", logger) from e
