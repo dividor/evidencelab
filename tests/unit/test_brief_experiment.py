@@ -286,6 +286,10 @@ async def test_writing_and_grounding_with_same_rubric_get_independent_inputs(
     monkeypatch,
 ):
     output = draft()
+    output["assignment"]["outline_headings"] = [
+        "Timeliness",
+        "Unrelated sibling heading",
+    ]
     output["sources"][0].update(
         title="Operations review",
         page=12,
@@ -308,6 +312,7 @@ async def test_writing_and_grounding_with_same_rubric_get_independent_inputs(
     results = [evaluate_assertion(a, output, cb) for a in criteria]
     assert [r["score"] for r in results] == [0.4, 1]
     assert [r["label"] for r in results] == ["Evidence", "Audience"]
+    assert "Unrelated sibling heading" not in results[1]["judge_prompt"]
     prompt = results[0]["judge_prompt"]
     assert all(
         text in prompt
